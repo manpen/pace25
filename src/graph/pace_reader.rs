@@ -38,7 +38,9 @@ impl<R: BufRead> Iterator for PaceReader<R> {
     type Item = Edge;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.parse_edge_line().unwrap().map(|(u, v)| (u - 1, v - 1))
+        self.parse_edge_line()
+            .unwrap()
+            .map(|Edge(u, v)| Edge(u - 1, v - 1))
     }
 }
 
@@ -77,7 +79,7 @@ impl<R: BufRead> PaceReader<R> {
             match line {
                 None => return Ok(None),
                 Some(Err(x)) => return Err(x),
-                Some(Ok(line)) if line.starts_with("c") => continue,
+                Some(Ok(line)) if line.starts_with('c') => continue,
                 Some(Ok(line)) => return Ok(Some(line)),
             }
         }
@@ -126,7 +128,7 @@ impl<R: BufRead> PaceReader<R> {
             debug_assert!((1..=self.number_of_nodes).contains(&from));
             debug_assert!((1..=self.number_of_nodes).contains(&dest));
 
-            Ok(Some((from, dest)))
+            Ok(Some(Edge(from, dest)))
         } else {
             Ok(None)
         }
@@ -158,15 +160,15 @@ mod test {
         assert_eq!(
             edges,
             vec![
-                (0, 1),
-                (1, 2),
-                (2, 3),
-                (3, 4),
-                (4, 5),
-                (5, 6),
-                (6, 7),
-                (7, 8),
-                (8, 9)
+                Edge(0, 1),
+                Edge(1, 2),
+                Edge(2, 3),
+                Edge(3, 4),
+                Edge(4, 5),
+                Edge(5, 6),
+                Edge(6, 7),
+                Edge(7, 8),
+                Edge(8, 9)
             ]
         );
     }
@@ -194,7 +196,9 @@ mod test {
 
             assert_eq!(num_edges as usize, edges.len());
 
-            assert!(edges.iter().all(|&(u, v)| u < num_nodes && v < num_nodes));
+            assert!(edges
+                .iter()
+                .all(|&Edge(u, v)| u < num_nodes && v < num_nodes));
 
             println!("Read {file:?} with n={num_nodes} and m={num_edges}");
         }
@@ -217,6 +221,7 @@ mod test {
                 PaceReader::try_new(buf_reader).expect("Could not construct PaceReader");
 
             let edges = pace_reader.collect_vec();
+
             assert!(edges.iter().all(|edge| !edge.is_loop()));
             let edges_hash: HashSet<_> = edges.iter().copied().collect();
             assert!(edges
