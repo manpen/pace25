@@ -1,6 +1,7 @@
 pub mod adj_list;
 pub mod color_filter;
 pub mod edge;
+pub mod node_mapper;
 pub mod traversal;
 
 pub type Node = u32;
