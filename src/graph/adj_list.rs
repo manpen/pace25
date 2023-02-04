@@ -85,11 +85,11 @@ impl GraphEdgeEditing for AdjList {
     fn try_add_edge(&mut self, u: Node, v: Node, color: EdgeColor) -> EdgeKind {
         let prev = self.adj[u as usize].try_add_edge(v, color);
 
-        if prev != color {
+        if prev != color && u != v {
             assert_eq!(self.adj[v as usize].try_add_edge(u, color), prev)
         }
 
-        if prev == EdgeKind::None {
+        if prev.is_none() {
             self.number_of_edges += 1;
         }
 
@@ -99,12 +99,14 @@ impl GraphEdgeEditing for AdjList {
     fn try_remove_edge(&mut self, u: Node, v: Node) -> EdgeKind {
         let prev = self.adj[u as usize].try_delete_edge(v);
 
-        if prev.is_some() {
+        if prev.is_some() && u != v {
             let _other = self.adj[v as usize].try_delete_edge(u);
             debug_assert_eq!(prev, _other);
         }
 
-        self.number_of_edges -= 1;
+        if prev.is_some() {
+            self.number_of_edges -= 1;
+        }
 
         prev
     }
@@ -543,5 +545,16 @@ mod test {
                 ColoredEdge(1, 2, EdgeColor::Black)
             );
         }
+    }
+
+    #[test]
+    fn loops() {
+        let mut graph = AdjList::new(1);
+
+        assert!(graph.try_add_edge(0, 0, EdgeColor::Black).is_none());
+        assert!(graph.try_add_edge(0, 0, EdgeColor::Red).is_black());
+        assert!(graph.try_add_edge(0, 0, EdgeColor::Black).is_red());
+        assert!(graph.try_remove_edge(0, 0).is_black());
+        assert!(graph.try_remove_edge(0, 0).is_none());
     }
 }

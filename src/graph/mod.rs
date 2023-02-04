@@ -11,6 +11,8 @@ use std::{borrow::Borrow, ops::Range};
 
 pub use adj_list::*;
 pub use edge::*;
+use itertools::Itertools;
+pub use node_mapper::*;
 pub use traversal::*;
 
 /// Provides getters pertaining to the size of a graph
@@ -73,6 +75,31 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
 
     node_iterator!(degrees, degree_of, NumNodes);
     node_iterator!(neighbors, neighbors_of, &[Node]);
+
+    fn edges_of(&self, u: Node, only_normalized: bool) -> impl Iterator<Item = Edge> + '_ {
+        self.neighbors_of(u)
+            .iter()
+            .map(move |&v| Edge(u, v))
+            .filter(move |e| !only_normalized || e.is_normalized())
+    }
+
+    fn ordered_edges_of(&self, u: Node, only_normalized: bool) -> impl Iterator<Item = Edge> {
+        let mut edges = self.edges_of(u, only_normalized).collect_vec();
+        edges.sort();
+        edges.into_iter()
+    }
+
+    fn edges(&self, only_normalized: bool) -> impl Iterator<Item = Edge> + '_ {
+        self.vertices_range()
+            .into_iter()
+            .flat_map(move |u| self.edges_of(u, only_normalized))
+    }
+
+    fn ordered_edges(&self, only_normalized: bool) -> impl Iterator<Item = Edge> + '_ {
+        self.vertices_range()
+            .into_iter()
+            .flat_map(move |u| self.ordered_edges_of(u, only_normalized))
+    }
 }
 
 pub trait ColoredAdjacencyList: AdjacencyList {
@@ -92,6 +119,50 @@ pub trait ColoredAdjacencyList: AdjacencyList {
     /// Returns the number of red neighbors of from [`u`]
     fn red_degree_of(&self, u: Node) -> NumNodes {
         self.red_neighbors_of(u).len() as NumNodes
+    }
+
+    /// Returns an iterator of the colored edges incident to [`u`]
+    fn colored_edges_of(
+        &self,
+        u: Node,
+        only_normalized: bool,
+    ) -> impl Iterator<Item = ColoredEdge> + '_ {
+        self.black_neighbors_of(u)
+            .iter()
+            .map(move |&v| ColoredEdge(u, v, EdgeColor::Black))
+            .chain(
+                self.red_neighbors_of(u)
+                    .iter()
+                    .map(move |&v| ColoredEdge(u, v, EdgeColor::Red)),
+            )
+            .filter(move |e| !only_normalized || e.is_normalized())
+    }
+
+    /// Returns an iterator of the colored edges incident to [`u`] sorted by neighbor index.
+    /// This involves allocation!
+    fn ordered_colored_edges_of(
+        &self,
+        u: Node,
+        only_normalized: bool,
+    ) -> impl Iterator<Item = ColoredEdge> {
+        let mut edges = self.colored_edges_of(u, only_normalized).collect_vec();
+        edges.sort();
+        edges.into_iter()
+    }
+
+    fn colored_edges(&self, only_normalized: bool) -> impl Iterator<Item = ColoredEdge> + '_ {
+        self.vertices_range()
+            .into_iter()
+            .flat_map(move |u| self.colored_edges_of(u, only_normalized))
+    }
+
+    fn ordered_colored_edges(
+        &self,
+        only_normalized: bool,
+    ) -> impl Iterator<Item = ColoredEdge> + '_ {
+        self.vertices_range()
+            .into_iter()
+            .flat_map(move |u| self.ordered_colored_edges_of(u, only_normalized))
     }
 
     node_iterator!(black_degrees, black_degree_of, NumNodes);
