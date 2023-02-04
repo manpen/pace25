@@ -1,12 +1,10 @@
 use std::io::{BufRead, ErrorKind, Lines};
 
-use super::NumEdges;
-
-use super::*;
+use crate::graph::{Edge, NumEdges, NumNodes};
 
 pub type Result<T> = std::io::Result<T>;
 
-struct PaceReader<R> {
+pub struct PaceReader<R> {
     lines: Lines<R>,
     number_of_nodes: NumNodes,
     number_of_edges: NumEdges,
@@ -137,9 +135,9 @@ impl<R: BufRead> PaceReader<R> {
 
 #[cfg(test)]
 mod test {
-    use crate::graph::edge::EdgeOps;
-
     use super::*;
+    use crate::graph::*;
+
     use glob::glob;
     use itertools::Itertools;
     use std::collections::HashSet;

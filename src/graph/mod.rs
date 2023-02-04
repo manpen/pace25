@@ -1,9 +1,9 @@
 pub mod adj_list;
 pub mod edge;
-pub mod pace_reader;
+pub mod traversal;
 
-type Node = u32;
-type NumNodes = Node;
-type NumEdges = u64;
+pub type Node = u32;
+pub type NumNodes = Node;
+pub type NumEdges = u64;
 
 use edge::*;
