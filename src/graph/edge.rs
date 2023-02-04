@@ -28,6 +28,13 @@ pub enum EdgeColor {
     Red,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub enum EdgeColorFilter {
+    BlackOnly,
+    RedOnly,
+    BlackAndRed,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum EdgeKind {
     Black,
@@ -60,6 +67,20 @@ impl ColorQuery for EdgeKind {
 
     fn is_none(&self) -> bool {
         *self == EdgeKind::None
+    }
+}
+
+impl ColorQuery for EdgeColorFilter {
+    fn is_red(&self) -> bool {
+        *self == EdgeColorFilter::RedOnly || *self == EdgeColorFilter::BlackAndRed
+    }
+
+    fn is_black(&self) -> bool {
+        *self == EdgeColorFilter::BlackOnly || *self == EdgeColorFilter::BlackAndRed
+    }
+
+    fn is_none(&self) -> bool {
+        false
     }
 }
 

@@ -1,8 +1,8 @@
-use std::{borrow::Borrow, collections::HashSet, ops::Range};
+use std::{collections::HashSet, ops::Range};
 
 use itertools::Itertools;
 
-use super::*;
+use super::{color_filter::ColorFilter, *};
 
 #[derive(Clone)]
 pub struct AdjList {
@@ -12,99 +12,77 @@ pub struct AdjList {
 
 macro_rules! forward {
     ($single : ident, $internal : ident, $type : ty) => {
-        pub fn $single(&self, node: Node) -> $type {
+        fn $single(&self, node: Node) -> $type {
             self.adj[node as usize].$internal()
         }
     };
 }
 
-macro_rules! node_iterator {
-    ($iter : ident, $single : ident, $type : ty) => {
-        pub fn $iter(&self) -> impl Iterator<Item = $type> + '_ {
-            self.nodes().map(|u| self.$single(u))
-        }
-    };
+impl GraphNodeOrder for AdjList {
+    type VertexIter<'a> = impl Iterator<Item = Node> + 'a;
+
+    fn number_of_nodes(&self) -> NumNodes {
+        self.adj.len() as NumNodes
+    }
+
+    fn vertices_range(&self) -> Range<Node> {
+        0..self.number_of_nodes()
+    }
+
+    fn vertices(&self) -> Self::VertexIter<'_> {
+        self.vertices_range()
+    }
 }
 
-macro_rules! forward_with_iter {
-    ($single : ident, $iter : ident, $internal : ident, $type : ty) => {
-        forward!($single, $internal, $type);
-        node_iterator!($iter, $single, $type);
-    };
+impl GraphEdgeOrder for AdjList {
+    fn number_of_edges(&self) -> NumEdges {
+        self.number_of_edges
+    }
 }
 
-impl AdjList {
-    pub fn new(number_of_nodes: NumNodes) -> Self {
+impl AdjacencyList for AdjList {
+    forward!(degree_of, degree, NumNodes);
+    forward!(neighbors_of, neighbors, &[Node]);
+}
+
+impl ColoredAdjacencyList for AdjList {
+    forward!(black_degree_of, black_degree, NumNodes);
+    forward!(red_degree_of, red_degree, NumNodes);
+    forward!(black_neighbors_of, black_neighbors, &[Node]);
+    forward!(red_neighbors_of, red_neighbors, &[Node]);
+}
+
+impl AdjacencyTest for AdjList {
+    fn has_edge(&self, u: Node, v: Node) -> bool {
+        self.adj[u as usize].has_neighbor(v)
+    }
+}
+
+impl ColoredAdjacencyTest for AdjList {
+    fn has_black_edge(&self, u: Node, v: Node) -> bool {
+        self.adj[u as usize].has_black_neighbor(v)
+    }
+
+    fn has_red_edge(&self, u: Node, v: Node) -> bool {
+        self.adj[u as usize].has_red_neighbor(v)
+    }
+
+    fn type_of_edge(&self, u: Node, v: Node) -> EdgeKind {
+        self.adj[u as usize].edge_type_with(v)
+    }
+}
+
+impl GraphNew for AdjList {
+    fn new(number_of_nodes: NumNodes) -> Self {
         Self {
             adj: vec![Default::default(); number_of_nodes as usize],
             number_of_edges: 0,
         }
     }
+}
 
-    pub fn number_of_nodes(&self) -> NumNodes {
-        self.adj.len() as NumNodes
-    }
-
-    pub fn number_of_edges(&self) -> NumEdges {
-        self.number_of_edges
-    }
-
-    pub fn nodes_range(&self) -> Range<Node> {
-        0..self.number_of_nodes()
-    }
-
-    pub fn nodes(&self) -> impl Iterator<Item = Node> {
-        self.nodes_range()
-    }
-
-    pub fn unordered_edges(&self) -> impl Iterator<Item = Edge> + '_ {
-        self.nodes()
-            .flat_map(|u| self.neighbors_of(u).iter().map(move |&v| Edge(u, v)))
-    }
-
-    pub fn unordered_colored_edges(&self) -> impl Iterator<Item = ColoredEdge> + '_ {
-        self.nodes().flat_map(|u| {
-            self.black_neighbors_of(u)
-                .iter()
-                .map(move |&v| ColoredEdge(u, v, EdgeColor::Black))
-                .chain(
-                    self.red_neighbors_of(u)
-                        .iter()
-                        .map(move |&v| ColoredEdge(u, v, EdgeColor::Red)),
-                )
-        })
-    }
-
-    forward_with_iter!(degree_of, degrees, degree, NumNodes);
-    forward_with_iter!(black_degree_of, black_degrees, black_degree, NumNodes);
-    forward_with_iter!(red_degree_of, red_degrees, red_degree, NumNodes);
-    forward_with_iter!(neighbors_of, neighbors, neighbors, &[Node]);
-    forward_with_iter!(
-        black_neighbors_of,
-        black_neighbors,
-        black_neighbors,
-        &[Node]
-    );
-    forward_with_iter!(red_neighbors_of, red_neighbors, red_neighbors, &[Node]);
-
-    pub fn has_neighbor(&self, u: Node, v: Node) -> bool {
-        self.adj[u as usize].has_neighbor(v)
-    }
-
-    pub fn has_black_neighbor(&self, u: Node, v: Node) -> bool {
-        self.adj[u as usize].has_black_neighbor(v)
-    }
-
-    pub fn has_red_neighbor(&self, u: Node, v: Node) -> bool {
-        self.adj[u as usize].has_red_neighbor(v)
-    }
-
-    pub fn edge_type(&self, u: Node, v: Node) -> EdgeKind {
-        self.adj[u as usize].edge_type_with(v)
-    }
-
-    /// Inserts the colored edge as specified and returns the previous state of edge
-    pub fn try_add_edge(&mut self, u: Node, v: Node, color: EdgeColor) -> EdgeKind {
+impl GraphEdgeEditing for AdjList {
+    fn try_add_edge(&mut self, u: Node, v: Node, color: EdgeColor) -> EdgeKind {
         let prev = self.adj[u as usize].try_add_edge(v, color);
 
         if prev != color {
@@ -118,31 +96,7 @@ impl AdjList {
         prev
     }
 
-    /// Inserts the colored edge as specified. Panics if already exists
-    pub fn add_edge(&mut self, u: Node, v: Node, kind: EdgeColor) {
-        assert_eq!(self.try_add_edge(u, v, kind), EdgeKind::None)
-    }
-
-    pub fn add_edges(
-        &mut self,
-        edges: impl IntoIterator<Item = impl Into<Edge>>,
-        color: EdgeColor,
-    ) {
-        for Edge(u, v) in edges.into_iter().map(|d| d.into()) {
-            self.add_edge(u, v, color);
-        }
-    }
-
-    pub fn add_colored_edges<I>(
-        &mut self,
-        edges: impl IntoIterator<Item = impl Borrow<ColoredEdge>>,
-    ) {
-        for ColoredEdge(u, v, color) in edges.into_iter().map(|d| *d.borrow()) {
-            self.add_edge(u, v, color);
-        }
-    }
-
-    pub fn try_delete_edge(&mut self, u: Node, v: Node) -> EdgeKind {
+    fn try_remove_edge(&mut self, u: Node, v: Node) -> EdgeKind {
         let prev = self.adj[u as usize].try_delete_edge(v);
 
         if prev.is_some() {
@@ -155,11 +109,7 @@ impl AdjList {
         prev
     }
 
-    pub fn delete_edge(&mut self, u: Node, v: Node) {
-        assert!(self.try_delete_edge(u, v).is_some())
-    }
-
-    pub fn delete_edges_at_node(&mut self, u: Node) {
+    fn remove_edges_at_node(&mut self, u: Node) {
         let neighbors = std::mem::take(&mut self.adj[u as usize]);
         self.number_of_edges -= neighbors.nodes.len() as NumEdges;
 
@@ -168,7 +118,7 @@ impl AdjList {
         }
     }
 
-    pub fn merge_node_into(&mut self, removed: Node, survivor: Node) {
+    fn merge_node_into(&mut self, removed: Node, survivor: Node) {
         assert_ne!(removed, survivor);
 
         let black_rem: HashSet<Node> = self.black_neighbors_of(removed).iter().copied().collect();
@@ -188,7 +138,44 @@ impl AdjList {
             self.try_add_edge(survivor, red_neigh, EdgeColor::Red);
         }
 
-        self.delete_edges_at_node(removed);
+        self.remove_edges_at_node(removed);
+    }
+}
+
+impl ColorFilter for AdjList {}
+
+impl AdjList {
+    pub fn unordered_edges(&self) -> impl Iterator<Item = Edge> + '_ {
+        self.vertices_range()
+            .flat_map(|u| self.neighbors_of(u).iter().map(move |&v| Edge(u, v)))
+    }
+
+    pub fn unordered_colored_edges(&self) -> impl Iterator<Item = ColoredEdge> + '_ {
+        self.vertices_range().flat_map(|u| {
+            self.black_neighbors_of(u)
+                .iter()
+                .map(move |&v| ColoredEdge(u, v, EdgeColor::Black))
+                .chain(
+                    self.red_neighbors_of(u)
+                        .iter()
+                        .map(move |&v| ColoredEdge(u, v, EdgeColor::Red)),
+                )
+        })
+    }
+
+    pub fn test_only_from(edges: impl Clone + IntoIterator<Item = impl Into<Edge>>) -> Self {
+        let n = edges
+            .clone()
+            .into_iter()
+            .map(|e| e.into())
+            .map(|e| e.0.max(e.1) + 1)
+            .max()
+            .unwrap_or(0);
+        let mut graph = Self::new(n as NumNodes);
+
+        graph.add_edges(edges, EdgeColor::Black);
+
+        graph
     }
 }
 
@@ -341,9 +328,9 @@ mod test {
             assert_eq!(graph.number_of_edges(), 0);
             assert_eq!(graph.number_of_nodes(), n);
 
-            assert_eq!(graph.nodes_range().len(), n as usize);
+            assert_eq!(graph.vertices_range().len(), n as usize);
             assert_eq!(
-                graph.nodes().collect_vec(),
+                graph.vertices().collect_vec(),
                 (0..n).into_iter().collect_vec()
             );
         }
@@ -366,7 +353,7 @@ mod test {
             };
 
             if !graph.try_add_edge(u, v, color).is_none() {
-                graph.delete_edge(u, v);
+                graph.remove_edge(u, v);
             }
         }
 
@@ -483,7 +470,7 @@ mod test {
         assert_eq!(graph.number_of_edges(), 5);
         assert_eq!(graph.degrees().collect_vec(), [3, 2, 3, 2]);
 
-        graph.delete_edges_at_node(1);
+        graph.remove_edges_at_node(1);
 
         assert_eq!(graph.number_of_edges(), 3);
         assert_eq!(graph.degrees().collect_vec(), [2, 0, 2, 2]);
