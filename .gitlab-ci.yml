@@ -1,0 +1,80 @@
+variables:
+  GIT_SUBMODULE_STRATEGY: normal
+
+stages:
+  - primary
+  - extras
+  - deploy
+
+cargo-test:
+  image: gitlab.ae.cs.uni-frankfurt.de:5001/ae-ci/aeffm-rust-nightly
+  stage: primary
+  script:
+    - cargo test
+    - cargo test --all-features
+    - cargo build --all-features
+
+cargo-test-deny-warnings:
+  image: gitlab.ae.cs.uni-frankfurt.de:5001/ae-ci/aeffm-rust-nightly
+  stage: primary
+  variables:
+    RUSTFLAGS: "-D warnings"
+  script:
+    - cargo test
+    - cargo test --all-features
+    - cargo build --all-features
+
+cargo-test-release:
+  image: gitlab.ae.cs.uni-frankfurt.de:5001/ae-ci/aeffm-rust-nightly
+  stage: extras
+  script:
+    - cargo test --release
+    - cargo test --release --all-features
+    - cargo build --release --all-features
+
+cargo-clippy:
+  image: gitlab.ae.cs.uni-frankfurt.de:5001/ae-ci/aeffm-rust-nightly
+  stage: primary
+  script:
+    - cargo clippy --all-features -- -D clippy::all
+
+cargo-format:
+  image: gitlab.ae.cs.uni-frankfurt.de:5001/ae-ci/aeffm-rust-nightly
+  stage: extras
+  script:
+    - cargo fmt --check
+
+coverage:
+  image: gitlab.ae.cs.uni-frankfurt.de:5001/ae-ci/aeffm-rust-nightly
+  stage: extras
+  coverage: '/^\d+.\d+% coverage/'
+  script:
+    - cargo tarpaulin -t 300 --all-features -o xml
+  artifacts:
+    reports:
+      cobertura: cobertura.xml
+
+pages:
+  image: gitlab.ae.cs.uni-frankfurt.de:5001/ae-ci/aeffm-rust-nightly
+  stage: deploy
+  script:
+    - mkdir -p public/coverage
+    - cargo tarpaulin -t 300 --all-features -o html
+    - mv tarpaulin-report.html public/coverage/index.html
+    - cargo doc --no-deps
+    - mv target/doc public/doc
+  artifacts:
+    paths:
+      - public
+  only:
+    - master
+
+documentation:
+  image: gitlab.ae.cs.uni-frankfurt.de:5001/ae-ci/aeffm-rust-nightly
+  stage: deploy
+  variables:
+    RUSTDOCFLAGS: "-D warnings"
+  script:
+    - cargo doc --no-deps
+  except:
+    - master

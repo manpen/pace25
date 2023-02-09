@@ -76,7 +76,7 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
     /// ** Panics if the v >= n **
     fn neighbors_of(&self, u: Node) -> &[Node];
 
-    /// Returns the number of neighbors of from [`u`]
+    /// Returns the number of neighbors of from `u`
     fn degree_of(&self, u: Node) -> NumNodes {
         self.neighbors_of(u).len() as NumNodes
     }
@@ -119,17 +119,17 @@ pub trait ColoredAdjacencyList: AdjacencyList {
     /// ** Panics if the v >= n **
     fn red_neighbors_of(&self, u: Node) -> &[Node];
 
-    /// Returns the number of black neighbors of from [`u`]
+    /// Returns the number of black neighbors of from `u`
     fn black_degree_of(&self, u: Node) -> NumNodes {
         self.black_neighbors_of(u).len() as NumNodes
     }
 
-    /// Returns the number of red neighbors of from [`u`]
+    /// Returns the number of red neighbors of from `u`
     fn red_degree_of(&self, u: Node) -> NumNodes {
         self.red_neighbors_of(u).len() as NumNodes
     }
 
-    /// Returns an iterator of the colored edges incident to [`u`]
+    /// Returns an iterator of the colored edges incident to `u`
     fn colored_edges_of(
         &self,
         u: Node,
@@ -146,7 +146,7 @@ pub trait ColoredAdjacencyList: AdjacencyList {
             .filter(move |e| !only_normalized || e.is_normalized())
     }
 
-    /// Returns an iterator of the colored edges incident to [`u`] sorted by neighbor index.
+    /// Returns an iterator of the colored edges incident to `u` sorted by neighbor index.
     /// This involves allocation!
     fn ordered_colored_edges_of(
         &self,
