@@ -44,16 +44,6 @@ cargo-format:
   script:
     - cargo fmt --check
 
-coverage:
-  image: gitlab.ae.cs.uni-frankfurt.de:5001/ae-ci/aeffm-rust-nightly
-  stage: extras
-  coverage: '/^\d+.\d+% coverage/'
-  script:
-    - cargo tarpaulin -t 300 --all-features -o xml
-  artifacts:
-    reports:
-      cobertura: cobertura.xml
-
 pages:
   image: gitlab.ae.cs.uni-frankfurt.de:5001/ae-ci/aeffm-rust-nightly
   stage: deploy
