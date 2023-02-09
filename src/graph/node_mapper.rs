@@ -106,12 +106,12 @@ pub trait Getter {
     ///
     /// ```
     /// use tww::graph::*;
-    /// let input = AdjList::test_only_from([(0,1), (1,2), (2, 2)]);
+    /// let input = AdjArray::test_only_from([(0,1), (1,2), (2, 2)]);
     /// let mut map = NodeMapper::with_capacity(3);
     /// // node 0 gets dropped, 1 becomes 3 and 2 becomes 1
     /// map.map_node_to(1, 3);
     /// map.map_node_to(2, 1);
-    /// let output : AdjList = map.relabelled_graph_as(&input);
+    /// let output : AdjArray = map.relabelled_graph_as(&input);
     /// assert_eq!(output.ordered_edges(true).collect::<Vec<_>>(), vec![Edge(1, 1), Edge(1, 3)]);
     /// ```
     fn relabelled_graph_as<GI, GO>(&self, input: &GI) -> GO
@@ -493,7 +493,7 @@ pub mod tests {
     fn relabelling() {
         // keep all
         {
-            let graph = AdjList::test_only_from([(0, 1), (1, 2)]);
+            let graph = AdjArray::test_only_from([(0, 1), (1, 2)]);
             let mut map = NodeMapper::with_capacity(10);
             map.map_node_to(0, 2);
             map.map_node_to(1, 1);
@@ -509,7 +509,7 @@ pub mod tests {
 
         // drop 1
         {
-            let graph = AdjList::test_only_from([(0, 1), (1, 2)]);
+            let graph = AdjArray::test_only_from([(0, 1), (1, 2)]);
             let mut map = NodeMapper::with_capacity(10);
             map.map_node_to(0, 1);
             map.map_node_to(2, 0);
@@ -521,7 +521,7 @@ pub mod tests {
 
         // loop at node 0 (previous bug)
         {
-            let graph = AdjList::test_only_from([(1, 1)]);
+            let graph = AdjArray::test_only_from([(1, 1)]);
             let mut map = NodeMapper::with_capacity(10);
             map.map_node_to(1, 0);
             let graph = map.relabelled_graph(&graph);

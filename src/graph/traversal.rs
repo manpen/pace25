@@ -1,5 +1,4 @@
 use super::*;
-use ez_bitset::bitset::*;
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 
@@ -11,7 +10,7 @@ pub trait TraversalState {
     fn visited(&self) -> &BitSet;
 
     fn did_visit_node(&self, u: Node) -> bool {
-        self.visited()[u as usize]
+        self.visited().at(u)
     }
 }
 
@@ -160,9 +159,9 @@ impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> Iterator
             while self.sequencer.pop().is_some() {} // drop all
         } else {
             for &v in self.graph.neighbors_of(u) {
-                if !self.visited[v as usize] {
+                if !self.visited[v] {
                     self.sequencer.push(I::new_with_predecessor(u, v));
-                    self.visited.set_bit(v as usize);
+                    self.visited.set_bit(v);
                 }
             }
         }
@@ -173,15 +172,15 @@ impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> Iterator
     fn size_hint(&self) -> (usize, Option<usize>) {
         (
             self.sequencer.cardinality(),
-            Some(self.graph.len() - self.visited.cardinality()),
+            Some(self.graph.len() - self.visited.cardinality() as usize),
         )
     }
 }
 
 impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> TraversalSearch<'a, G, S, I> {
     pub fn new(graph: &'a G, start: Node) -> Self {
-        let mut visited = BitSet::new(graph.len());
-        visited.set_bit(start as usize);
+        let mut visited = BitSet::new(graph.number_of_nodes());
+        visited.set_bit(start);
         Self {
             graph,
             visited,
@@ -212,7 +211,7 @@ impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> TraversalSearc
     /// ```
     /// use tww::graph::*;
     /// use itertools::Itertools;
-    /// let graph = AdjList::test_only_from([(0, 1), (1, 2), (2, 3)]);
+    /// let graph = AdjArray::test_only_from([(0, 1), (1, 2), (2, 3)]);
     /// let mut bfs = graph.bfs(0);
     /// bfs.stop_at(1);
     /// assert_eq!(bfs.collect_vec(), vec![0, 1]); // nodes 2 and 3 are not returned as we stop at 1
@@ -232,12 +231,12 @@ impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> TraversalSearc
     /// # Example
     /// ```
     /// use tww::graph::*;
-    /// let graph = AdjList::test_only_from([(0,1), (1,2)]); // directed path 0 -> 1 -> 2
+    /// let graph = AdjArray::test_only_from([(0,1), (1,2)]); // directed path 0 -> 1 -> 2
     /// let dfs : Vec<_> = graph.dfs(0).exclude_node(1).collect(); // exclude 1
     /// assert_eq!(dfs, vec![0]); // we can only visit 1
     /// ```
     pub fn exclude_node(&mut self, u: Node) -> &mut Self {
-        self.visited.set_bit(u as usize);
+        self.visited.set_bit(u);
         self
     }
 
@@ -251,7 +250,7 @@ impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> TraversalSearc
     /// # Example
     /// ```
     /// use tww::graph::*;
-    /// let graph = AdjList::test_only_from([(0,1), (0,2), (1,3), (2,3)]); // directed path 0 -> 1 -> 3 and 0 -> 2 -> 3
+    /// let graph = AdjArray::test_only_from([(0,1), (0,2), (1,3), (2,3)]); // directed path 0 -> 1 -> 3 and 0 -> 2 -> 3
     /// let dfs : Vec<_> = graph.dfs(0).exclude_nodes([1,2]).collect(); // exclude 1
     /// assert_eq!(dfs, vec![0]); // we can only visit 1
     /// ```
@@ -271,14 +270,14 @@ impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> TraversalSearc
     /// # Example
     /// ```
     /// use tww::graph::*;
-    /// let graph = AdjList::test_only_from([(0,1), (2, 3)]);
+    /// let graph = AdjArray::test_only_from([(0,1), (2, 3)]);
     /// assert!(graph.dfs(0).is_node_reachable(0));
     /// assert!(graph.dfs(0).is_node_reachable(1));
     /// assert!(!graph.dfs(1).is_node_reachable(2));
     /// ```
     pub fn is_node_reachable(mut self, u: Node) -> bool {
         assert_eq!(self.sequencer.cardinality(), 1);
-        self.visited.unset_bit(u as usize);
+        self.visited.unset_bit(u);
         self.next();
         self.any(|v| v.item() == u)
     }
@@ -380,7 +379,7 @@ pub mod tests {
         //  / 2 --- \
         // 1         4 - 3
         //  \ 0 - 5 /
-        let graph = AdjList::test_only_from([(1, 2), (1, 0), (4, 3), (0, 5), (2, 4), (5, 4)]);
+        let graph = AdjArray::test_only_from([(1, 2), (1, 0), (4, 3), (0, 5), (2, 4), (5, 4)]);
 
         {
             let order: Vec<Node> = graph.bfs(1).collect();
@@ -402,7 +401,7 @@ pub mod tests {
 
     #[test]
     fn bfs_with_predecessor() {
-        let graph = AdjList::test_only_from([(1, 2), (1, 0), (4, 3), (0, 5), (2, 4), (5, 4)]);
+        let graph = AdjArray::test_only_from([(1, 2), (1, 0), (4, 3), (0, 5), (2, 4), (5, 4)]);
 
         let mut edges: Vec<_> = graph
             .bfs_with_predecessor(1)
@@ -424,7 +423,7 @@ pub mod tests {
 
     #[test]
     fn test_stopper() {
-        let graph = AdjList::test_only_from([(0, 1), (1, 2), (2, 3)]);
+        let graph = AdjArray::test_only_from([(0, 1), (1, 2), (2, 3)]);
         assert_eq!(graph.bfs(0).collect_vec(), vec![0, 1, 2, 3]);
 
         let mut bfs = graph.bfs(0);
@@ -434,7 +433,7 @@ pub mod tests {
 
     #[test]
     fn bfs_tree() {
-        let graph = AdjList::test_only_from([(1, 2), (1, 0), (4, 3), (0, 5), (2, 4), (5, 4)]);
+        let graph = AdjArray::test_only_from([(1, 2), (1, 0), (4, 3), (0, 5), (2, 4), (5, 4)]);
         let tree = graph.bfs_with_predecessor(1).parent_array();
         assert_eq!(tree, vec![1, 1, 1, 4, 2, 0]);
     }
@@ -444,7 +443,7 @@ pub mod tests {
         //  / 2
         // 1         4 - 3
         //  \ 0 - 5 /
-        let graph = AdjList::test_only_from([(1, 2), (1, 0), (4, 3), (0, 5), (5, 4)]);
+        let graph = AdjArray::test_only_from([(1, 2), (1, 0), (4, 3), (0, 5), (5, 4)]);
 
         {
             let order: Vec<Node> = DFS::new(&graph, 1).collect();
@@ -471,14 +470,14 @@ pub mod tests {
 
     #[test]
     fn dfs_tree() {
-        let graph = AdjList::test_only_from([(1, 2), (1, 0), (4, 3), (0, 5), (5, 4)]);
+        let graph = AdjArray::test_only_from([(1, 2), (1, 0), (4, 3), (0, 5), (5, 4)]);
         let tree = graph.dfs_with_predecessor(1).parent_array();
         assert_eq!(tree, vec![1, 1, 1, 4, 5, 0]);
     }
 
     #[test]
     fn dfs_with_predecessor() {
-        let graph = AdjList::test_only_from([(1, 2), (1, 0), (4, 3), (0, 5), (5, 4)]);
+        let graph = AdjArray::test_only_from([(1, 2), (1, 0), (4, 3), (0, 5), (5, 4)]);
 
         let mut edges: Vec<_> = graph
             .dfs_with_predecessor(1)

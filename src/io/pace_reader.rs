@@ -1,8 +1,35 @@
-use std::io::{BufRead, ErrorKind, Lines};
+use std::{
+    fs::File,
+    io::{BufRead, BufReader, ErrorKind, Lines},
+    path::Path,
+};
 
-use crate::graph::{Edge, NumEdges, NumNodes};
+use crate::graph::{Edge, GraphEdgeEditing, GraphNew, NumEdges, NumNodes};
 
 pub type Result<T> = std::io::Result<T>;
+
+pub trait GraphPaceReader: Sized {
+    fn try_read_pace<R: BufRead>(reader: R) -> Result<Self>;
+    fn try_read_pace_file<P: AsRef<Path>>(path: P) -> Result<Self>;
+}
+
+impl<G> GraphPaceReader for G
+where
+    G: GraphNew + GraphEdgeEditing,
+{
+    fn try_read_pace<R: BufRead>(reader: R) -> Result<Self> {
+        let pace_reader = PaceReader::try_new(reader)?;
+        let mut graph = Self::new(pace_reader.number_of_nodes());
+        graph.add_edges(pace_reader, crate::graph::EdgeColor::Black);
+        Ok(graph)
+    }
+
+    fn try_read_pace_file<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let reader = File::open(path)?;
+        let buf_reader = BufReader::new(reader);
+        Self::try_read_pace(buf_reader)
+    }
+}
 
 pub struct PaceReader<R> {
     lines: Lines<R>,
@@ -173,7 +200,7 @@ mod test {
 
     #[test]
     fn test_read_pace_exact() {
-        let files = glob("instaces/exact-public/*.gr")
+        let files = glob("instances/exact-public/*.gr")
             .expect("Failed to glob")
             .map(|r| r.expect("Failed to access globbed path"))
             .collect_vec();
@@ -204,7 +231,7 @@ mod test {
 
     #[test]
     fn test_read_pace_exact_data_specific() {
-        let files = glob("instaces/exact-public/*.gr")
+        let files = glob("instances/exact-public/*.gr")
             .expect("Failed to glob")
             .map(|r| r.expect("Failed to access globbed path"))
             .collect_vec();

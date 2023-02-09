@@ -1,11 +1,9 @@
-use std::{collections::HashSet, ops::Range};
-
-use itertools::Itertools;
-
-use super::{color_filter::ColorFilter, *};
+use super::*;
+use std::fmt;
+use std::ops::Range;
 
 #[derive(Clone)]
-pub struct AdjList {
+pub struct AdjArray {
     adj: Vec<Neighborhood>,
     number_of_edges: NumEdges,
 }
@@ -18,7 +16,7 @@ macro_rules! forward {
     };
 }
 
-impl GraphNodeOrder for AdjList {
+impl GraphNodeOrder for AdjArray {
     type VertexIter<'a> = impl Iterator<Item = Node> + 'a;
 
     fn number_of_nodes(&self) -> NumNodes {
@@ -34,31 +32,31 @@ impl GraphNodeOrder for AdjList {
     }
 }
 
-impl GraphEdgeOrder for AdjList {
+impl GraphEdgeOrder for AdjArray {
     fn number_of_edges(&self) -> NumEdges {
         self.number_of_edges
     }
 }
 
-impl AdjacencyList for AdjList {
+impl AdjacencyList for AdjArray {
     forward!(degree_of, degree, NumNodes);
     forward!(neighbors_of, neighbors, &[Node]);
 }
 
-impl ColoredAdjacencyList for AdjList {
+impl ColoredAdjacencyList for AdjArray {
     forward!(black_degree_of, black_degree, NumNodes);
     forward!(red_degree_of, red_degree, NumNodes);
     forward!(black_neighbors_of, black_neighbors, &[Node]);
     forward!(red_neighbors_of, red_neighbors, &[Node]);
 }
 
-impl AdjacencyTest for AdjList {
+impl AdjacencyTest for AdjArray {
     fn has_edge(&self, u: Node, v: Node) -> bool {
         self.adj[u as usize].has_neighbor(v)
     }
 }
 
-impl ColoredAdjacencyTest for AdjList {
+impl ColoredAdjacencyTest for AdjArray {
     fn has_black_edge(&self, u: Node, v: Node) -> bool {
         self.adj[u as usize].has_black_neighbor(v)
     }
@@ -72,7 +70,7 @@ impl ColoredAdjacencyTest for AdjList {
     }
 }
 
-impl GraphNew for AdjList {
+impl GraphNew for AdjArray {
     fn new(number_of_nodes: NumNodes) -> Self {
         Self {
             adj: vec![Default::default(); number_of_nodes as usize],
@@ -81,7 +79,7 @@ impl GraphNew for AdjList {
     }
 }
 
-impl GraphEdgeEditing for AdjList {
+impl GraphEdgeEditing for AdjArray {
     fn try_add_edge(&mut self, u: Node, v: Node, color: EdgeColor) -> EdgeKind {
         let prev = self.adj[u as usize].try_add_edge(v, color);
 
@@ -123,30 +121,54 @@ impl GraphEdgeEditing for AdjList {
     fn merge_node_into(&mut self, removed: Node, survivor: Node) {
         assert_ne!(removed, survivor);
 
-        let black_rem: HashSet<Node> = self.black_neighbors_of(removed).iter().copied().collect();
-        let black_sur: HashSet<Node> = self.black_neighbors_of(survivor).iter().copied().collect();
-        let turned_red = black_rem.symmetric_difference(&black_sur);
+        let reds = self.red_neighbors_after_merge(removed, survivor, true);
 
-        let reds = self
-            .red_neighbors_of(survivor)
-            .iter()
-            .copied()
-            .collect_vec();
-
-        for &red_neigh in reds.iter().chain(turned_red) {
-            if red_neigh == survivor {
-                continue;
-            }
-            self.try_add_edge(survivor, red_neigh, EdgeColor::Red);
+        for red_neigh in reds.iter() {
+            self.try_add_edge(survivor, red_neigh as Node, EdgeColor::Red);
         }
+
+        debug_assert!(!self.has_edge(survivor, survivor));
 
         self.remove_edges_at_node(removed);
     }
+
+    fn red_neighbors_after_merge(&self, removed: Node, survivor: Node, only_new: bool) -> BitSet {
+        let mut turned_red = BitSet::new_all_unset_but(
+            self.number_of_nodes(),
+            self.black_neighbors_of(survivor).iter().copied(),
+        );
+
+        for &v in self.black_neighbors_of(removed).iter() {
+            if turned_red.set_bit(v) {
+                // flip bit!
+                turned_red.unset_bit(v);
+            }
+        }
+
+        for v in self.red_neighbors_of(removed) {
+            turned_red.set_bit(*v);
+        }
+
+        if only_new {
+            for v in self.red_neighbors_of(survivor) {
+                turned_red.unset_bit(*v);
+            }
+        } else {
+            for v in self.red_neighbors_of(survivor) {
+                turned_red.set_bit(*v);
+            }
+        }
+
+        turned_red.unset_bit(removed);
+        turned_red.unset_bit(survivor);
+
+        turned_red
+    }
 }
 
-impl ColorFilter for AdjList {}
+impl ColorFilter for AdjArray {}
 
-impl AdjList {
+impl AdjArray {
     pub fn unordered_edges(&self) -> impl Iterator<Item = Edge> + '_ {
         self.vertices_range()
             .flat_map(|u| self.neighbors_of(u).iter().map(move |&v| Edge(u, v)))
@@ -312,6 +334,20 @@ impl Neighborhood {
     }
 }
 
+impl fmt::Debug for AdjArray {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use super::super::io::DotWriter;
+        use std::str;
+
+        let mut buf = Vec::new();
+        if self.try_write_dot(&mut buf).is_ok() {
+            f.write_str(str::from_utf8(&buf).unwrap().trim())?;
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::collections::HashSet;
@@ -325,7 +361,7 @@ mod test {
     #[test]
     fn new() {
         for n in 1..50 {
-            let graph = AdjList::new(n);
+            let graph = AdjArray::new(n);
 
             assert_eq!(graph.number_of_edges(), 0);
             assert_eq!(graph.number_of_nodes(), n);
@@ -338,8 +374,8 @@ mod test {
         }
     }
 
-    fn get_random_graph(rng: &mut impl Rng, n: NumNodes, m: NumEdges) -> AdjList {
-        let mut graph = AdjList::new(n);
+    fn get_random_graph(rng: &mut impl Rng, n: NumNodes, m: NumEdges) -> AdjArray {
+        let mut graph = AdjArray::new(n);
 
         while graph.number_of_edges() < m {
             let u = rng.gen_range(0..n);
@@ -400,7 +436,7 @@ mod test {
         let mut rng = Pcg64::seed_from_u64(1235);
 
         for n in 5..50 {
-            let mut graph = AdjList::new(n);
+            let mut graph = AdjArray::new(n);
             let num_edges = rng.gen_range(1..(n * (n - 1) / 4)) as NumEdges;
             let mut edges: Vec<_> = Vec::with_capacity(2 * num_edges as usize);
             let mut edges_hash = HashSet::with_capacity(2 * num_edges as usize);
@@ -466,7 +502,7 @@ mod test {
 
     #[test]
     fn delete_edges_at_node() {
-        let mut graph = AdjList::new(4);
+        let mut graph = AdjArray::new(4);
         graph.add_edges([(0, 1), (0, 2), (0, 3), (1, 2), (2, 3)], EdgeColor::Black);
 
         assert_eq!(graph.number_of_edges(), 5);
@@ -480,7 +516,7 @@ mod test {
 
     #[test]
     fn recoloring_insert() {
-        let mut path = AdjList::new(3);
+        let mut path = AdjArray::new(3);
         path.add_edges([(0, 1), (1, 2)], EdgeColor::Black);
 
         assert_eq!(path.red_degrees().collect_vec(), [0, 0, 0]);
@@ -515,7 +551,7 @@ mod test {
 
     #[test]
     fn merge() {
-        let mut path = AdjList::new(3);
+        let mut path = AdjArray::new(3);
         path.add_edges([(0, 1), (1, 2)], EdgeColor::Black);
 
         {
@@ -549,7 +585,7 @@ mod test {
 
     #[test]
     fn loops() {
-        let mut graph = AdjList::new(1);
+        let mut graph = AdjArray::new(1);
 
         assert!(graph.try_add_edge(0, 0, EdgeColor::Black).is_none());
         assert!(graph.try_add_edge(0, 0, EdgeColor::Red).is_black());

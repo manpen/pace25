@@ -1,7 +1,10 @@
-pub mod adj_list;
+pub mod adj_array;
+pub mod bitset;
 pub mod color_filter;
+pub mod distance_two_pairs;
 pub mod edge;
 pub mod node_mapper;
+//pub mod partition;
 pub mod traversal;
 
 pub type Node = u32;
@@ -10,10 +13,14 @@ pub type NumEdges = u64;
 
 use std::{borrow::Borrow, ops::Range};
 
-pub use adj_list::*;
+pub use adj_array::*;
+pub use bitset::*;
+pub use color_filter::*;
+pub use distance_two_pairs::*;
 pub use edge::*;
 use itertools::Itertools;
 pub use node_mapper::*;
+//pub use partition::*;
 pub use traversal::*;
 
 /// Provides getters pertaining to the size of a graph
@@ -236,4 +243,13 @@ pub trait GraphEdgeEditing: GraphNew {
 
     /// Removes all edges into and out of node `u` and connects every in-neighbor with every out-neighbor.
     fn merge_node_into(&mut self, removed: Node, survivor: Node);
+
+    /// Dry-run of [`GraphEdgeEditing::merge_node_into`] that only returns the red-degree after a merge were carried out
+    fn red_degree_after_merge(&self, removed: Node, survivor: Node) -> NumNodes {
+        self.red_neighbors_after_merge(removed, survivor, false)
+            .cardinality() as NumNodes
+    }
+
+    /// Dry-run of [`GraphEdgeEditing::merge_node_into`] that only returns the red-neighbors after a merge
+    fn red_neighbors_after_merge(&self, removed: Node, survivor: Node, only_new: bool) -> BitSet;
 }
