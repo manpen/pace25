@@ -96,6 +96,7 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
     node_iterator!(degrees, degree_of, NumNodes);
     node_iterator!(neighbors, neighbors_of, &[Node]);
     node_bitset_of!(neighbors_of_as_bitset, neighbors_of);
+    node_iterator!(neighbors_as_bitset, neighbors_of_as_bitset, BitSet);
 
     fn edges_of(&self, u: Node, only_normalized: bool) -> impl Iterator<Item = Edge> + '_ {
         self.neighbors_of(u)

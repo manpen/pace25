@@ -36,12 +36,17 @@ pub fn prune_twins<
     contract_seq: &mut ContractionSequence,
 ) {
     while let Some((u, v)) = graph.distance_two_pairs().find(|&(u, v)| {
-        if graph.red_degree_of(u) != 0 && graph.red_degree_of(v) != 0 {
+        if graph.black_degree_of(u) == 0 || graph.black_degree_of(u) != graph.black_degree_of(v) {
             return false;
         }
 
-        if graph.black_degree_of(u) == 0 || graph.black_degree_of(u) != graph.black_degree_of(v) {
-            return false;
+        if graph.red_degree_of(u) != 0 && graph.red_degree_of(v) != 0 {
+            let ru = graph.red_neighbors_of_as_bitset(u);
+            let rv = graph.red_neighbors_of_as_bitset(v);
+
+            if !ru.is_subset_of(&rv) || !rv.is_subset_of(&ru) {
+                return false;
+            }
         }
 
         let mut s1 = graph.neighbors_of_as_bitset(u);
