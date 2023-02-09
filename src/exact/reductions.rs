@@ -44,15 +44,8 @@ pub fn prune_twins<
             return false;
         }
 
-        let mut s1 = BitSet::new_all_unset_but(
-            graph.number_of_nodes(),
-            graph.neighbors_of(u).iter().copied(),
-        );
-
-        let mut s2 = BitSet::new_all_unset_but(
-            graph.number_of_nodes(),
-            graph.neighbors_of(v).iter().copied(),
-        );
+        let mut s1 = graph.neighbors_of_as_bitset(u);
+        let mut s2 = graph.neighbors_of_as_bitset(v);
 
         s1.set_bit(u);
         s1.set_bit(v);

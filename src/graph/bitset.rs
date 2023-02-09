@@ -150,27 +150,25 @@ impl BitSet {
         }
     }
 
-    pub fn new_all_set_but<T, I>(size: NumNodes, bits_unset: I) -> Self
+    pub fn new_all_set_but<T, B, I>(size: NumNodes, bits_unset: I) -> Self
     where
-        I: IntoIterator<Item = T>,
-        T: Unsigned + ToPrimitive,
+        I: IntoIterator<Item = B>,
+        B: Borrow<T>,
+        T: Unsigned + ToPrimitive + Copy,
     {
         let mut bs = BitSet::new_all_set(size);
-        for i in bits_unset {
-            bs.unset_bit(i.to_usize().unwrap() as NumNodes);
-        }
+        bs.unset_bits(bits_unset);
         bs
     }
 
-    pub fn new_all_unset_but<T, I>(size: NumNodes, bits_set: I) -> Self
+    pub fn new_all_unset_but<T, B, I>(size: NumNodes, bits_set: I) -> Self
     where
-        I: IntoIterator<Item = T>,
-        T: Unsigned + ToPrimitive,
+        I: IntoIterator<Item = B>,
+        B: Borrow<T>,
+        T: Unsigned + ToPrimitive + Copy,
     {
         let mut bs = BitSet::new(size);
-        for i in bits_set {
-            bs.set_bit(i.to_usize().unwrap() as NumNodes);
-        }
+        bs.set_bits(bits_set);
         bs
     }
 
@@ -226,6 +224,17 @@ impl BitSet {
         }
     }
 
+    pub fn set_bits<T, B, I>(&mut self, indices: I)
+    where
+        I: IntoIterator<Item = B>,
+        B: Borrow<T>,
+        T: Unsigned + ToPrimitive + Copy,
+    {
+        for i in indices {
+            self.set_bit(i.borrow().to_usize().unwrap() as NumNodes);
+        }
+    }
+
     #[inline]
     pub fn flip_bit(&mut self, idx: NumNodes) -> bool {
         let prev = *self.bit_vec.get(idx as usize).unwrap();
@@ -242,6 +251,17 @@ impl BitSet {
             true
         } else {
             false
+        }
+    }
+
+    pub fn unset_bits<T, B, I>(&mut self, indices: I)
+    where
+        I: IntoIterator<Item = B>,
+        B: Borrow<T>,
+        T: Unsigned + ToPrimitive + Copy,
+    {
+        for i in indices {
+            self.unset_bit(i.borrow().to_usize().unwrap() as NumNodes);
         }
     }
 

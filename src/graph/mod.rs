@@ -71,6 +71,18 @@ macro_rules! node_iterator {
     };
 }
 
+#[macro_export]
+macro_rules! node_bitset_of {
+    ($bitset : ident, $slice : ident) => {
+        fn $bitset(&self, node: Node) -> BitSet {
+            BitSet::new_all_unset_but::<NumNodes, _, _>(
+                self.number_of_nodes(),
+                self.$slice(node).iter(),
+            )
+        }
+    };
+}
+
 pub trait AdjacencyList: GraphNodeOrder + Sized {
     /// Returns a slice of neighbors of a given vertex.
     /// ** Panics if the v >= n **
@@ -83,6 +95,7 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
 
     node_iterator!(degrees, degree_of, NumNodes);
     node_iterator!(neighbors, neighbors_of, &[Node]);
+    node_bitset_of!(neighbors_of_as_bitset, neighbors_of);
 
     fn edges_of(&self, u: Node, only_normalized: bool) -> impl Iterator<Item = Edge> + '_ {
         self.neighbors_of(u)
@@ -114,10 +127,12 @@ pub trait ColoredAdjacencyList: AdjacencyList {
     /// Returns a slice of black neighbors of a given vertex.
     /// ** Panics if the v >= n **
     fn black_neighbors_of(&self, u: Node) -> &[Node];
+    node_bitset_of!(black_neighbors_of_as_bitset, black_neighbors_of);
 
     /// Returns a slice of red neighbors of a given vertex.
     /// ** Panics if the v >= n **
     fn red_neighbors_of(&self, u: Node) -> &[Node];
+    node_bitset_of!(red_neighbors_of_as_bitset, red_neighbors_of);
 
     /// Returns the number of black neighbors of from `u`
     fn black_degree_of(&self, u: Node) -> NumNodes {
