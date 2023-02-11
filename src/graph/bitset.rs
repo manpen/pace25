@@ -281,6 +281,25 @@ impl BitSet {
     }
 
     #[inline]
+    pub fn distance(&mut self, other: &BitSet) -> NumNodes {
+        let sl1 = self.as_slice();
+        let sl2 = other.as_slice();
+
+        sl1.iter()
+            .zip(sl2)
+            .map(|(x, y)| (x ^ y).count_ones() as NumNodes)
+            .sum::<NumNodes>()
+            + sl1[sl2.len()..]
+                .iter()
+                .map(|x| x.count_ones() as NumNodes)
+                .sum::<NumNodes>()
+            + sl2[sl1.len()..]
+                .iter()
+                .map(|x| x.count_ones() as NumNodes)
+                .sum::<NumNodes>()
+    }
+
+    #[inline]
     pub fn or(&mut self, other: &BitSet) {
         if other.len() as usize > self.bit_vec.len() {
             self.bit_vec.resize(other.len() as usize, false);
@@ -303,6 +322,19 @@ impl BitSet {
         if (size as usize) < old_size {
             self.cardinality = self.bit_vec.count_ones() as NumNodes;
         }
+    }
+
+    #[inline]
+    pub fn xor(&mut self, other: &BitSet) {
+        for (x, y) in self
+            .bit_vec
+            .as_raw_mut_slice()
+            .iter_mut()
+            .zip(other.as_slice().iter())
+        {
+            *x ^= y;
+        }
+        self.cardinality = self.bit_vec.count_ones() as NumNodes;
     }
 
     #[inline]

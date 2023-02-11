@@ -1,21 +1,23 @@
 pub mod adj_array;
 pub mod bitset;
 pub mod color_filter;
+pub mod connectivity;
 pub mod distance_two_pairs;
 pub mod edge;
 pub mod gnp;
 pub mod node_mapper;
-//pub mod partition;
+pub mod partition;
 pub mod traversal;
 
 pub use adj_array::*;
 pub use bitset::*;
 pub use color_filter::*;
+pub use connectivity::*;
 pub use distance_two_pairs::*;
 pub use edge::*;
 pub use gnp::*;
 pub use node_mapper::*;
-//pub use partition::*;
+pub use partition::*;
 pub use traversal::*;
 
 use itertools::Itertools;
