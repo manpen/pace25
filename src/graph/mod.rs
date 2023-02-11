@@ -3,25 +3,27 @@ pub mod bitset;
 pub mod color_filter;
 pub mod distance_two_pairs;
 pub mod edge;
+pub mod gnp;
 pub mod node_mapper;
 //pub mod partition;
 pub mod traversal;
-
-pub type Node = u32;
-pub type NumNodes = Node;
-pub type NumEdges = u64;
-
-use std::{borrow::Borrow, ops::Range};
 
 pub use adj_array::*;
 pub use bitset::*;
 pub use color_filter::*;
 pub use distance_two_pairs::*;
 pub use edge::*;
-use itertools::Itertools;
+pub use gnp::*;
 pub use node_mapper::*;
 //pub use partition::*;
 pub use traversal::*;
+
+use itertools::Itertools;
+use std::{borrow::Borrow, ops::Range};
+
+pub type Node = u32;
+pub type NumNodes = Node;
+pub type NumEdges = u64;
 
 /// Provides getters pertaining to the size of a graph
 pub trait GraphNodeOrder {
