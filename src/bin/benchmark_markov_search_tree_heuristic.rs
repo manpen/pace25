@@ -1,8 +1,8 @@
-use std::{collections::HashMap, fs::File, io::{BufReader, BufRead}, time::Instant, str::FromStr};
+use std::{collections::HashMap, fs::File, io::{BufReader, BufRead}, time::Instant};
 
 use glob::glob;
 use itertools::Itertools;
-use tww::{graph::{NumNodes, AdjArray, GraphNodeOrder, GraphEdgeOrder}, io::GraphPaceReader, heuristic::markov_search_tree::{MarkovSearchTree, MarkovSearchTreeGame, timeout_markov_search_tree_solver, timeout_markov_search_tree_solver_with_descend}};
+use tww::{graph::{NumNodes, AdjArray, GraphNodeOrder, GraphEdgeOrder}, io::GraphPaceReader, heuristic::markov_search_tree::{MarkovSearchTree, MarkovSearchTreeGame, timeout_markov_search_tree_solver_with_descend}};
 
 fn load_best_known() -> std::io::Result<HashMap<String, NumNodes>> {
     let reader = File::open("instances/best_known_solutions.csv")?;
@@ -38,16 +38,16 @@ fn load_best_known() -> std::io::Result<HashMap<String, NumNodes>> {
 
 fn main() {
     
-    //let files = ["exact-public"]
-    //    .into_iter()
-    //    .flat_map(|p| {
-    //        glob(format!("instances/{p}/*.gr").as_str())
-    //            .expect("Failed to glob")
-    //            .map(|r| r.expect("Failed to access globbed path"))
-    //    })
-    //    .collect_vec();
+    let files = ["exact-public"]
+        .into_iter()
+        .flat_map(|p| {
+            glob(format!("instances/{p}/*.gr").as_str())
+                .expect("Failed to glob")
+                .map(|r| r.expect("Failed to access globbed path"))
+        })
+        .collect_vec();
         
-    let files = vec![std::path::PathBuf::from_str("instances/exact-public/exact_004.gr").unwrap()];
+    //let files = vec![std::path::PathBuf::from_str("instances/exact-public/exact_004.gr").unwrap()];
 
     let best_known = load_best_known().unwrap_or_default();
     println!("Found {} best known values", best_known.len());
@@ -64,7 +64,7 @@ fn main() {
 
         let result = if let Some(timeout) = timeout {
             //timeout_markov_search_tree_solver(&graph, timeout)
-            timeout_markov_search_tree_solver_with_descend(&graph, timeout,std::time::Duration::from_millis(100),20)
+            timeout_markov_search_tree_solver_with_descend(&graph, timeout,std::time::Duration::from_millis(200),50)
         }
         else {
             let mut full_tree = MarkovSearchTree::new(&graph);
@@ -92,7 +92,6 @@ fn main() {
             duration.as_millis(),
             result.2
         );
-        println!("Sequence {:?}",result.1.iter());
         *cumulative_score.lock().unwrap()+=sol_size;
     });
     println!("Cumulative score {}",cumulative_score.lock().unwrap());

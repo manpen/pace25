@@ -1,13 +1,10 @@
-use crate::graph::{AdjacencyList, GraphEdgeOrder, GraphEdgeEditing};
+//use crate::graph::{AdjacencyList, GraphEdgeOrder, GraphEdgeEditing};
 
-pub struct TwinWidthSatEncoding<G> {
-    graph: G
+pub struct TwinWidthSatEncoding {
+    //graph: G
 }
 
-impl<G: Clone
-        +AdjacencyList
-        + GraphEdgeOrder
-        + GraphEdgeEditing> TwinWidthSatEncoding<G> {
+impl TwinWidthSatEncoding {
     pub fn encode(&self) -> Vec<Vec<i32>> {
         Vec::new()
     }

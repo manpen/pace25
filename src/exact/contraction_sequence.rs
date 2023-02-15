@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use crate::graph::*;
 
 #[derive(Clone)]
@@ -107,7 +109,14 @@ impl ContractionSequence {
         self.seq.truncate(checkpoint.0)
     }
 
-    pub fn iter(&self) -> core::slice::Iter<(Node,Node)> {
-        self.seq.iter()
+    pub fn merges(&self) -> &[(Node, Node)] {
+        &self.seq
+    }
+
+    pub fn pace_writer<W: Write>(&self, mut writer: W) -> std::io::Result<()> {
+        for &(rem, sur) in &self.seq {
+            writeln!(writer, "{} {}", sur + 1, rem + 1)?;
+        }
+        Ok(())
     }
 }

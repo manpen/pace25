@@ -6,7 +6,7 @@ use std::fmt::Debug;
 
 use crate::{exact::{contraction_sequence::ContractionSequence, reductions::{prune_leaves, prune_twins}}, graph::{BitSet, AdjacencyList, GraphEdgeOrder, ColoredAdjacencyList, ColoredAdjacencyTest, GraphEdgeEditing}};
 
-
+/// Runs the search tree for the given period of time, will return the best score the contraction sequence and the number of games played
 pub fn timeout_markov_search_tree_solver<G: Clone
                                             + AdjacencyList
                                             + GraphEdgeOrder
@@ -32,6 +32,10 @@ pub fn timeout_markov_search_tree_solver<G: Clone
 }
 
 
+/// Runs the search tree for the given period of time, after the initial timeout the search tree
+/// will start to decrease the depth of the search try by subsequently choosing the best current move and playing games
+/// which always start with this move. The two last parameters decide how long each collapsing period takes and how many
+/// levels of the tree are collapsed in total (Total Time: ~ timeout+descend_time*max_descends)
 pub fn timeout_markov_search_tree_solver_with_descend<G: Clone
                                             + AdjacencyList
                                             + GraphEdgeOrder
@@ -109,6 +113,7 @@ impl<G: Clone
     + Debug
     + GraphEdgeEditing> MarkovSearchTree<G> {
 
+    /// Creates a new MarkovSearchTree based on a implementation of a graph
     pub fn new(g: &G) -> MarkovSearchTree<G> {
         let mut clone = g.clone();
         let mut preprocessing_sequence = ContractionSequence::new(clone.number_of_nodes());
@@ -133,13 +138,16 @@ impl<G: Clone
         }
     }
 
+    /// Uses the best currently known first move to reduce the height of the search tree by 1
+    /// This permanently adds the move to any subsequent games, therefore a warmup period is
+    /// recommended
     pub fn permanently_collapse_one_move(&mut self) {
         let mut min_move_id = 0;
         let mut min_score = f64::MAX;
 
         let mut current = self.games.clone();
 
-        for descend in self.collapse_sequence.iter() {
+        for descend in self.collapse_sequence.merges() {
             let temp = match current.borrow().get(&(descend.0*self.graph.number_of_nodes()+descend.1)).unwrap() {
                 MarkovSearchTreeNode::Inner { choices, cumulative_score: _, number_of_games: _ } => {
                     choices.clone()
@@ -183,29 +191,39 @@ impl<G: Clone
 
     }
 
+    /// This decides what penalty is added to the twin width of aborted games. It should increase
+    /// the gap between promising and hopeless games to faster converge to an optimal solution
     pub fn aborted_game_penalty(mut self, penalty: u32) -> Self {
         self.aborted_game_penalty = penalty;
         self
     }
 
+    /// Creates a new game based on the current graph. The current graph is the original graph after all preprocessing steps
+    /// and with all collapsed moves already executed.
     pub fn new_game(&self) -> MarkovSearchTreeGame<G> {
         MarkovSearchTreeGame::new(self.collapsed_graph.clone())
     }
 
+    /// Checks how many games have been played
     pub fn num_games(&self) -> u32 {
         self.num_games
     }
 
+    /// Checks the current best score of any solution
     pub fn best_score(&self) -> u32 {
         self.best_score
     }
 
+    /// Builds the best contraction sequence based on initial preprocessing sequence, the collapse sequence followed by the 
+    /// current best contraction sequence
     pub fn into_best_contraction_seq(mut self) -> ContractionSequence {
         self.preprocessing_sequence.append(&self.collapse_sequence);
         self.preprocessing_sequence.append(&self.best_contraction_sequence.unwrap());
         self.preprocessing_sequence
     }
 
+    /// Adds a played out game to update the heuristics of the markov search tree
+    /// Also updates the best score
     pub fn add_game(&mut self, game: &MarkovSearchTreeGame<G>) {
         self.num_games+=1;
         let mut current_ptr = self.games.clone();
@@ -215,7 +233,7 @@ impl<G: Clone
             self.best_score+
             self.aborted_game_penalty)+self.collapse_score;
 
-        for x in game.contraction_sequence.iter() {
+        for x in game.contraction_sequence.merges() {
             let mut next_choice = None;
 
             match current_ptr.borrow_mut().entry(x.0*self.graph.number_of_nodes()+x.1) {
@@ -282,6 +300,7 @@ impl<G: Clone
         + GraphEdgeEditing
         + Debug> MarkovSearchTreeGame<G> {
     
+    /// Creates a new game from a given graph
     fn new(graph: G) -> MarkovSearchTreeGame<G> {
         let num_nodes = graph.number_of_nodes();
         MarkovSearchTreeGame { 
@@ -291,10 +310,13 @@ impl<G: Clone
         }
     }
 
+    /// Return the final twin width if there is any. If the game has been aborted this will return None
     pub fn get_final_twin_width(&self) -> &Option<u32> {
         &self.final_twin_width
     }
 
+    /// The basic function to make a random allowed next move, includes basic optimizations like
+    /// only choosing neighbors in a two neighborhood and only considering those neighbors which do have similar degree.
     pub fn random_choice(remaining_nodes: &BitSet, graph: &mut G, max_allowed_red_edges: u32) -> (u32,u32) {
         let chosen_node = (rand::thread_rng().gen::<f64>()*(remaining_nodes.cardinality()-1) as f64) as usize;
 
@@ -388,6 +410,7 @@ impl<G: Clone
         }
     }
 
+    /// Executes the main loop with a function which decides what nodes to contract next
     pub fn make_random_choice<F: FnMut(&BitSet,&mut G,u32) -> (u32,u32)>(&mut self, mut decision_function: F, full_game_tree: &mut MarkovSearchTree<G>) {
         if self.graph.number_of_edges() <= 1 {
             if let Some(first_edge) = self.graph.edges(true).next() {
