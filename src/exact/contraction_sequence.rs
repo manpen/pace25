@@ -106,4 +106,8 @@ impl ContractionSequence {
     pub fn restore(&mut self, checkpoint: CSCheckPoint) {
         self.seq.truncate(checkpoint.0)
     }
+
+    pub fn iter(&self) -> core::slice::Iter<(Node,Node)> {
+        self.seq.iter()
+    }
 }
