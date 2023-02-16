@@ -117,13 +117,11 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
 
     fn edges(&self, only_normalized: bool) -> impl Iterator<Item = Edge> + '_ {
         self.vertices_range()
-            .into_iter()
             .flat_map(move |u| self.edges_of(u, only_normalized))
     }
 
     fn ordered_edges(&self, only_normalized: bool) -> impl Iterator<Item = Edge> + '_ {
         self.vertices_range()
-            .into_iter()
             .flat_map(move |u| self.ordered_edges_of(u, only_normalized))
     }
 }
@@ -180,7 +178,6 @@ pub trait ColoredAdjacencyList: AdjacencyList {
 
     fn colored_edges(&self, only_normalized: bool) -> impl Iterator<Item = ColoredEdge> + '_ {
         self.vertices_range()
-            .into_iter()
             .flat_map(move |u| self.colored_edges_of(u, only_normalized))
     }
 
@@ -189,7 +186,6 @@ pub trait ColoredAdjacencyList: AdjacencyList {
         only_normalized: bool,
     ) -> impl Iterator<Item = ColoredEdge> + '_ {
         self.vertices_range()
-            .into_iter()
             .flat_map(move |u| self.ordered_colored_edges_of(u, only_normalized))
     }
 

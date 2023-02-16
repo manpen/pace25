@@ -238,15 +238,12 @@ impl<G: Clone
 
             match current_ptr.borrow_mut().entry(x.0*self.graph.number_of_nodes()+x.1) {
                 Entry::Occupied(mut value) => {
-                    match value.get_mut() {
-                        MarkovSearchTreeNode::Inner { choices, cumulative_score, number_of_games } => {
-                            graph.merge_node_into(x.0, x.1);
+                    if let MarkovSearchTreeNode::Inner { choices, cumulative_score, number_of_games } = value.get_mut() {
+                        graph.merge_node_into(x.0, x.1);
                             
-                            *cumulative_score += twin_width;
-                            *number_of_games += 1;
-                            next_choice = Some(choices.clone());
-                        }
-                        _ => {}
+                        *cumulative_score += twin_width;
+                        *number_of_games += 1;
+                        next_choice = Some(choices.clone());
                     }
                 },
                 Entry::Vacant(value) => {
@@ -256,15 +253,12 @@ impl<G: Clone
                     else {
                         graph.merge_node_into(x.0, x.1);
                         
-                        match value.insert(MarkovSearchTreeNode::Inner {
+                        if let MarkovSearchTreeNode::Inner { choices, cumulative_score: _, number_of_games: _ } = value.insert(MarkovSearchTreeNode::Inner {
                             choices: std::rc::Rc::new(std::cell::RefCell::new(FxHashMap::default())),
                             cumulative_score: twin_width,
                             number_of_games: 1
                         }) {
-                            MarkovSearchTreeNode::Inner { choices, cumulative_score: _, number_of_games: _ } => {
-                                next_choice = Some(choices.clone());
-                            },
-                            _ => {}
+                            next_choice = Some(choices.clone());
                         }
                     }
                 }
@@ -304,7 +298,7 @@ impl<G: Clone
     fn new(graph: G) -> MarkovSearchTreeGame<G> {
         let num_nodes = graph.number_of_nodes();
         MarkovSearchTreeGame { 
-            graph: graph,
+            graph,
             final_twin_width: None,
             contraction_sequence: ContractionSequence::new(num_nodes),
         }
@@ -354,13 +348,16 @@ impl<G: Clone
                 if !set.is_empty() {
                     for partner in set.iter() {
                         let dry_run_merge = graph.red_degree_after_merge(*partner, first_node);
-                        if dry_run_merge == best_red_edges {
-                            best_partners.push(*partner);
-                        }
-                        else if dry_run_merge < best_red_edges {
-                            best_partners.clear();
-                            best_partners.push(*partner);
-                            best_red_edges = dry_run_merge;
+                        match dry_run_merge.cmp(&best_red_edges) {
+                            std::cmp::Ordering::Equal => {
+                                best_partners.push(*partner);
+                            }
+                            std::cmp::Ordering::Less => {
+                                best_partners.clear();
+                                best_partners.push(*partner);
+                                best_red_edges = dry_run_merge;
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -372,13 +369,16 @@ impl<G: Clone
                         }
                         let dry_run_merge = graph.red_degree_after_merge(partner, first_node);
 
-                        if dry_run_merge == best_red_edges {
-                            best_partners.push(partner);
-                        }
-                        else if dry_run_merge < best_red_edges {
-                            best_partners.clear();
-                            best_partners.push(partner);
-                            best_red_edges = dry_run_merge;
+                        match dry_run_merge.cmp(&best_red_edges) {
+                            std::cmp::Ordering::Equal => {
+                                best_partners.push(partner);
+                            }
+                            std::cmp::Ordering::Less => {
+                                best_partners.clear();
+                                best_partners.push(partner);
+                                best_red_edges = dry_run_merge;
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -390,13 +390,16 @@ impl<G: Clone
                         continue;
                     }
                     let dry_run_merge = graph.red_degree_after_merge(partner, first_node);
-                    if dry_run_merge == best_red_edges {
-                        best_partners.push(partner);
-                    }
-                    else if dry_run_merge < best_red_edges {
-                        best_partners.clear();
-                        best_partners.push(partner);
-                        best_red_edges = dry_run_merge;
+                    match dry_run_merge.cmp(&best_red_edges) {
+                        std::cmp::Ordering::Equal => {
+                            best_partners.push(partner);
+                        }
+                        std::cmp::Ordering::Less => {
+                            best_partners.clear();
+                            best_partners.push(partner);
+                            best_red_edges = dry_run_merge;
+                        }
+                        _ => {}
                     }
                 }
             }
