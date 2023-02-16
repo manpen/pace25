@@ -1,8 +1,19 @@
-use std::{collections::HashMap, fs::File, io::{BufReader, BufRead}, time::Instant};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{BufRead, BufReader},
+    time::Instant,
+};
 
 use glob::glob;
 use itertools::Itertools;
-use tww::{graph::{NumNodes, AdjArray, GraphNodeOrder, GraphEdgeOrder}, io::GraphPaceReader, heuristic::markov_search_tree::{MarkovSearchTree, MarkovSearchTreeGame, timeout_markov_search_tree_solver_with_descend}};
+use tww::{
+    graph::{AdjArray, GraphEdgeOrder, GraphNodeOrder, NumNodes},
+    heuristic::markov_search_tree::{
+        timeout_markov_search_tree_solver_with_descend, MarkovSearchTree, MarkovSearchTreeGame,
+    },
+    io::GraphPaceReader,
+};
 
 fn load_best_known() -> std::io::Result<HashMap<String, NumNodes>> {
     let reader = File::open("instances/best_known_solutions.csv")?;
@@ -35,9 +46,7 @@ fn load_best_known() -> std::io::Result<HashMap<String, NumNodes>> {
     Ok(dict)
 }
 
-
 fn main() {
-    
     let files = ["exact-public"]
         .into_iter()
         .flat_map(|p| {
@@ -46,7 +55,7 @@ fn main() {
                 .map(|r| r.expect("Failed to access globbed path"))
         })
         .collect_vec();
-        
+
     //let files = vec![std::path::PathBuf::from_str("instances/exact-public/exact_004.gr").unwrap()];
 
     let best_known = load_best_known().unwrap_or_default();
@@ -64,19 +73,27 @@ fn main() {
 
         let result = if let Some(timeout) = timeout {
             //timeout_markov_search_tree_solver(&graph, timeout)
-            timeout_markov_search_tree_solver_with_descend(&graph, timeout,std::time::Duration::from_millis(200),50)
-        }
-        else {
+            timeout_markov_search_tree_solver_with_descend(
+                &graph,
+                timeout,
+                std::time::Duration::from_millis(200),
+                50,
+            )
+        } else {
             let mut full_tree = MarkovSearchTree::new(&graph);
 
             for _ in 0..100000 {
                 let mut tree = full_tree.new_game();
-                tree.make_random_choice(MarkovSearchTreeGame::random_choice,&mut full_tree);
+                tree.make_random_choice(MarkovSearchTreeGame::random_choice, &mut full_tree);
 
                 full_tree.add_game(&tree);
             }
             full_tree.permanently_collapse_one_move();
-            (full_tree.best_score(),full_tree.into_best_contraction_seq(),100000)
+            (
+                full_tree.best_score(),
+                full_tree.into_best_contraction_seq(),
+                100000,
+            )
         };
         let sol_size = result.0;
 
@@ -92,8 +109,7 @@ fn main() {
             duration.as_millis(),
             result.2
         );
-        *cumulative_score.lock().unwrap()+=sol_size;
+        *cumulative_score.lock().unwrap() += sol_size;
     });
-    println!("Cumulative score {}",cumulative_score.lock().unwrap());
-
+    println!("Cumulative score {}", cumulative_score.lock().unwrap());
 }

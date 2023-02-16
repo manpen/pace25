@@ -1,25 +1,39 @@
-use std::{collections::{hash_map::Entry}, time::Duration};
 use fxhash::{FxHashMap, FxHashSet};
+use std::{collections::hash_map::Entry, time::Duration};
 
 use rand::Rng;
 use std::fmt::Debug;
 
-use crate::{exact::{contraction_sequence::ContractionSequence, reductions::{prune_leaves, prune_twins}}, graph::{BitSet, AdjacencyList, GraphEdgeOrder, ColoredAdjacencyList, ColoredAdjacencyTest, GraphEdgeEditing}};
+use crate::{
+    exact::{
+        contraction_sequence::ContractionSequence,
+        reductions::{prune_leaves, prune_twins},
+    },
+    graph::{
+        AdjacencyList, BitSet, ColoredAdjacencyList, ColoredAdjacencyTest, GraphEdgeEditing,
+        GraphEdgeOrder,
+    },
+};
 
 /// Runs the search tree for the given period of time, will return the best score the contraction sequence and the number of games played
-pub fn timeout_markov_search_tree_solver<G: Clone
-                                            + AdjacencyList
-                                            + GraphEdgeOrder
-                                            + ColoredAdjacencyList
-                                            + ColoredAdjacencyTest
-                                            + Debug
-                                            + GraphEdgeEditing>(graph: &G, timeout: Duration) -> (u32, ContractionSequence,u32) {
+pub fn timeout_markov_search_tree_solver<
+    G: Clone
+        + AdjacencyList
+        + GraphEdgeOrder
+        + ColoredAdjacencyList
+        + ColoredAdjacencyTest
+        + Debug
+        + GraphEdgeEditing,
+>(
+    graph: &G,
+    timeout: Duration,
+) -> (u32, ContractionSequence, u32) {
     let time_now = std::time::Instant::now();
     let mut full_tree = MarkovSearchTree::new(graph);
 
     loop {
         let mut tree = full_tree.new_game();
-        tree.make_random_choice(MarkovSearchTreeGame::random_choice,&mut full_tree);
+        tree.make_random_choice(MarkovSearchTreeGame::random_choice, &mut full_tree);
 
         full_tree.add_game(&tree);
 
@@ -28,27 +42,37 @@ pub fn timeout_markov_search_tree_solver<G: Clone
         }
     }
 
-    (full_tree.best_score(),full_tree.best_contraction_sequence.take().unwrap(), full_tree.num_games())
+    (
+        full_tree.best_score(),
+        full_tree.best_contraction_sequence.take().unwrap(),
+        full_tree.num_games(),
+    )
 }
-
 
 /// Runs the search tree for the given period of time, after the initial timeout the search tree
 /// will start to decrease the depth of the search try by subsequently choosing the best current move and playing games
 /// which always start with this move. The two last parameters decide how long each collapsing period takes and how many
 /// levels of the tree are collapsed in total (Total Time: ~ timeout+descend_time*max_descends)
-pub fn timeout_markov_search_tree_solver_with_descend<G: Clone
-                                            + AdjacencyList
-                                            + GraphEdgeOrder
-                                            + ColoredAdjacencyList
-                                            + ColoredAdjacencyTest
-                                            + Debug
-                                            + GraphEdgeEditing>(graph: &G, timeout: Duration, descend_time: Duration, mut max_descends: u32) -> (u32, ContractionSequence,u32) {
+pub fn timeout_markov_search_tree_solver_with_descend<
+    G: Clone
+        + AdjacencyList
+        + GraphEdgeOrder
+        + ColoredAdjacencyList
+        + ColoredAdjacencyTest
+        + Debug
+        + GraphEdgeEditing,
+>(
+    graph: &G,
+    timeout: Duration,
+    descend_time: Duration,
+    mut max_descends: u32,
+) -> (u32, ContractionSequence, u32) {
     let mut time_now = std::time::Instant::now();
     let mut full_tree = MarkovSearchTree::new(graph).aborted_game_penalty(2);
 
     loop {
         let mut tree = full_tree.new_game();
-        tree.make_random_choice(MarkovSearchTreeGame::random_choice,&mut full_tree);
+        tree.make_random_choice(MarkovSearchTreeGame::random_choice, &mut full_tree);
 
         full_tree.add_game(&tree);
 
@@ -62,38 +86,41 @@ pub fn timeout_markov_search_tree_solver_with_descend<G: Clone
         time_now = std::time::Instant::now();
         loop {
             let mut tree = full_tree.new_game();
-            tree.make_random_choice(MarkovSearchTreeGame::random_choice,&mut full_tree);
-    
+            tree.make_random_choice(MarkovSearchTreeGame::random_choice, &mut full_tree);
+
             full_tree.add_game(&tree);
-    
+
             if time_now.elapsed() > descend_time {
                 break;
             }
         }
-        max_descends-=1;
+        max_descends -= 1;
     }
 
-    (full_tree.best_score(),full_tree.best_contraction_sequence.take().unwrap(), full_tree.num_games())
+    (
+        full_tree.best_score(),
+        full_tree.best_contraction_sequence.take().unwrap(),
+        full_tree.num_games(),
+    )
 }
-
 
 pub enum MarkovSearchTreeNode {
     // The leaf contains only the score and nothing else
     Leaf(u32),
 
     // Inner contains the choices made already together with the game tree
-    // The second u32 is the average 
+    // The second u32 is the average
     Inner {
-        choices: std::rc::Rc<std::cell::RefCell<FxHashMap<u32,MarkovSearchTreeNode>>>,
+        choices: std::rc::Rc<std::cell::RefCell<FxHashMap<u32, MarkovSearchTreeNode>>>,
         cumulative_score: u32,
-        number_of_games: u32
-    }
+        number_of_games: u32,
+    },
 }
 
 pub struct MarkovSearchTree<G> {
     graph: G,
     // First one is the choice, second one the outcome
-    games: std::rc::Rc<std::cell::RefCell<FxHashMap<u32,MarkovSearchTreeNode>>>,
+    games: std::rc::Rc<std::cell::RefCell<FxHashMap<u32, MarkovSearchTreeNode>>>,
     best_contraction_sequence: Option<ContractionSequence>,
     best_score: u32,
     num_games: u32,
@@ -102,17 +129,19 @@ pub struct MarkovSearchTree<G> {
 
     collapse_sequence: ContractionSequence,
     collapse_score: u32,
-    collapsed_graph: G
+    collapsed_graph: G,
 }
 
-impl<G: Clone
-    + AdjacencyList
-    + GraphEdgeOrder
-    + ColoredAdjacencyList
-    + ColoredAdjacencyTest
-    + Debug
-    + GraphEdgeEditing> MarkovSearchTree<G> {
-
+impl<
+        G: Clone
+            + AdjacencyList
+            + GraphEdgeOrder
+            + ColoredAdjacencyList
+            + ColoredAdjacencyTest
+            + Debug
+            + GraphEdgeEditing,
+    > MarkovSearchTree<G>
+{
     /// Creates a new MarkovSearchTree based on a implementation of a graph
     pub fn new(g: &G) -> MarkovSearchTree<G> {
         let mut clone = g.clone();
@@ -125,7 +154,7 @@ impl<G: Clone
 
         MarkovSearchTree {
             graph: clone.clone(),
-            games: std::rc::Rc::new(std::cell::RefCell::new(FxHashMap::default())), 
+            games: std::rc::Rc::new(std::cell::RefCell::new(FxHashMap::default())),
             best_contraction_sequence: None,
             best_score: g.number_of_nodes(),
             num_games: 0,
@@ -134,7 +163,7 @@ impl<G: Clone
 
             collapse_sequence: ContractionSequence::new(nodes),
             collapse_score: 0,
-            collapsed_graph: clone
+            collapsed_graph: clone,
         }
     }
 
@@ -148,20 +177,32 @@ impl<G: Clone
         let mut current = self.games.clone();
 
         for descend in self.collapse_sequence.merges() {
-            let temp = match current.borrow().get(&(descend.0*self.graph.number_of_nodes()+descend.1)).unwrap() {
-                MarkovSearchTreeNode::Inner { choices, cumulative_score: _, number_of_games: _ } => {
-                    choices.clone()
+            let temp = match current
+                .borrow()
+                .get(&(descend.0 * self.graph.number_of_nodes() + descend.1))
+                .unwrap()
+            {
+                MarkovSearchTreeNode::Inner {
+                    choices,
+                    cumulative_score: _,
+                    number_of_games: _,
+                } => choices.clone(),
+                MarkovSearchTreeNode::Leaf(_) => {
+                    return;
                 }
-                MarkovSearchTreeNode::Leaf(_) => {return;}
             };
             current = temp;
         }
 
         for moves in current.borrow().iter() {
             match moves.1 {
-                MarkovSearchTreeNode::Inner { choices: _, cumulative_score, number_of_games } => {
-                    if min_score > (*cumulative_score as f64/ *number_of_games as f64) {
-                        min_score = *cumulative_score as f64/ *number_of_games as f64;
+                MarkovSearchTreeNode::Inner {
+                    choices: _,
+                    cumulative_score,
+                    number_of_games,
+                } => {
+                    if min_score > (*cumulative_score as f64 / *number_of_games as f64) {
+                        min_score = *cumulative_score as f64 / *number_of_games as f64;
                         min_move_id = *moves.0;
                     }
                 }
@@ -180,15 +221,17 @@ impl<G: Clone
         let second_node = min_move_id % self.graph.number_of_nodes();
 
         // Add the currently best move to the collapse sequence
-        self.collapse_sequence.merge_node_into(first_node, second_node);
+        self.collapse_sequence
+            .merge_node_into(first_node, second_node);
 
         // Update collapsed graph and collapsed score
         let mut new_graph = self.collapsed_graph.clone();
         new_graph.merge_node_into(first_node, second_node);
 
-        self.collapse_score = self.collapse_score.max(new_graph.red_degrees().max().unwrap());
+        self.collapse_score = self
+            .collapse_score
+            .max(new_graph.red_degrees().max().unwrap());
         self.collapsed_graph = new_graph;
-
     }
 
     /// This decides what penalty is added to the twin width of aborted games. It should increase
@@ -214,49 +257,64 @@ impl<G: Clone
         self.best_score
     }
 
-    /// Builds the best contraction sequence based on initial preprocessing sequence, the collapse sequence followed by the 
+    /// Builds the best contraction sequence based on initial preprocessing sequence, the collapse sequence followed by the
     /// current best contraction sequence
     pub fn into_best_contraction_seq(mut self) -> ContractionSequence {
         self.preprocessing_sequence.append(&self.collapse_sequence);
-        self.preprocessing_sequence.append(&self.best_contraction_sequence.unwrap());
+        self.preprocessing_sequence
+            .append(&self.best_contraction_sequence.unwrap());
         self.preprocessing_sequence
     }
 
     /// Adds a played out game to update the heuristics of the markov search tree
     /// Also updates the best score
     pub fn add_game(&mut self, game: &MarkovSearchTreeGame<G>) {
-        self.num_games+=1;
+        self.num_games += 1;
         let mut current_ptr = self.games.clone();
 
         let mut graph = self.graph.clone();
-        let twin_width = game.get_final_twin_width().unwrap_or(
-            self.best_score+
-            self.aborted_game_penalty)+self.collapse_score;
+        let twin_width = game
+            .get_final_twin_width()
+            .unwrap_or(self.best_score + self.aborted_game_penalty)
+            + self.collapse_score;
 
         for x in game.contraction_sequence.merges() {
             let mut next_choice = None;
 
-            match current_ptr.borrow_mut().entry(x.0*self.graph.number_of_nodes()+x.1) {
+            match current_ptr
+                .borrow_mut()
+                .entry(x.0 * self.graph.number_of_nodes() + x.1)
+            {
                 Entry::Occupied(mut value) => {
-                    if let MarkovSearchTreeNode::Inner { choices, cumulative_score, number_of_games } = value.get_mut() {
+                    if let MarkovSearchTreeNode::Inner {
+                        choices,
+                        cumulative_score,
+                        number_of_games,
+                    } = value.get_mut()
+                    {
                         graph.merge_node_into(x.0, x.1);
-                            
+
                         *cumulative_score += twin_width;
                         *number_of_games += 1;
                         next_choice = Some(choices.clone());
                     }
-                },
+                }
                 Entry::Vacant(value) => {
                     if graph.len() == 1 {
                         value.insert(MarkovSearchTreeNode::Leaf(twin_width));
-                    }
-                    else {
+                    } else {
                         graph.merge_node_into(x.0, x.1);
-                        
-                        if let MarkovSearchTreeNode::Inner { choices, cumulative_score: _, number_of_games: _ } = value.insert(MarkovSearchTreeNode::Inner {
-                            choices: std::rc::Rc::new(std::cell::RefCell::new(FxHashMap::default())),
+
+                        if let MarkovSearchTreeNode::Inner {
+                            choices,
+                            cumulative_score: _,
+                            number_of_games: _,
+                        } = value.insert(MarkovSearchTreeNode::Inner {
+                            choices: std::rc::Rc::new(
+                                std::cell::RefCell::new(FxHashMap::default()),
+                            ),
                             cumulative_score: twin_width,
-                            number_of_games: 1
+                            number_of_games: 1,
                         }) {
                             next_choice = Some(choices.clone());
                         }
@@ -265,14 +323,12 @@ impl<G: Clone
             }
             current_ptr = next_choice.unwrap();
         }
-        if self.best_contraction_sequence.is_none() 
-            || twin_width<self.best_score  {
+        if self.best_contraction_sequence.is_none() || twin_width < self.best_score {
             self.best_contraction_sequence = Some(game.contraction_sequence.clone());
             self.best_score = twin_width;
         }
     }
 }
-
 
 pub struct MarkovSearchTreeGame<G> {
     // The pointer to the graph to permutate
@@ -282,22 +338,23 @@ pub struct MarkovSearchTreeGame<G> {
     contraction_sequence: ContractionSequence,
 
     // Either the final twin width or None in case that the game was aborted due to a low score
-    final_twin_width: Option<u32>
+    final_twin_width: Option<u32>,
 }
 
-
-impl<G: Clone
-        + AdjacencyList
-        + GraphEdgeOrder
-        + ColoredAdjacencyList
-        + ColoredAdjacencyTest
-        + GraphEdgeEditing
-        + Debug> MarkovSearchTreeGame<G> {
-    
+impl<
+        G: Clone
+            + AdjacencyList
+            + GraphEdgeOrder
+            + ColoredAdjacencyList
+            + ColoredAdjacencyTest
+            + GraphEdgeEditing
+            + Debug,
+    > MarkovSearchTreeGame<G>
+{
     /// Creates a new game from a given graph
     fn new(graph: G) -> MarkovSearchTreeGame<G> {
         let num_nodes = graph.number_of_nodes();
-        MarkovSearchTreeGame { 
+        MarkovSearchTreeGame {
             graph,
             final_twin_width: None,
             contraction_sequence: ContractionSequence::new(num_nodes),
@@ -311,13 +368,18 @@ impl<G: Clone
 
     /// The basic function to make a random allowed next move, includes basic optimizations like
     /// only choosing neighbors in a two neighborhood and only considering those neighbors which do have similar degree.
-    pub fn random_choice(remaining_nodes: &BitSet, graph: &mut G, max_allowed_red_edges: u32) -> (u32,u32) {
-        let chosen_node = (rand::thread_rng().gen::<f64>()*(remaining_nodes.cardinality()-1) as f64) as usize;
+    pub fn random_choice(
+        remaining_nodes: &BitSet,
+        graph: &mut G,
+        max_allowed_red_edges: u32,
+    ) -> (u32, u32) {
+        let chosen_node =
+            (rand::thread_rng().gen::<f64>() * (remaining_nodes.cardinality() - 1) as f64) as usize;
 
         // Get a random node
         if let Some(first_node) = remaining_nodes.iter().nth(chosen_node) {
             let random_choice_or_neighboorhood = rand::thread_rng().gen::<f64>();
-            
+
             let mut best_red_edges = std::u32::MAX;
 
             // TODO: Make this a bitset it may be faster!
@@ -328,21 +390,29 @@ impl<G: Clone
 
                 let mut set = FxHashSet::default();
 
-                
                 // Find the best contraction partner
                 for neighbor in neighbors.iter() {
-                    if graph.neighbors_of(*neighbor).len().abs_diff(neighbors.len()) <= max_allowed_red_edges as usize {
+                    if graph
+                        .neighbors_of(*neighbor)
+                        .len()
+                        .abs_diff(neighbors.len())
+                        <= max_allowed_red_edges as usize
+                    {
                         set.insert(*neighbor);
                     }
                     for neighbors_of_neighbors in graph.neighbors_of(*neighbor).iter() {
-                        if graph.neighbors_of(*neighbor).len().abs_diff(neighbors.len()) <= max_allowed_red_edges as usize {
+                        if graph
+                            .neighbors_of(*neighbor)
+                            .len()
+                            .abs_diff(neighbors.len())
+                            <= max_allowed_red_edges as usize
+                        {
                             set.insert(*neighbors_of_neighbors);
                         }
                     }
                 }
                 // Remove ourself since the first node is not available for contraction
                 set.remove(&first_node);
-
 
                 // If we have neighbors try merging with them
                 if !set.is_empty() {
@@ -382,8 +452,7 @@ impl<G: Clone
                         }
                     }
                 }
-            }
-            else {
+            } else {
                 // Chance told us to merge with any node to find possibilities where the nodes are not in the neighborhood of each other
                 for partner in remaining_nodes.iter() {
                     if partner == first_node {
@@ -404,45 +473,57 @@ impl<G: Clone
                 }
             }
 
-            let random_choice_best_partner = (rand::thread_rng().gen::<f64>()*(best_partners.len()-1) as f64) as usize;
+            let random_choice_best_partner =
+                (rand::thread_rng().gen::<f64>() * (best_partners.len() - 1) as f64) as usize;
 
-            (first_node,*best_partners.get(random_choice_best_partner).unwrap())
-        }
-        else {
+            (
+                first_node,
+                *best_partners.get(random_choice_best_partner).unwrap(),
+            )
+        } else {
             panic!("This should never happen!");
         }
     }
 
     /// Executes the main loop with a function which decides what nodes to contract next
-    pub fn make_random_choice<F: FnMut(&BitSet,&mut G,u32) -> (u32,u32)>(&mut self, mut decision_function: F, full_game_tree: &mut MarkovSearchTree<G>) {
+    pub fn make_random_choice<F: FnMut(&BitSet, &mut G, u32) -> (u32, u32)>(
+        &mut self,
+        mut decision_function: F,
+        full_game_tree: &mut MarkovSearchTree<G>,
+    ) {
         if self.graph.number_of_edges() <= 1 {
             if let Some(first_edge) = self.graph.edges(true).next() {
-                self.contraction_sequence.merge_node_into(first_edge.0, first_edge.1);
+                self.contraction_sequence
+                    .merge_node_into(first_edge.0, first_edge.1);
             }
             self.final_twin_width = Some(0);
             return;
         }
-        
+
         let mut twin_width = 0;
-        
+
         loop {
             // Should never create an invalid bit sequence!
             let nodes = self.contraction_sequence.remaining_nodes().unwrap();
-        
+
             // All nodes merged? Finish...
             if nodes.cardinality() == 1 {
                 break;
             }
 
-            let choice = decision_function(&nodes,&mut self.graph, full_game_tree.best_score()-twin_width);
+            let choice = decision_function(
+                &nodes,
+                &mut self.graph,
+                full_game_tree.best_score() - twin_width,
+            );
             self.graph.merge_node_into(choice.1, choice.0);
 
             let max_red_deg = self.graph.red_degrees().max().unwrap();
             twin_width = twin_width.max(max_red_deg);
 
+            self.contraction_sequence
+                .merge_node_into(choice.1, choice.0);
 
-            self.contraction_sequence.merge_node_into(choice.1, choice.0);
-            
             // Abort games which are not better than previous games
             if twin_width >= full_game_tree.best_score() {
                 //+2 is an penalty term to prohibit the usage of this branch by decreasing the probability with simulated annealing
@@ -454,12 +535,15 @@ impl<G: Clone
     }
 }
 
-
 #[cfg(test)]
 pub mod tests {
     use std::{fs::File, io::BufReader};
 
-    use crate::{heuristic::markov_search_tree::{MarkovSearchTree, timeout_markov_search_tree_solver}, io::PaceReader, graph::{AdjArray, EdgeColor, GraphNew, GraphEdgeEditing}};
+    use crate::{
+        graph::{AdjArray, EdgeColor, GraphEdgeEditing, GraphNew},
+        heuristic::markov_search_tree::{timeout_markov_search_tree_solver, MarkovSearchTree},
+        io::PaceReader,
+    };
 
     use super::MarkovSearchTreeGame;
 
@@ -468,7 +552,7 @@ pub mod tests {
     fn tiny() {
         let mut cumulative_score = 0;
         for (i, _) in [1, 2, 0, 0, 3, 0, 2, 4, 1, 2].into_iter().enumerate() {
-        //for (i, tww) in [1].into_iter().enumerate() {
+            //for (i, tww) in [1].into_iter().enumerate() {
             if i == 4 {
                 continue; // too slow
             }
@@ -488,21 +572,21 @@ pub mod tests {
 
             for _ in 0..10000 {
                 let mut tree = full_tree.new_game();
-                tree.make_random_choice(MarkovSearchTreeGame::random_choice,&mut full_tree);
+                tree.make_random_choice(MarkovSearchTreeGame::random_choice, &mut full_tree);
 
                 full_tree.add_game(&tree);
             }
-            cumulative_score+=full_tree.best_score;
-            println!("Best score {}",full_tree.best_score);
+            cumulative_score += full_tree.best_score;
+            println!("Best score {}", full_tree.best_score);
         }
-        println!("Cumulative score {}",cumulative_score);
+        println!("Cumulative score {}", cumulative_score);
     }
 
     #[test]
     fn tiny_timeout() {
         let mut cumulative_score = 0;
         for (i, _) in [1, 2, 0, 0, 3, 0, 2, 4, 1, 2].into_iter().enumerate() {
-        //for (i, tww) in [1].into_iter().enumerate() {
+            //for (i, tww) in [1].into_iter().enumerate() {
             if i == 4 {
                 continue; // too slow
             }
@@ -518,13 +602,13 @@ pub mod tests {
             let mut graph = AdjArray::new(pace_reader.number_of_nodes());
             graph.add_edges(pace_reader, EdgeColor::Black);
 
-            let solve = timeout_markov_search_tree_solver(&graph, std::time::Duration::from_secs(10));
-            cumulative_score+=solve.0;
-            println!("Best score {}",solve.0);
+            let solve =
+                timeout_markov_search_tree_solver(&graph, std::time::Duration::from_secs(10));
+            cumulative_score += solve.0;
+            println!("Best score {}", solve.0);
         }
-        println!("Cumulative score {}",cumulative_score);
+        println!("Cumulative score {}", cumulative_score);
     }
-
 
     //Benchmark the following graphs since they take ages!
     // instances/exact-public/exact_146.gr
