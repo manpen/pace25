@@ -80,6 +80,18 @@ fn subset_helper(a: &[usize], b: &[usize]) -> bool {
     }
 }
 
+fn zip_helper<'a>(a: &'a [usize], b: &'a [usize]) -> impl Iterator<Item = (usize, usize)> + 'a {
+    let (short, long, swap) = if a.len() > b.len() {
+        (b, a, true)
+    } else {
+        (a, b, false)
+    };
+
+    long.iter()
+        .zip(short.iter().chain(iter::repeat(&0)))
+        .map(move |(&a, &b)| if swap { (b, a) } else { (a, b) })
+}
+
 const fn block_size() -> usize {
     std::mem::size_of::<usize>() * 8
 }
@@ -494,6 +506,25 @@ impl BitSet {
             size: self.bit_vec.len(),
         }
     }
+}
+
+macro_rules! impl_count {
+    ($name : ident, $expr : expr) => {
+        #[inline]
+        pub fn $name<'a>(&'a self, other: &'a BitSet) -> NumNodes {
+            zip_helper(self.as_slice(), other.as_slice())
+                .map($expr)
+                .map(|x| x.count_ones() as NumNodes)
+                .sum()
+        }
+    };
+}
+
+impl BitSet {
+    impl_count!(cardinality_of_union, |(a, b)| a | b);
+    impl_count!(cardinality_of_intersection, |(a, b)| a & b);
+    impl_count!(cardinality_without, |(a, b)| a & !b);
+    impl_count!(cardinality_of_sym_diff, |(a, b)| a ^ b);
 }
 
 pub struct BitSetIterator<'a> {

@@ -1,18 +1,30 @@
 use super::*;
-use crate::graph::*;
+use crate::graph::{connectivity::Connectivity, *};
 use std::fmt::Debug;
 
-pub fn naive_solver<
+pub trait NaiveSolvableGraph:
+    Clone
+    + AdjacencyList
+    + GraphEdgeOrder
+    + ColoredAdjacencyList
+    + ColoredAdjacencyTest
+    + GraphEdgeEditing
+    + Debug
+{
+}
+
+impl<G> NaiveSolvableGraph for G where
     G: Clone
         + AdjacencyList
         + GraphEdgeOrder
         + ColoredAdjacencyList
         + ColoredAdjacencyTest
         + GraphEdgeEditing
-        + Debug,
->(
-    input_graph: &G,
-) -> (NumNodes, ContractionSequence) {
+        + Debug
+{
+}
+
+pub fn naive_solver<G: NaiveSolvableGraph>(input_graph: &G) -> (NumNodes, ContractionSequence) {
     let mut graph = input_graph.clone();
     let nodes = graph.number_of_nodes();
 
@@ -30,95 +42,123 @@ pub fn naive_solver<
     (twin_width, contract_seq)
 }
 
-fn recurse<
-    G: Clone
-        + AdjacencyList
-        + GraphEdgeOrder
-        + ColoredAdjacencyList
-        + ColoredAdjacencyTest
-        + GraphEdgeEditing
-        + Debug,
->(
+fn recurse<G: NaiveSolvableGraph>(
     graph: &mut G,
     slack: Node,
-    not_above: Node,
+    mut not_above: Node,
 ) -> Option<(NumNodes, ContractionSequence)> {
-    let mut preprocessing_contract_seq = ContractionSequence::new(graph.number_of_nodes());
+    if slack > not_above {
+        return None;
+    }
 
-    prune_leaves(graph, &mut preprocessing_contract_seq);
-    prune_twins(graph, &mut preprocessing_contract_seq);
+    let red_deg_before = graph.red_degrees().max().unwrap();
+    assert!(red_deg_before <= slack);
+
+    let mut contract_seq = ContractionSequence::new(graph.number_of_nodes());
+    prune_leaves(graph, &mut contract_seq);
+    prune_twins(graph, &mut contract_seq);
+
+    assert!(red_deg_before >= graph.red_degrees().max().unwrap());
 
     if graph.number_of_edges() <= 1 {
-        if let Some(first_edge) = graph.edges(true).next() {
-            preprocessing_contract_seq.merge_node_into(first_edge.0, first_edge.1);
+        let mut tww = 0;
+        if let Some(first_edge) = graph.colored_edges(true).next() {
+            contract_seq.merge_node_into(first_edge.0, first_edge.1);
+            tww = first_edge.2.is_red() as Node;
         }
-        return Some((0, preprocessing_contract_seq));
+        return Some((tww, contract_seq));
+    }
+
+    if let Some(res) = try_split_into_cc(graph, slack, not_above) {
+        return res.map(|(tww, seq)| {
+            (tww, {
+                contract_seq.append(&seq);
+                contract_seq
+            })
+        });
     }
 
     assert!(graph.red_degrees().max().unwrap() <= not_above);
 
     let mut pairs: Vec<_> = graph
         .distance_two_pairs()
-        .map(|(u, v)| {
+        .filter_map(|(u, v)| {
             let red_neighs = graph.red_neighbors_after_merge(u, v, false);
-            let mut red_deg = red_neighs.cardinality() as NumNodes;
-
-            for w in red_neighs.iter().map(|x| x as Node) {
-                if graph.red_degree_of(w) + 1 > red_deg {
-                    red_deg = red_deg.max(
-                        graph.red_degree_of(w) + 1
-                            - graph.has_red_edge(u, w) as NumNodes
-                            - graph.has_red_edge(v, w) as NumNodes,
-                    );
-                }
-            }
-
-            (red_deg, (u, v))
+            (red_neighs.cardinality() <= not_above).then_some((red_neighs.cardinality(), (u, v)))
         })
-        .filter(|&(deg, _)| deg <= not_above)
         .collect();
 
-    pairs.sort_by_key(|(deg, _)| *deg);
+    pairs.sort();
 
-    let mut best_contract_sequence = None;
-    let mut best_merge = None;
-    let mut best_twin_with = not_above + 1;
+    let mut best_solution = None;
 
     for (r, (u, v)) in pairs {
-        if r >= best_twin_with {
+        if r > not_above {
             break;
         }
 
         let mut local_graph = graph.clone();
         local_graph.merge_node_into(u, v);
-        assert!(local_graph.red_degree_of(v) <= r);
 
-        debug_assert!(local_graph.red_degrees().max().unwrap() < best_twin_with,);
+        let max_red_degree = local_graph.red_degrees().max().unwrap();
+        if max_red_degree > not_above {
+            continue;
+        }
 
         if let Some((sol_size, contract_seq)) =
-            recurse(&mut local_graph, slack.max(r), best_twin_with - 1)
+            recurse(&mut local_graph, slack.max(max_red_degree), not_above)
         {
-            let sol_size = sol_size.max(r);
-            assert!(best_twin_with > sol_size);
+            let sol_size = sol_size.max(max_red_degree);
+            best_solution = Some(((u, v), sol_size, contract_seq));
 
-            best_twin_with = sol_size;
-            best_contract_sequence = Some(contract_seq);
-            best_merge = Some((u, v));
-
-            if best_twin_with <= slack {
+            if sol_size <= slack {
                 break;
             }
+
+            not_above = sol_size.checked_sub(1).unwrap();
         }
     }
 
-    preprocessing_contract_seq.merge_node_into(best_merge?.0, best_merge?.1);
-    preprocessing_contract_seq.append(&best_contract_sequence?);
-    (best_twin_with <= not_above).then_some((best_twin_with, preprocessing_contract_seq))
+    let ((u, v), tww, seq) = best_solution?;
+
+    contract_seq.merge_node_into(u, v);
+    contract_seq.append(&seq);
+    Some((tww, contract_seq))
+}
+
+fn try_split_into_cc<G: NaiveSolvableGraph>(
+    graph: &mut G,
+    slack: u32,
+    not_above: u32,
+) -> Option<Option<(NumNodes, ContractionSequence)>> {
+    let part = graph.partition_into_connected_components(true);
+    if part.number_of_classes() == 1 || 10 * part.number_of_unassigned() < graph.number_of_nodes() {
+        return None;
+    }
+
+    let mut max_tww = 0;
+    let mut slack = slack;
+
+    let mut contract_seq = ContractionSequence::new(graph.number_of_nodes());
+
+    for (mut subgraph, mapper) in part.split_into_subgraphs(graph) {
+        let (size, sol) = recurse(&mut subgraph, slack, not_above)?;
+        slack = slack.max(size);
+        max_tww = max_tww.max(size);
+        for &(rem, sur) in sol.merges() {
+            contract_seq.merge_node_into(
+                mapper.old_id_of(rem).unwrap(),
+                mapper.old_id_of(sur).unwrap(),
+            );
+        }
+    }
+
+    Some(Some((max_tww, contract_seq)))
 }
 
 #[cfg(test)]
 mod test {
-    use crate::{graph::*, io::*};
+    use crate::{graph::*, io::*, testing::get_test_graphs_with_tww};
     use std::{fs::File, io::BufReader};
 
     use super::naive_solver;
@@ -143,6 +183,20 @@ mod test {
 
             let (size, _sol) = naive_solver(&graph);
             assert_eq!(size, tww, "file: {filename}");
+        }
+    }
+
+    #[test]
+    fn small_random() {
+        for (filename, graph, presolved_tww) in
+            get_test_graphs_with_tww("instances/small-random/*.gr").step_by(3)
+        {
+            if graph.number_of_nodes() > 10 {
+                continue;
+            }
+            println!(" Test {filename}");
+            let (tww, _seq) = naive_solver(&graph);
+            assert_eq!(tww, presolved_tww, "file: {filename}");
         }
     }
 }
