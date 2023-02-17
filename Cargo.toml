@@ -19,3 +19,5 @@ num="0.4"
 regex="0.1"
 digest = "0.10.0"
 sha2 = "0.10.0"
+splr = {version="0.17.0", features=["incremental_solver","best_phases_tracking"]}
+varisat = "0.2.2"

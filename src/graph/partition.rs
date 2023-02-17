@@ -202,7 +202,6 @@ impl Partition {
 
         // Create an empty graph and mapper with the capacity for each partition class
         let mut result = (0..self.number_of_classes())
-            .into_iter()
             .map(|class_id| {
                 let n = self.number_in_class(class_id);
                 (GO::new(n as NumNodes), M::with_capacity(n))
