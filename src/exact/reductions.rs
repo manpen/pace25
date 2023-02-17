@@ -1,3 +1,5 @@
+use itertools::Itertools;
+
 use super::*;
 use crate::graph::*;
 use std::fmt::Debug;
@@ -14,12 +16,32 @@ pub fn prune_leaves<
     graph: &mut G,
     contract_seq: &mut ContractionSequence,
 ) {
-    while let Some((u, v)) = graph
-        .distance_two_pairs()
-        .find(|&(u, v)| graph.degree_of(u) == 1 && graph.degree_of(v) == 1)
-    {
-        graph.merge_node_into(u, v);
-        contract_seq.merge_node_into(u, v);
+    for host in graph.vertices_range() {
+        if graph.degree_of(host) < 2 {
+            continue;
+        }
+
+        let mut neighbors = graph
+            .neighbors_of(host)
+            .iter()
+            .filter(|&&v| host != v && graph.degree_of(v) == 1)
+            .copied()
+            .collect_vec();
+
+        if neighbors.len() < 2 {
+            continue;
+        }
+
+        let survivor = neighbors.pop().unwrap();
+
+        if neighbors.iter().any(|&v| graph.red_degree_of(v) > 0) {
+            graph.try_add_edge(survivor, host, EdgeColor::Red);
+        }
+
+        for removed in neighbors {
+            contract_seq.merge_node_into(removed, survivor);
+            graph.remove_edges_at_node(removed);
+        }
     }
 }
 
@@ -35,8 +57,16 @@ pub fn prune_twins<
     graph: &mut G,
     contract_seq: &mut ContractionSequence,
 ) {
-    while let Some((u, v)) = graph.distance_two_pairs().find(|&(u, v)| {
-        if graph.black_degree_of(u) == 0 || graph.black_degree_of(u) != graph.black_degree_of(v) {
+    let mut neighbors: Vec<_> = graph.neighbors_as_bitset().collect();
+    neighbors.iter_mut().enumerate().for_each(|(i, bs)| {
+        bs.set_bit(i as Node);
+    });
+
+    let are_twins = |graph: &G, neighbors: &mut [BitSet], u: Node, v: Node| {
+        debug_assert_ne!(u, v);
+
+        // sutable degree 1 nodes were taken care by [`prune_leaves`]
+        if graph.degree_of(u) < 2 || graph.degree_of(u) != graph.degree_of(v) {
             return false;
         }
 
@@ -44,22 +74,51 @@ pub fn prune_twins<
             let ru = graph.red_neighbors_of_as_bitset(u);
             let rv = graph.red_neighbors_of_as_bitset(v);
 
-            if !ru.is_subset_of(&rv) || !rv.is_subset_of(&ru) {
+            if !ru.is_subset_of(&rv) && !rv.is_subset_of(&ru) {
                 return false;
             }
         }
 
-        let mut s1 = graph.neighbors_of_as_bitset(u);
-        let mut s2 = graph.neighbors_of_as_bitset(v);
+        let was_set_before = neighbors[u as usize].set_bit(v);
+        neighbors[v as usize].set_bit(u);
 
-        s1.set_bit(u);
-        s1.set_bit(v);
-        s2.set_bit(u);
-        s2.set_bit(v);
+        let are_twins = neighbors[u as usize] == neighbors[v as usize];
 
-        s1 == s2
-    }) {
-        contract_seq.merge_node_into(u, v);
-        graph.remove_edges_at_node(u);
+        if !was_set_before {
+            neighbors[u as usize].unset_bit(v);
+            neighbors[v as usize].unset_bit(u);
+        }
+
+        are_twins
+    };
+
+    loop {
+        let twins: Vec<_> = graph
+            .distance_two_pairs()
+            .filter(|&(u, v)| are_twins(graph, &mut neighbors, u, v))
+            .collect();
+
+        if twins.is_empty() {
+            break;
+        }
+
+        for (u, v) in twins {
+            if !are_twins(graph, &mut neighbors, u, v) {
+                continue;
+            }
+
+            contract_seq.merge_node_into(u, v);
+            graph.merge_node_into(u, v);
+
+            let mut nu = std::mem::take(&mut neighbors[u as usize]);
+            neighbors[v as usize].or(&nu);
+
+            nu.unset_all();
+            neighbors[u as usize] = nu;
+
+            neighbors.iter_mut().for_each(|n| {
+                n.unset_bit(u);
+            });
+        }
     }
 }

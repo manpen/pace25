@@ -1,5 +1,4 @@
 //use crate::graph::{AdjacencyList, GraphEdgeOrder, GraphEdgeEditing};
-
 use cat_solver::Solver;
 use splr::Certificate;
 use varisat::{CnfFormula, ExtendFormula, Lit};
@@ -159,12 +158,33 @@ impl<
     }
 
     #[inline]
-    pub fn cardinality_naive_at_most_1(vars: &Vec<i32>, formula: &mut Vec<Vec<i32>>) {
+    pub fn cardinality_naive_at_most_1(
+        id_counter: &mut i32,
+        vars: &Vec<i32>,
+        formula: &mut Vec<Vec<i32>>,
+    ) {
         // Encode at least one
-        for i in 0..vars.len() {
-            for j in i + 1..vars.len() {
-                formula.push(vec![-vars[i], -vars[j]]);
-            }
+        if vars.len() <= 1 {
+            return;
+        }
+
+        let restrictions: Vec<i32> = (0..vars.len())
+            .map(|_| {
+                let id = *id_counter;
+                *id_counter += 1;
+                id
+            })
+            .collect();
+
+        formula.push(vec![-vars[0], restrictions[0]]);
+        formula.push(vec![
+            -vars[vars.len() - 1],
+            -restrictions[restrictions.len() - 2],
+        ]);
+        for i in 1..vars.len() - 1 {
+            formula.push(vec![-vars[i], restrictions[i]]);
+            formula.push(vec![-restrictions[i - 1], restrictions[i]]);
+            formula.push(vec![-vars[i], -restrictions[i - 1]]);
         }
     }
 
@@ -200,7 +220,7 @@ impl<
             *restrictions.get(&1).unwrap().get(&1).unwrap(),
         ]);
 
-        for j in 1..upper_bound + 1 {
+        for j in 2..(upper_bound + 1) {
             // NOT
             formula.push(vec![-*restrictions.get(&1).unwrap().get(&j).unwrap()]);
         }
@@ -273,14 +293,22 @@ impl<
 
                 commands.push(new_command);
                 current_group.push(-new_command);
-                TwinWidthSatEncoding::<G>::cardinality_naive_at_most_1(&current_group, formula);
+                TwinWidthSatEncoding::<G>::cardinality_naive_at_most_1(
+                    &mut self.variable_id,
+                    &current_group,
+                    formula,
+                );
                 TwinWidthSatEncoding::<G>::cardinality_at_least_1(current_group, formula);
             } else {
                 commands.push(current_group[0]);
             }
         }
         if commands.len() < 2 * m as usize {
-            TwinWidthSatEncoding::<G>::cardinality_naive_at_most_1(&commands, formula);
+            TwinWidthSatEncoding::<G>::cardinality_naive_at_most_1(
+                &mut self.variable_id,
+                &commands,
+                formula,
+            );
         } else {
             self.amo_commander(commands, m, formula);
         }
@@ -292,7 +320,7 @@ impl<
 
         for i in 0..self.graph.number_of_nodes() {
             auxillarys_variables.insert(i, fxhash::FxHashMap::default());
-            for j in i + 1..self.graph.number_of_nodes() {
+            for j in (i + 1)..self.graph.number_of_nodes() {
                 if j == i {
                     continue;
                 }
@@ -342,7 +370,7 @@ impl<
                     continue;
                 }
 
-                for k in 1..self.graph.number_of_nodes() {
+                for k in 0..self.graph.number_of_nodes() {
                     if k == i || k == j {
                         continue;
                     }
@@ -418,6 +446,7 @@ impl<
     pub fn solve(&mut self, mut ub: u32) -> Option<(u32, ContractionSequence)> {
         let mut last_valid_solution = None;
         let mut last_valid_bound = ub;
+
         loop {
             println!("Encoding for twin width max d={ub}");
             let encoding = self.encode(ub);
@@ -453,7 +482,7 @@ impl<
         let mut last_valid_solution = None;
         let mut last_valid_bound = ub;
         loop {
-            println!("Encoding done for twin width max d={ub}");
+            //info!("Encoding done for twin width max d={ub}");
             let encoding = self.encode(ub);
 
             let mut cnf = CnfFormula::new();
@@ -486,12 +515,10 @@ impl<
                 cnf.add_clause(&literals);
             }
 
-            let solver_time = std::time::Instant::now();
             let mut solver = varisat::Solver::new();
             solver.add_formula(&cnf);
             if let Ok(solved) = solver.solve() {
                 if solved {
-                    println!("Found solution in {}ms", solver_time.elapsed().as_millis());
                     let solution = solver.model().unwrap();
                     let sat_solution: Vec<i32> = solution
                         .into_iter()
@@ -526,25 +553,25 @@ impl<
         let mut last_valid_solution = None;
         let mut last_valid_bound = ub;
         loop {
-            println!("Encoding done for twin width max d={ub}");
             let encoding = self.encode(ub);
 
             let mut kissat_solver = Solver::new();
-            
+
             let mut mapping: fxhash::FxHashSet<i32> = fxhash::FxHashSet::default();
             for x in encoding.into_iter() {
-                x.iter().for_each(|v| {mapping.insert(v.abs());});
+                x.iter().for_each(|v| {
+                    mapping.insert(v.abs());
+                });
                 kissat_solver.add_clause(x.into_iter());
             }
 
-            let solver_time = std::time::Instant::now();
             // Max the limits
             kissat_solver.set_limit("conflicts", 0x40000000).unwrap();
             kissat_solver.set_limit("decisions", 0x40000000).unwrap();
 
             if let Some(solved) = kissat_solver.solve() {
                 if solved {
-                    println!("Found solution in {}ms", solver_time.elapsed().as_millis());
+                    //println!("Found solution in {}ms width {}", solver_time.elapsed().as_millis(),ub);
                     let mut solution = Vec::new();
                     for x in mapping.into_iter() {
                         match kissat_solver.value(x) {
@@ -577,7 +604,7 @@ impl<
         }
     }
 
-    pub fn encode(&mut self, d: u32) -> Vec<Vec<i32>> {
+    pub fn encode(&mut self, at_most_d: u32) -> Vec<Vec<i32>> {
         let mut formula = Vec::new();
         for i in 0..self.graph.number_of_nodes() {
             for j in 0..self.graph.number_of_nodes() {
@@ -594,7 +621,7 @@ impl<
             }
         }
         for i in 0..self.graph.number_of_nodes() {
-            for j in i + 1..self.graph.number_of_nodes() {
+            for j in (i + 1)..self.graph.number_of_nodes() {
                 formula.push(vec![-self.get_merge(i, j), self.tord(i, j)])
             }
         }
@@ -602,7 +629,7 @@ impl<
         for i in 0..(self.graph.number_of_nodes() - 1) {
             let mut atleast_encoded = Vec::new();
             let mut amocommander_encoded = Vec::new();
-            for j in i + 1..self.graph.number_of_nodes() {
+            for j in (i + 1)..self.graph.number_of_nodes() {
                 let var = *self.merge.get(&i).unwrap().get(&j).unwrap();
                 atleast_encoded.push(var);
                 amocommander_encoded.push(var);
@@ -613,7 +640,7 @@ impl<
 
         for i in 0..self.graph.number_of_nodes() {
             let neighbors_i = self.graph.neighbors_of_as_bitset(i);
-            for j in i + 1..self.graph.number_of_nodes() {
+            for j in (i + 1)..self.graph.number_of_nodes() {
                 let mut neighbors_j = self.graph.neighbors_of_as_bitset(j);
                 neighbors_j.unset_bit(i);
 
@@ -633,7 +660,7 @@ impl<
         self.encode_reds(&mut formula);
 
         // Totalizer!
-        for i in 0..self.graph.number_of_nodes() - 1 {
+        for i in 0..self.graph.number_of_nodes() {
             for x in 0..self.graph.number_of_nodes() {
                 let mut vars = Vec::new();
                 for y in 0..self.graph.number_of_nodes() {
@@ -646,7 +673,7 @@ impl<
                 TwinWidthSatEncoding::<G>::cardinality_at_most_k_sequential_encoding(
                     &mut self.variable_id,
                     &vars,
-                    d,
+                    at_most_d,
                     &mut formula,
                 );
             }
@@ -664,12 +691,12 @@ impl<
 
         //sb_red
         for i in 0..self.graph.number_of_nodes() {
-            for j in i + 1..self.graph.number_of_nodes() {
+            for j in (i + 1)..self.graph.number_of_nodes() {
                 if i == j {
                     continue;
                 }
 
-                for k in 1..self.graph.number_of_nodes() {
+                for k in 0..self.graph.number_of_nodes() {
                     if k == i || k == j {
                         continue;
                     }
@@ -705,7 +732,7 @@ pub mod tests {
 
     #[test]
     fn at_most_k() {
-        let vars = vec![1, 2, 3, 4, 5, 6];
+        let vars = vec![1, -2, 3, 4, 5, 6];
         let mut id = 7;
         let mut formula = Vec::new();
         TwinWidthSatEncoding::<AdjArray>::cardinality_at_most_k_sequential_encoding(
@@ -715,7 +742,7 @@ pub mod tests {
             &mut formula,
         );
 
-        formula.push(vec![1, 2, 4, 6]);
+        formula.push(vec![1, -2, 4, 6]);
         formula.push(vec![3]);
         formula.push(vec![5]);
         match Certificate::try_from(formula).expect("panic!") {

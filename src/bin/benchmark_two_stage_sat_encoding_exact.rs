@@ -41,7 +41,7 @@ fn load_best_known() -> std::io::Result<HashMap<String, NumNodes>> {
 }
 
 fn main() {
-    let files = ["exact-public"]
+    let files = ["tiny"]
         .into_iter()
         .flat_map(|p| {
             glob(format!("instances/{p}/*.gr").as_str())
@@ -49,6 +49,7 @@ fn main() {
                 .map(|r| r.expect("Failed to access globbed path"))
         })
         .collect_vec();
+    //let files = vec![std::path::PathBuf::from_str("/home/alexander/Documents/rust-solver/instances/small-random/n015_m0071_tww004_497004298866099df4f8937d78a2f4ddf4b29033c45ebc8e5cceec2b418fb055.gr").unwrap()];
 
     let best_known = load_best_known().unwrap_or_default();
     println!("Found {} best known values", best_known.len());
@@ -58,7 +59,8 @@ fn main() {
         let graph = AdjArray::try_read_pace_file(file).expect("Cannot open PACE file");
 
         let start = Instant::now();
-        let two_stage = TwoStageSatSolver::new(&graph, std::time::Duration::new(10, 0));
+        let two_stage = TwoStageSatSolver::new(&graph, std::time::Duration::from_millis(300));
+
         let (sol_size, _sol) = two_stage.solve();
         let duration = start.elapsed();
 

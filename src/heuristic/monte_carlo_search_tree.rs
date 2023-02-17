@@ -617,7 +617,7 @@ pub mod tests {
             cumulative_score += full_tree.best_score;
             println!("Best score {}", full_tree.best_score);
         }
-        println!("Cumulative score {}", cumulative_score);
+        println!("Cumulative score {cumulative_score}");
     }
 
     #[test]
@@ -645,7 +645,7 @@ pub mod tests {
             cumulative_score += solve.0;
             println!("Best score {}", solve.0);
         }
-        println!("Cumulative score {}", cumulative_score);
+        println!("Cumulative score {cumulative_score}");
     }
 
     //Benchmark the following graphs since they take ages!
