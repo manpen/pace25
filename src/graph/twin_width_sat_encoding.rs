@@ -1,5 +1,5 @@
 //use crate::graph::{AdjacencyList, GraphEdgeOrder, GraphEdgeEditing};
-
+use log::info;
 use splr::Certificate;
 use varisat::{CnfFormula, ExtendFormula, Lit};
 
@@ -452,7 +452,7 @@ impl<
         let mut last_valid_solution = None;
         let mut last_valid_bound = ub;
         loop {
-            println!("Encoding done for twin width max d={ub}");
+            info!("Encoding done for twin width max d={ub}");
             let encoding = self.encode(ub);
 
             let mut cnf = CnfFormula::new();
@@ -490,7 +490,7 @@ impl<
             solver.add_formula(&cnf);
             if let Ok(solved) = solver.solve() {
                 if solved {
-                    println!("Found solution in {}ms", solver_time.elapsed().as_millis());
+                    info!("Found solution in {}ms", solver_time.elapsed().as_millis());
                     let solution = solver.model().unwrap();
                     let sat_solution: Vec<i32> = solution
                         .into_iter()
