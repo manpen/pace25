@@ -16,3 +16,5 @@ fxhash="0.2"
 rayon="1.6"
 bitvec="1.0"
 num="0.4"
+splr = {version="0.17.0", features=["incremental_solver","best_phases_tracking"]}
+varisat = "0.2.2"

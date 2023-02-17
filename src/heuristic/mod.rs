@@ -1,1 +1,1 @@
-pub mod markov_search_tree;
+pub mod monte_carlo_search_tree;

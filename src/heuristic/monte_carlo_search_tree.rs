@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// Runs the search tree for the given period of time, will return the best score the contraction sequence and the number of games played
-pub fn timeout_markov_search_tree_solver<
+pub fn timeout_monte_carlo_search_tree_solver<
     G: Clone
         + AdjacencyList
         + GraphEdgeOrder
@@ -29,11 +29,45 @@ pub fn timeout_markov_search_tree_solver<
     timeout: Duration,
 ) -> (u32, ContractionSequence, u32) {
     let time_now = std::time::Instant::now();
-    let mut full_tree = MarkovSearchTree::new(graph);
+    let mut full_tree = MonteCarloSearchTree::new(graph, true);
 
     loop {
         let mut tree = full_tree.new_game();
-        tree.make_random_choice(MarkovSearchTreeGame::random_choice, &mut full_tree);
+        tree.make_random_choice(MonteCarloSearchTreeGame::random_choice, &mut full_tree);
+
+        full_tree.add_game(&tree);
+
+        if time_now.elapsed() > timeout {
+            break;
+        }
+    }
+
+    (
+        full_tree.best_score(),
+        full_tree.best_contraction_sequence.take().unwrap(),
+        full_tree.num_games(),
+    )
+}
+
+/// Runs the search tree for the given period of time, will return the best score the contraction sequence and the number of games played
+pub fn timeout_monte_carlo_search_tree_solver_preprocessed<
+    G: Clone
+        + AdjacencyList
+        + GraphEdgeOrder
+        + ColoredAdjacencyList
+        + ColoredAdjacencyTest
+        + Debug
+        + GraphEdgeEditing,
+>(
+    graph: &G,
+    timeout: Duration,
+) -> (u32, ContractionSequence, u32) {
+    let time_now = std::time::Instant::now();
+    let mut full_tree = MonteCarloSearchTree::new(graph, false);
+
+    loop {
+        let mut tree = full_tree.new_game();
+        tree.make_random_choice(MonteCarloSearchTreeGame::random_choice, &mut full_tree);
 
         full_tree.add_game(&tree);
 
@@ -53,7 +87,7 @@ pub fn timeout_markov_search_tree_solver<
 /// will start to decrease the depth of the search try by subsequently choosing the best current move and playing games
 /// which always start with this move. The two last parameters decide how long each collapsing period takes and how many
 /// levels of the tree are collapsed in total (Total Time: ~ timeout+descend_time*max_descends)
-pub fn timeout_markov_search_tree_solver_with_descend<
+pub fn timeout_monte_carlo_search_tree_solver_with_descend<
     G: Clone
         + AdjacencyList
         + GraphEdgeOrder
@@ -68,11 +102,11 @@ pub fn timeout_markov_search_tree_solver_with_descend<
     mut max_descends: u32,
 ) -> (u32, ContractionSequence, u32) {
     let mut time_now = std::time::Instant::now();
-    let mut full_tree = MarkovSearchTree::new(graph).aborted_game_penalty(2);
+    let mut full_tree = MonteCarloSearchTree::new(graph, true).aborted_game_penalty(2);
 
     loop {
         let mut tree = full_tree.new_game();
-        tree.make_random_choice(MarkovSearchTreeGame::random_choice, &mut full_tree);
+        tree.make_random_choice(MonteCarloSearchTreeGame::random_choice, &mut full_tree);
 
         full_tree.add_game(&tree);
 
@@ -86,7 +120,7 @@ pub fn timeout_markov_search_tree_solver_with_descend<
         time_now = std::time::Instant::now();
         loop {
             let mut tree = full_tree.new_game();
-            tree.make_random_choice(MarkovSearchTreeGame::random_choice, &mut full_tree);
+            tree.make_random_choice(MonteCarloSearchTreeGame::random_choice, &mut full_tree);
 
             full_tree.add_game(&tree);
 
@@ -104,23 +138,23 @@ pub fn timeout_markov_search_tree_solver_with_descend<
     )
 }
 
-pub enum MarkovSearchTreeNode {
+pub enum MonteCarloSearchTreeNode {
     // The leaf contains only the score and nothing else
     Leaf(u32),
 
     // Inner contains the choices made already together with the game tree
     // The second u32 is the average
     Inner {
-        choices: std::rc::Rc<std::cell::RefCell<FxHashMap<u32, MarkovSearchTreeNode>>>,
+        choices: std::rc::Rc<std::cell::RefCell<FxHashMap<u32, MonteCarloSearchTreeNode>>>,
         cumulative_score: u32,
         number_of_games: u32,
     },
 }
 
-pub struct MarkovSearchTree<G> {
+pub struct MonteCarloSearchTree<G> {
     graph: G,
     // First one is the choice, second one the outcome
-    games: std::rc::Rc<std::cell::RefCell<FxHashMap<u32, MarkovSearchTreeNode>>>,
+    games: std::rc::Rc<std::cell::RefCell<FxHashMap<u32, MonteCarloSearchTreeNode>>>,
     best_contraction_sequence: Option<ContractionSequence>,
     best_score: u32,
     num_games: u32,
@@ -140,19 +174,21 @@ impl<
             + ColoredAdjacencyTest
             + Debug
             + GraphEdgeEditing,
-    > MarkovSearchTree<G>
+    > MonteCarloSearchTree<G>
 {
-    /// Creates a new MarkovSearchTree based on a implementation of a graph
-    pub fn new(g: &G) -> MarkovSearchTree<G> {
+    /// Creates a new MonteCarloSearchTree based on a implementation of a graph
+    pub fn new(g: &G, with_preprocessing: bool) -> MonteCarloSearchTree<G> {
         let mut clone = g.clone();
         let mut preprocessing_sequence = ContractionSequence::new(clone.number_of_nodes());
 
-        prune_leaves(&mut clone, &mut preprocessing_sequence);
-        prune_twins(&mut clone, &mut preprocessing_sequence);
+        if with_preprocessing {
+            prune_leaves(&mut clone, &mut preprocessing_sequence);
+            prune_twins(&mut clone, &mut preprocessing_sequence);
+        }
 
         let nodes = clone.number_of_nodes();
 
-        MarkovSearchTree {
+        MonteCarloSearchTree {
             graph: clone.clone(),
             games: std::rc::Rc::new(std::cell::RefCell::new(FxHashMap::default())),
             best_contraction_sequence: None,
@@ -182,12 +218,12 @@ impl<
                 .get(&(descend.0 * self.graph.number_of_nodes() + descend.1))
                 .unwrap()
             {
-                MarkovSearchTreeNode::Inner {
+                MonteCarloSearchTreeNode::Inner {
                     choices,
                     cumulative_score: _,
                     number_of_games: _,
                 } => choices.clone(),
-                MarkovSearchTreeNode::Leaf(_) => {
+                MonteCarloSearchTreeNode::Leaf(_) => {
                     return;
                 }
             };
@@ -196,7 +232,7 @@ impl<
 
         for moves in current.borrow().iter() {
             match moves.1 {
-                MarkovSearchTreeNode::Inner {
+                MonteCarloSearchTreeNode::Inner {
                     choices: _,
                     cumulative_score,
                     number_of_games,
@@ -206,7 +242,7 @@ impl<
                         min_move_id = *moves.0;
                     }
                 }
-                MarkovSearchTreeNode::Leaf(score) => {
+                MonteCarloSearchTreeNode::Leaf(score) => {
                     if min_score > *score as f64 {
                         min_score = *score as f64;
                         min_move_id = *moves.0;
@@ -243,8 +279,8 @@ impl<
 
     /// Creates a new game based on the current graph. The current graph is the original graph after all preprocessing steps
     /// and with all collapsed moves already executed.
-    pub fn new_game(&self) -> MarkovSearchTreeGame<G> {
-        MarkovSearchTreeGame::new(self.collapsed_graph.clone())
+    pub fn new_game(&self) -> MonteCarloSearchTreeGame<G> {
+        MonteCarloSearchTreeGame::new(self.collapsed_graph.clone())
     }
 
     /// Checks how many games have been played
@@ -266,9 +302,9 @@ impl<
         self.preprocessing_sequence
     }
 
-    /// Adds a played out game to update the heuristics of the markov search tree
+    /// Adds a played out game to update the heuristics of the MonteCarlo search tree
     /// Also updates the best score
-    pub fn add_game(&mut self, game: &MarkovSearchTreeGame<G>) {
+    pub fn add_game(&mut self, game: &MonteCarloSearchTreeGame<G>) {
         self.num_games += 1;
         let mut current_ptr = self.games.clone();
 
@@ -286,7 +322,7 @@ impl<
                 .entry(x.0 * self.graph.number_of_nodes() + x.1)
             {
                 Entry::Occupied(mut value) => {
-                    if let MarkovSearchTreeNode::Inner {
+                    if let MonteCarloSearchTreeNode::Inner {
                         choices,
                         cumulative_score,
                         number_of_games,
@@ -301,15 +337,15 @@ impl<
                 }
                 Entry::Vacant(value) => {
                     if graph.len() == 1 {
-                        value.insert(MarkovSearchTreeNode::Leaf(twin_width));
+                        value.insert(MonteCarloSearchTreeNode::Leaf(twin_width));
                     } else {
                         graph.merge_node_into(x.0, x.1);
 
-                        if let MarkovSearchTreeNode::Inner {
+                        if let MonteCarloSearchTreeNode::Inner {
                             choices,
                             cumulative_score: _,
                             number_of_games: _,
-                        } = value.insert(MarkovSearchTreeNode::Inner {
+                        } = value.insert(MonteCarloSearchTreeNode::Inner {
                             choices: std::rc::Rc::new(
                                 std::cell::RefCell::new(FxHashMap::default()),
                             ),
@@ -330,7 +366,7 @@ impl<
     }
 }
 
-pub struct MarkovSearchTreeGame<G> {
+pub struct MonteCarloSearchTreeGame<G> {
     // The pointer to the graph to permutate
     graph: G,
 
@@ -349,12 +385,12 @@ impl<
             + ColoredAdjacencyTest
             + GraphEdgeEditing
             + Debug,
-    > MarkovSearchTreeGame<G>
+    > MonteCarloSearchTreeGame<G>
 {
     /// Creates a new game from a given graph
-    fn new(graph: G) -> MarkovSearchTreeGame<G> {
+    fn new(graph: G) -> MonteCarloSearchTreeGame<G> {
         let num_nodes = graph.number_of_nodes();
-        MarkovSearchTreeGame {
+        MonteCarloSearchTreeGame {
             graph,
             final_twin_width: None,
             contraction_sequence: ContractionSequence::new(num_nodes),
@@ -489,7 +525,7 @@ impl<
     pub fn make_random_choice<F: FnMut(&BitSet, &mut G, u32) -> (u32, u32)>(
         &mut self,
         mut decision_function: F,
-        full_game_tree: &mut MarkovSearchTree<G>,
+        full_game_tree: &mut MonteCarloSearchTree<G>,
     ) {
         if self.graph.number_of_edges() <= 1 {
             if let Some(first_edge) = self.graph.edges(true).next() {
@@ -541,11 +577,13 @@ pub mod tests {
 
     use crate::{
         graph::{AdjArray, EdgeColor, GraphEdgeEditing, GraphNew},
-        heuristic::markov_search_tree::{timeout_markov_search_tree_solver, MarkovSearchTree},
+        heuristic::monte_carlo_search_tree::{
+            timeout_monte_carlo_search_tree_solver, MonteCarloSearchTree,
+        },
         io::PaceReader,
     };
 
-    use super::MarkovSearchTreeGame;
+    use super::MonteCarloSearchTreeGame;
 
     // Check instances/exact-public/exact_034.gr
     #[test]
@@ -568,11 +606,11 @@ pub mod tests {
             let mut graph = AdjArray::new(pace_reader.number_of_nodes());
             graph.add_edges(pace_reader, EdgeColor::Black);
 
-            let mut full_tree = MarkovSearchTree::new(&graph);
+            let mut full_tree = MonteCarloSearchTree::new(&graph, true);
 
-            for _ in 0..10000 {
+            for _ in 0..1000 {
                 let mut tree = full_tree.new_game();
-                tree.make_random_choice(MarkovSearchTreeGame::random_choice, &mut full_tree);
+                tree.make_random_choice(MonteCarloSearchTreeGame::random_choice, &mut full_tree);
 
                 full_tree.add_game(&tree);
             }
@@ -603,7 +641,7 @@ pub mod tests {
             graph.add_edges(pace_reader, EdgeColor::Black);
 
             let solve =
-                timeout_markov_search_tree_solver(&graph, std::time::Duration::from_secs(10));
+                timeout_monte_carlo_search_tree_solver(&graph, std::time::Duration::from_secs(1));
             cumulative_score += solve.0;
             println!("Best score {}", solve.0);
         }

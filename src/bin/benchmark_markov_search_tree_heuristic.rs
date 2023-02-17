@@ -9,8 +9,9 @@ use glob::glob;
 use itertools::Itertools;
 use tww::{
     graph::{AdjArray, GraphEdgeOrder, GraphNodeOrder, NumNodes},
-    heuristic::markov_search_tree::{
-        timeout_markov_search_tree_solver_with_descend, MarkovSearchTree, MarkovSearchTreeGame,
+    heuristic::monte_carlo_search_tree::{
+        timeout_monte_carlo_search_tree_solver_with_descend, MonteCarloSearchTree,
+        MonteCarloSearchTreeGame,
     },
     io::GraphPaceReader,
 };
@@ -72,19 +73,19 @@ fn main() {
         let start = Instant::now();
 
         let result = if let Some(timeout) = timeout {
-            //timeout_markov_search_tree_solver(&graph, timeout)
-            timeout_markov_search_tree_solver_with_descend(
+            //timeout_monte_carlo_search_tree_solver(&graph, timeout)
+            timeout_monte_carlo_search_tree_solver_with_descend(
                 &graph,
                 timeout,
                 std::time::Duration::from_millis(200),
                 50,
             )
         } else {
-            let mut full_tree = MarkovSearchTree::new(&graph);
+            let mut full_tree = MonteCarloSearchTree::new(&graph, true);
 
             for _ in 0..100000 {
                 let mut tree = full_tree.new_game();
-                tree.make_random_choice(MarkovSearchTreeGame::random_choice, &mut full_tree);
+                tree.make_random_choice(MonteCarloSearchTreeGame::random_choice, &mut full_tree);
 
                 full_tree.add_game(&tree);
             }

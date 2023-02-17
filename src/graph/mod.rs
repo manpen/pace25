@@ -8,6 +8,7 @@ pub mod gnp;
 pub mod node_mapper;
 pub mod partition;
 pub mod traversal;
+pub mod twin_width_sat_encoding;
 
 pub use adj_array::*;
 pub use bitset::*;

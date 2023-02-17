@@ -7,10 +7,7 @@ use std::{
 
 use glob::glob;
 use itertools::Itertools;
-use tww::{exact::*, graph::*, io::*};
-
-#[allow(unused_imports)]
-use rayon::prelude::*;
+use tww::{exact::two_stage_sat_solver::TwoStageSatSolver, graph::*, io::*};
 
 fn load_best_known() -> std::io::Result<HashMap<String, NumNodes>> {
     let reader = File::open("instances/best_known_solutions.csv")?;
@@ -44,7 +41,7 @@ fn load_best_known() -> std::io::Result<HashMap<String, NumNodes>> {
 }
 
 fn main() {
-    let files = ["exact-public"]
+    let files = ["tiny"]
         .into_iter()
         .flat_map(|p| {
             glob(format!("instances/{p}/*.gr").as_str())
@@ -56,12 +53,13 @@ fn main() {
     let best_known = load_best_known().unwrap_or_default();
     println!("Found {} best known values", best_known.len());
 
-    files.par_iter().for_each(|file| {
+    files.iter().for_each(|file| {
         let filename = String::from(file.as_os_str().to_str().unwrap());
         let graph = AdjArray::try_read_pace_file(file).expect("Cannot open PACE file");
 
         let start = Instant::now();
-        let (sol_size, _sol) = naive::naive_solver(&graph);
+        let two_stage = TwoStageSatSolver::new(&graph, std::time::Duration::new(2, 0));
+        let (sol_size, _sol) = two_stage.solve();
         let duration = start.elapsed();
 
         let best_known = best_known.get(&filename);
