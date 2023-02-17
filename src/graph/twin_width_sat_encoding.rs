@@ -187,7 +187,7 @@ impl<
         for i in 1..vars.len() + 1 {
             let mut inner = fxhash::FxHashMap::default();
             for j in 1..upper_bound + 1 {
-                inner.insert(j as u32, *id_counter);
+                inner.insert(j, *id_counter);
                 *id_counter += 1;
             }
             restrictions.insert(i as u32, inner);
@@ -219,7 +219,7 @@ impl<
                     -*restrictions
                         .get(&((i - 1) as u32))
                         .unwrap()
-                        .get(&((j - 1) as u32))
+                        .get(&(j - 1))
                         .unwrap(),
                     *restrictions.get(&(i as u32)).unwrap().get(&j).unwrap(),
                 ]);
@@ -252,7 +252,7 @@ impl<
         ]);
     }
 
-    pub fn amo_commander(&mut self, vars: Vec<i32>, m: u32, mut formula: &mut Vec<Vec<i32>>) {
+    pub fn amo_commander(&mut self, vars: Vec<i32>, m: u32, formula: &mut Vec<Vec<i32>>) {
         let mut cnt = 0;
         let mut groups: Vec<Vec<i32>> = Vec::new();
 
@@ -272,19 +272,16 @@ impl<
 
                 commands.push(new_command);
                 current_group.push(-new_command);
-                TwinWidthSatEncoding::<G>::cardinality_naive_at_most_1(
-                    &current_group,
-                    &mut formula,
-                );
-                TwinWidthSatEncoding::<G>::cardinality_at_least_1(current_group, &mut formula);
+                TwinWidthSatEncoding::<G>::cardinality_naive_at_most_1(&current_group, formula);
+                TwinWidthSatEncoding::<G>::cardinality_at_least_1(current_group, formula);
             } else {
                 commands.push(current_group[0]);
             }
         }
         if commands.len() < 2 * m as usize {
-            TwinWidthSatEncoding::<G>::cardinality_naive_at_most_1(&commands, &mut formula);
+            TwinWidthSatEncoding::<G>::cardinality_naive_at_most_1(&commands, formula);
         } else {
-            self.amo_commander(commands, m, &mut formula);
+            self.amo_commander(commands, m, formula);
         }
     }
 
@@ -382,15 +379,15 @@ impl<
         let mut ordering: Vec<u32> = (0..self.graph.len() as u32).collect();
         let find_order = |x: &u32, y: &u32| -> Ordering {
             if x < y {
-                let id = self.ord.get(&x).unwrap().get(&y).unwrap();
-                if *decoded.get(&id).unwrap() {
+                let id = self.ord.get(x).unwrap().get(y).unwrap();
+                if *decoded.get(id).unwrap() {
                     Ordering::Less
                 } else {
                     Ordering::Greater
                 }
             } else {
-                let id = self.ord.get(&y).unwrap().get(&x).unwrap();
-                if *decoded.get(&id).unwrap() {
+                let id = self.ord.get(y).unwrap().get(x).unwrap();
+                if *decoded.get(id).unwrap() {
                     Ordering::Greater
                 } else {
                     Ordering::Less
@@ -401,7 +398,7 @@ impl<
         for i in 0..self.graph.number_of_nodes() {
             for y in i + 1..self.graph.number_of_nodes() {
                 let id = self.merge.get(&i).unwrap().get(&y).unwrap();
-                if *decoded.get(&id).unwrap() {
+                if *decoded.get(id).unwrap() {
                     merge.insert(i, y);
                 }
             }
@@ -421,14 +418,13 @@ impl<
         let mut last_valid_solution = None;
         let mut last_valid_bound = ub;
         loop {
-            println!("Encoding for twin width max d={}", ub);
+            println!("Encoding for twin width max d={ub}");
             let encoding = self.encode(ub);
 
             match Certificate::try_from(encoding).expect("panic!") {
                 Certificate::UNSAT => {
                     println!(
-                        "Finding twin width d={} is impossible returning previous solution!",
-                        ub
+                        "Finding twin width d={ub} is impossible returning previous solution!"
                     );
                     if let Some(solution) = last_valid_solution {
                         let seq = self.decode_sat_solution(solution);
@@ -456,7 +452,7 @@ impl<
         let mut last_valid_solution = None;
         let mut last_valid_bound = ub;
         loop {
-            println!("Encoding done for twin width max d={}", ub);
+            println!("Encoding done for twin width max d={ub}");
             let encoding = self.encode(ub);
 
             let mut cnf = CnfFormula::new();
@@ -514,13 +510,11 @@ impl<
                     last_valid_solution = Some(sat_solution);
                     ub -= 1;
                     continue;
+                } else if let Some(solution) = last_valid_solution {
+                    let seq = self.decode_sat_solution(solution);
+                    return Some((last_valid_bound, seq));
                 } else {
-                    if let Some(solution) = last_valid_solution {
-                        let seq = self.decode_sat_solution(solution);
-                        return Some((last_valid_bound, seq));
-                    } else {
-                        return None;
-                    }
+                    return None;
                 }
             }
         }
