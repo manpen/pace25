@@ -7,10 +7,7 @@ use crate::{
 };
 use std::fmt::Debug;
 
-use super::{
-    contraction_sequence::ContractionSequence,
-    reductions::{prune_leaves, prune_twins},
-};
+use super::contraction_sequence::ContractionSequence;
 
 pub struct TwoStageSatSolver<G> {
     graph: G,
@@ -29,12 +26,12 @@ impl<
     > TwoStageSatSolver<G>
 {
     pub fn new(graph: &G, first_stage_timeout: std::time::Duration) -> TwoStageSatSolver<G> {
-        let mut preprocessing_sequence = ContractionSequence::new(graph.number_of_nodes());
+        let preprocessing_sequence = ContractionSequence::new(graph.number_of_nodes());
 
-        let mut clone = graph.clone();
+        let clone = graph.clone();
 
-        prune_leaves(&mut clone, &mut preprocessing_sequence);
-        prune_twins(&mut clone, &mut preprocessing_sequence);
+        //prune_leaves(&mut clone, &mut preprocessing_sequence);
+        //prune_twins(&mut clone, &mut preprocessing_sequence);
 
         TwoStageSatSolver {
             graph: clone,

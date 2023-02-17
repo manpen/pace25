@@ -58,7 +58,7 @@ fn main() {
         let graph = AdjArray::try_read_pace_file(file).expect("Cannot open PACE file");
 
         let start = Instant::now();
-        let two_stage = TwoStageSatSolver::new(&graph, std::time::Duration::new(2, 0));
+        let two_stage = TwoStageSatSolver::new(&graph, std::time::Duration::new(10, 0));
         let (sol_size, _sol) = two_stage.solve();
         let duration = start.elapsed();
 
