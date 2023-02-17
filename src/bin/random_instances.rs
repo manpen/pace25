@@ -15,6 +15,9 @@ struct Opt {
     #[structopt(short, long)]
     write: bool,
 
+    #[structopt(short = "e", long)]
+    write_buggy_only: bool,
+
     /// Verbose mode (-v, -vv, -vvv, etc.)
     #[structopt(short, long, parse(from_occurrences))]
     verbose: usize,
@@ -49,7 +52,7 @@ fn main() {
                 graph.digest_sha256()
             );
 
-            if opt.write {
+            if opt.write && (tww_naive != tww_sat || !opt.write_buggy_only) {
                 graph
                     .try_write_pace_file(filename.clone())
                     .expect("Failed to write file");
