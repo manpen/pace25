@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 for sol in instances/*/*.solution; do
-    graph=$(echo "$sol" | perl -pe "s/.solution\$//")
+    graph=$(echo "$sol" | perl -pe "s/.gr.*.solution\$/.gr/")
     
     if ./pace_verifier.py $graph $sol ; then
         # verified -> let keep that solution
