@@ -4,6 +4,7 @@
 
 pub mod exact;
 pub mod graph;
+pub mod heuristic;
 pub mod io;
 
 #[cfg(test)]
