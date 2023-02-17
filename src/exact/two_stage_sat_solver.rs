@@ -47,7 +47,7 @@ impl<
 
         // Try to improve upon the existing solution
         if sol != 0
-            && let Some((tww,seq)) = sat_encoding.solve_varisat(sol-1) {
+            && let Some((tww,seq)) = sat_encoding.solve_kissat(sol-1) {
             self.preprocessing_sequence.append(&seq);
             (tww,self.preprocessing_sequence)
         }

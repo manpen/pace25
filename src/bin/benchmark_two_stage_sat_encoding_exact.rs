@@ -41,7 +41,7 @@ fn load_best_known() -> std::io::Result<HashMap<String, NumNodes>> {
 }
 
 fn main() {
-    let files = ["tiny"]
+    let files = ["exact-public"]
         .into_iter()
         .flat_map(|p| {
             glob(format!("instances/{p}/*.gr").as_str())

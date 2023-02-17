@@ -1,5 +1,6 @@
 //use crate::graph::{AdjacencyList, GraphEdgeOrder, GraphEdgeEditing};
 
+use cat_solver::Solver;
 use splr::Certificate;
 use varisat::{CnfFormula, ExtendFormula, Lit};
 
@@ -508,6 +509,62 @@ impl<
                     }
                     last_valid_bound = ub;
                     last_valid_solution = Some(sat_solution);
+                    ub -= 1;
+                    continue;
+                } else if let Some(solution) = last_valid_solution {
+                    let seq = self.decode_sat_solution(solution);
+                    return Some((last_valid_bound, seq));
+                } else {
+                    return None;
+                }
+            }
+        }
+    }
+
+    // Please note that this will run the sat solver for every integer <= upper bound until the solution becomes unsatisfiable
+    pub fn solve_kissat(&mut self, mut ub: u32) -> Option<(u32, ContractionSequence)> {
+        let mut last_valid_solution = None;
+        let mut last_valid_bound = ub;
+        loop {
+            println!("Encoding done for twin width max d={ub}");
+            let encoding = self.encode(ub);
+
+            let mut kissat_solver = Solver::new();
+            
+            let mut mapping: fxhash::FxHashSet<i32> = fxhash::FxHashSet::default();
+            for x in encoding.into_iter() {
+                x.iter().for_each(|v| {mapping.insert(v.abs());});
+                kissat_solver.add_clause(x.into_iter());
+            }
+
+            let solver_time = std::time::Instant::now();
+            // Max the limits
+            kissat_solver.set_limit("conflicts", 0x40000000).unwrap();
+            kissat_solver.set_limit("decisions", 0x40000000).unwrap();
+
+            if let Some(solved) = kissat_solver.solve() {
+                if solved {
+                    println!("Found solution in {}ms", solver_time.elapsed().as_millis());
+                    let mut solution = Vec::new();
+                    for x in mapping.into_iter() {
+                        match kissat_solver.value(x) {
+                            Some(true) => {
+                                solution.push(x);
+                            }
+                            Some(false) => {
+                                solution.push(-x);
+                            }
+                            None => {
+                                solution.push(x);
+                            }
+                        }
+                    }
+                    if ub == 0 {
+                        let seq = self.decode_sat_solution(solution);
+                        return Some((ub, seq));
+                    }
+                    last_valid_bound = ub;
+                    last_valid_solution = Some(solution);
                     ub -= 1;
                     continue;
                 } else if let Some(solution) = last_valid_solution {
