@@ -5,3 +5,6 @@
 pub mod exact;
 pub mod graph;
 pub mod io;
+
+#[cfg(test)]
+mod testing;
