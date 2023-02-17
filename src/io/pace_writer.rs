@@ -1,9 +1,14 @@
-use std::io::Write;
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+    path::Path,
+};
 
 use super::super::graph::*;
 
 pub trait PaceWriter {
     fn try_write_pace<W: Write>(&self, writer: W) -> Result<(), std::io::Error>;
+    fn try_write_pace_file<P: AsRef<Path>>(&self, path: P) -> Result<(), std::io::Error>;
 }
 
 impl<T> PaceWriter for T
@@ -23,6 +28,11 @@ where
         }
 
         Ok(())
+    }
+
+    fn try_write_pace_file<P: AsRef<Path>>(&self, path: P) -> Result<(), std::io::Error> {
+        let writer = BufWriter::new(File::create(path)?);
+        self.try_write_pace(writer)
     }
 }
 
