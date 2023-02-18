@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     fs::File,
     io::{BufRead, BufReader, BufWriter, Write},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use glob::glob;
@@ -63,8 +63,12 @@ fn main() {
         let filename = String::from(file.as_os_str().to_str().unwrap());
         let graph = AdjArray::try_read_pace_file(file).expect("Cannot open PACE file");
 
+        if graph.number_of_nodes() > 2000 {
+            return;
+        }
+
         let start = Instant::now();
-        let (sol_size, sol) = naive::naive_solver(&graph);
+        let (sol_size, sol) = naive::naive_solver_two_staged(&graph, Duration::from_millis(1000));
         let duration = start.elapsed();
 
         let best_known = best_known.get(&filename);

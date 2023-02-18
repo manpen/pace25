@@ -1,6 +1,9 @@
 use super::*;
-use crate::graph::{connectivity::Connectivity, *};
-use std::fmt::Debug;
+use crate::{
+    graph::{connectivity::Connectivity, *},
+    prelude::monte_carlo_search_tree::timeout_monte_carlo_search_tree_solver_preprocessed,
+};
+use std::{fmt::Debug, time::Duration};
 
 pub trait NaiveSolvableGraph:
     Clone
@@ -25,10 +28,40 @@ impl<G> NaiveSolvableGraph for G where
 }
 
 pub fn naive_solver<G: NaiveSolvableGraph>(input_graph: &G) -> (NumNodes, ContractionSequence) {
-    let mut graph = input_graph.clone();
-    let nodes = graph.number_of_nodes();
+    naive_solver_with_upper_bound(input_graph, input_graph.number_of_nodes())
+        .expect("Could not produce feasable solution")
+}
 
-    let (twin_width, mut contract_seq) = recurse(&mut graph, 0, nodes).unwrap();
+pub fn naive_solver_two_staged<G: NaiveSolvableGraph>(
+    input_graph: &G,
+    timeout: Duration,
+) -> (NumNodes, ContractionSequence) {
+    let mut graph = input_graph.clone();
+
+    let mut contract_seq = ContractionSequence::new(graph.number_of_nodes());
+    initial_pruning(&mut graph, &mut contract_seq);
+
+    let (heuristic_tww, heuristic_seq, _) =
+        timeout_monte_carlo_search_tree_solver_preprocessed(&graph, timeout);
+
+    if heuristic_tww == 0 {
+        return (0, heuristic_seq);
+    }
+
+    if let Some(sol) = naive_solver_with_upper_bound(input_graph, heuristic_tww - 1) {
+        return sol;
+    }
+
+    (heuristic_tww, heuristic_seq)
+}
+
+pub fn naive_solver_with_upper_bound<G: NaiveSolvableGraph>(
+    input_graph: &G,
+    not_above: Node,
+) -> Option<(NumNodes, ContractionSequence)> {
+    let mut graph = input_graph.clone();
+
+    let (twin_width, mut contract_seq) = recurse(&mut graph, 0, not_above)?;
 
     contract_seq.add_unmerged_singletons(input_graph).unwrap();
 
@@ -39,7 +72,7 @@ pub fn naive_solver<G: NaiveSolvableGraph>(input_graph: &G) -> (NumNodes, Contra
             .unwrap()
     );
 
-    (twin_width, contract_seq)
+    Some((twin_width, contract_seq))
 }
 
 fn recurse<G: NaiveSolvableGraph>(

@@ -691,12 +691,12 @@ pub mod tests {
 
             let mut solver = TwinWidthSatEncoding::new(&graph);
             if let Some((size, _)) = solver.solve_varisat(tww) {
-                assert_eq!(size, tww as u32);
+                assert_eq!(size, tww);
             } else {
                 panic!("Could not verify solver")
             }
 
-            println!("{} verified.", filename);
+            println!("{filename} verified.",);
         }
     }
 }

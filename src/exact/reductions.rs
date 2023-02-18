@@ -4,6 +4,22 @@ use super::*;
 use crate::graph::*;
 use std::fmt::Debug;
 
+pub fn initial_pruning<
+    G: Clone
+        + AdjacencyList
+        + GraphEdgeOrder
+        + ColoredAdjacencyList
+        + ColoredAdjacencyTest
+        + GraphEdgeEditing
+        + Debug,
+>(
+    graph: &mut G,
+    contract_seq: &mut ContractionSequence,
+) {
+    prune_leaves(graph, contract_seq);
+    prune_twins(graph, contract_seq);
+}
+
 pub fn prune_leaves<
     G: Clone
         + AdjacencyList
