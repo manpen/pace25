@@ -9,11 +9,9 @@ use glob::glob;
 use itertools::Itertools;
 use tww::{
     graph::{AdjArray, GraphEdgeOrder, GraphNodeOrder, NumNodes},
-    heuristic::monte_carlo_search_tree::{
-        timeout_monte_carlo_search_tree_solver_with_descend, MonteCarloSearchTree,
-        MonteCarloSearchTreeGame,
-    },
+    heuristic::monte_carlo_search_tree::{MonteCarloSearchTree, MonteCarloSearchTreeGame},
     io::GraphPaceReader,
+    prelude::monte_carlo_search_tree::timeout_monte_carlo_search_tree_solver,
 };
 
 fn load_best_known() -> std::io::Result<HashMap<String, NumNodes>> {
@@ -62,11 +60,11 @@ fn main() {
     let best_known = load_best_known().unwrap_or_default();
     println!("Found {} best known values", best_known.len());
 
-    let timeout = Some(std::time::Duration::from_secs(10));
+    let timeout = Some(std::time::Duration::from_secs(60));
     //let timeout = None;
 
     let cumulative_score = std::sync::Arc::new(std::sync::Mutex::new(0));
-    files.iter().take(10).for_each(|file| {
+    files.iter().take(25).for_each(|file| {
         let filename = String::from(file.as_os_str().to_str().unwrap());
         let graph = AdjArray::try_read_pace_file(file).expect("Cannot open PACE file");
 
@@ -74,12 +72,7 @@ fn main() {
 
         let result = if let Some(timeout) = timeout {
             //timeout_monte_carlo_search_tree_solver(&graph, timeout)
-            timeout_monte_carlo_search_tree_solver_with_descend(
-                &graph,
-                timeout,
-                std::time::Duration::from_millis(200),
-                50,
-            )
+            timeout_monte_carlo_search_tree_solver(&graph, timeout)
         } else {
             let mut full_tree = MonteCarloSearchTree::new(&graph, true);
 
@@ -90,11 +83,7 @@ fn main() {
                 full_tree.add_game(&tree);
             }
             full_tree.permanently_collapse_one_move();
-            (
-                full_tree.best_score(),
-                full_tree.into_best_contraction_seq(),
-                100000,
-            )
+            full_tree.into_best_sequence()
         };
         let sol_size = result.0;
 

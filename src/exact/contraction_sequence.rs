@@ -96,6 +96,10 @@ impl ContractionSequence {
         Some(node_exists)
     }
 
+    pub fn number_of_nodes(&self) -> u32 {
+        self.num_nodes
+    }
+
     /// Appends another contraction sequence at the end of this one
     pub fn append(&mut self, other: &ContractionSequence) {
         self.seq.extend(&other.seq);
