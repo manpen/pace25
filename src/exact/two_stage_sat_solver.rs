@@ -6,7 +6,7 @@ use crate::{
     heuristic::monte_carlo_search_tree::timeout_monte_carlo_search_tree_solver_preprocessed,
     prelude::{sweep_solver::heuristic_solve, Connectivity, Getter},
 };
-use std::fmt::Debug;
+use std::{fmt::Debug, f32::consts::E};
 
 use super::{
     contraction_sequence::ContractionSequence,
@@ -148,7 +148,14 @@ impl<
             }
             // No connected components attempt solving on full graph
             else {
-                let mut sat_encoding = TwinWidthSatEncoding::new(&self.graph);
+                // Twin Width of 1 is most of the time faster if we use the complement graph
+                let mut sat_encoding = if best_solution == 2 {
+                    TwinWidthSatEncoding::new_complement_graph(&self.graph)
+                }
+                else {
+                    TwinWidthSatEncoding::new(&self.graph)
+                };
+
                 if let Some((tww, seq)) = sat_encoding.solve_kissat(best_solution - 1) {
                     self.preprocessing_sequence.append(&seq);
                     self.preprocessing_sequence
