@@ -9,7 +9,7 @@ use structopt::*;
 
 #[derive(Debug, StructOpt)]
 struct Opt {
-    #[structopt(short, long, default_value = "100")]
+    #[structopt(short, long, default_value = "1000")]
     repeats: u32,
 
     #[structopt(short, long)]

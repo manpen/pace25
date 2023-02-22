@@ -7,7 +7,11 @@ use std::{
 
 use glob::glob;
 use itertools::Itertools;
-use tww::{exact::two_stage_sat_solver::TwoStageSatSolver, graph::*, io::*};
+use tww::{
+    graph::{AdjArray, GraphEdgeOrder, GraphNodeOrder, NumNodes},
+    io::GraphPaceReader,
+    prelude::{lower_bound_lb1::lower_bound, sweep_solver::heuristic_solve},
+};
 
 fn load_best_known() -> std::io::Result<HashMap<String, NumNodes>> {
     let reader = File::open("instances/best_known_solutions.csv")?;
@@ -51,30 +55,40 @@ fn main() {
         .collect_vec();
 
     let best_known = load_best_known().unwrap_or_default();
-    //let files = vec![std::path::PathBuf::from_str("instances/exact-public/exact_064.gr").unwrap()];
-
     println!("Found {} best known values", best_known.len());
 
-    files.iter().take(35).for_each(|file| {
+    let cumulative_score = std::sync::Arc::new(std::sync::Mutex::new(0));
+    let mut cumulative_best_known = 0;
+    let mut sols_compared = 0;
+    files.iter().take(34).for_each(|file| {
         let filename = String::from(file.as_os_str().to_str().unwrap());
         let graph = AdjArray::try_read_pace_file(file).expect("Cannot open PACE file");
 
         let start = Instant::now();
-        let mut two_stage = TwoStageSatSolver::new(&graph, std::time::Duration::from_millis(10000));
+        let result = heuristic_solve(&graph);
 
-        let (sol_size, _sol) = two_stage.solve();
+        let lb = lower_bound(&graph, 0);
+
+        let sol_size = result.0;
+
         let duration = start.elapsed();
 
         let best_known = best_known.get(&filename);
 
         println!(
-            "{filename:<50} | {:>6} | {:>8} | {sol_size:>6} ({:>6}) | {:>6} ms",
+            "{filename:<50} | {:>6} | {:>8} | {sol_size:>6} ({:>6}) | {:>6} ms | {lb} lb",
             graph.number_of_nodes(),
             graph.number_of_edges(),
             best_known.map_or_else(|| String::from("?"), |b| format!("{b}")),
             duration.as_millis()
         );
-
-        //assert!(sol_size <= *best_known.unwrap_or(&Node::MAX));
+        if let Some(best_known) = best_known.as_ref() {
+            *cumulative_score.lock().unwrap() += sol_size;
+            cumulative_best_known += *best_known;
+            sols_compared += 1;
+        }
     });
+    println!("Cumulative score {}", cumulative_score.lock().unwrap());
+    println!("Best known score {cumulative_best_known}");
+    println!("Solutions {sols_compared}");
 }

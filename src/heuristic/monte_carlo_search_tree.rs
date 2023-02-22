@@ -42,11 +42,7 @@ pub fn timeout_monte_carlo_search_tree_solver<
         }
     }
 
-    (
-        full_tree.best_score(),
-        full_tree.best_contraction_sequence.take().unwrap(),
-        full_tree.num_games(),
-    )
+    full_tree.into_best_sequence()
 }
 
 /// Runs the search tree for the given period of time, will return the best score the contraction sequence and the number of games played
@@ -76,11 +72,7 @@ pub fn timeout_monte_carlo_search_tree_solver_preprocessed<
         }
     }
 
-    (
-        full_tree.best_score(),
-        full_tree.best_contraction_sequence.take().unwrap(),
-        full_tree.num_games(),
-    )
+    full_tree.into_best_sequence()
 }
 
 /// Runs the search tree for the given period of time, after the initial timeout the search tree
@@ -131,11 +123,7 @@ pub fn timeout_monte_carlo_search_tree_solver_with_descend<
         max_descends -= 1;
     }
 
-    (
-        full_tree.best_score(),
-        full_tree.best_contraction_sequence.take().unwrap(),
-        full_tree.num_games(),
-    )
+    full_tree.into_best_sequence()
 }
 
 pub enum MonteCarloSearchTreeNode {
@@ -295,11 +283,10 @@ impl<
 
     /// Builds the best contraction sequence based on initial preprocessing sequence, the collapse sequence followed by the
     /// current best contraction sequence
-    pub fn into_best_contraction_seq(mut self) -> ContractionSequence {
-        self.preprocessing_sequence.append(&self.collapse_sequence);
+    pub fn into_best_sequence(mut self) -> (u32, ContractionSequence, u32) {
         self.preprocessing_sequence
             .append(&self.best_contraction_sequence.unwrap());
-        self.preprocessing_sequence
+        (self.best_score, self.preprocessing_sequence, self.num_games)
     }
 
     /// Adds a played out game to update the heuristics of the MonteCarlo search tree
@@ -389,11 +376,11 @@ impl<
 {
     /// Creates a new game from a given graph
     fn new(graph: G) -> MonteCarloSearchTreeGame<G> {
-        let num_nodes = graph.number_of_nodes();
+        let seq = ContractionSequence::new(graph.number_of_nodes());
         MonteCarloSearchTreeGame {
             graph,
             final_twin_width: None,
-            contraction_sequence: ContractionSequence::new(num_nodes),
+            contraction_sequence: seq,
         }
     }
 
@@ -537,18 +524,22 @@ impl<
         }
 
         let mut twin_width = 0;
+        let mut remaining_nodes = self.contraction_sequence.remaining_nodes().unwrap();
+
+        for x in remaining_nodes.clone().iter() {
+            if self.graph.degree_of(x) < 1 {
+                remaining_nodes.unset_bit(x);
+            }
+        }
 
         loop {
-            // Should never create an invalid bit sequence!
-            let nodes = self.contraction_sequence.remaining_nodes().unwrap();
-
             // All nodes merged? Finish...
-            if nodes.cardinality() == 1 {
+            if remaining_nodes.cardinality() <= 1 {
                 break;
             }
 
             let choice = decision_function(
-                &nodes,
+                &remaining_nodes,
                 &mut self.graph,
                 full_game_tree.best_score() - twin_width,
             );
@@ -559,6 +550,7 @@ impl<
 
             self.contraction_sequence
                 .merge_node_into(choice.1, choice.0);
+            remaining_nodes.unset_bit(choice.1);
 
             // Abort games which are not better than previous games
             if twin_width >= full_game_tree.best_score() {
