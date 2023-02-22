@@ -229,7 +229,10 @@ impl<
         formula: &mut Vec<Vec<i32>>,
     ) {
         // Based on the description of the sequential encoding from here https://www.carstensinz.de/papers/CP-2005.pdf
-        if upper_bound == 0 {
+        if vars.len() <= upper_bound as usize {
+            // If we have fewer variables than our upper bound then this is trivially true
+            return;
+        } else if upper_bound == 0 {
             for x in vars.iter() {
                 formula.push(vec![-*x]);
             }
@@ -806,6 +809,7 @@ impl<
         let mut last_valid_bound = ub;
         loop {
             let (encoding, _) = self.encode(ub);
+            println!("Solving for width {ub}");
 
             let mut kissat_solver = Solver::new();
 

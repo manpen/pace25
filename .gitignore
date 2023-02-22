@@ -2,3 +2,4 @@
 /Cargo.lock
 perf.data
 /instances/small-random/*
+/instances/heuristic-public/*
