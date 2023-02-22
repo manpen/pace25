@@ -6,7 +6,7 @@ use crate::{
     heuristic::monte_carlo_search_tree::timeout_monte_carlo_search_tree_solver_preprocessed,
     prelude::{sweep_solver::heuristic_solve, Connectivity, Getter},
 };
-use std::{fmt::Debug, f32::consts::E};
+use std::fmt::Debug;
 
 use super::{
     contraction_sequence::ContractionSequence,
@@ -151,8 +151,7 @@ impl<
                 // Twin Width of 1 is most of the time faster if we use the complement graph
                 let mut sat_encoding = if best_solution == 2 {
                     TwinWidthSatEncoding::new_complement_graph(&self.graph)
-                }
-                else {
+                } else {
                     TwinWidthSatEncoding::new(&self.graph)
                 };
 
