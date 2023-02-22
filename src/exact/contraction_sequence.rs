@@ -27,6 +27,10 @@ impl ContractionSequence {
     }
 
     pub fn merge_node_into(&mut self, removed: Node, survivor: Node) {
+        debug_assert!(self
+            .seq
+            .iter()
+            .all(|(rem, _)| *rem != removed && *rem != survivor));
         self.seq.push((removed, survivor))
     }
 
@@ -87,6 +91,9 @@ impl ContractionSequence {
         for &(removed, survivor) in &self.seq {
             let exists_before_removal = node_exists.unset_bit(removed);
             let still_exists = node_exists[survivor];
+
+            assert!(still_exists, "{survivor} {:?}", &self.seq);
+            assert!(exists_before_removal, "{:?}", &self.seq);
 
             if !still_exists || !exists_before_removal {
                 return None;

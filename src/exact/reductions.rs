@@ -20,6 +20,48 @@ pub fn initial_pruning<
     prune_twins(graph, contract_seq);
 }
 
+pub fn prune_tiny_graph<
+    G: Clone
+        + AdjacencyList
+        + GraphEdgeOrder
+        + ColoredAdjacencyList
+        + ColoredAdjacencyTest
+        + GraphEdgeEditing
+        + Debug,
+>(
+    graph: &mut G,
+    slack: NumNodes,
+    contract_seq: &mut ContractionSequence,
+) {
+    if graph.number_of_edges() == 0
+        || graph.number_of_edges() > (slack as NumEdges) * (slack.saturating_sub(1) as NumEdges) / 2
+    {
+        return;
+    }
+
+    if graph
+        .degrees()
+        .filter(|&d| d > 0)
+        .take(2 + slack as usize)
+        .count()
+        <= 1 + slack as usize
+    {
+        let mut remaining_nodes: Vec<_> = graph
+            .vertices()
+            .filter(|&u| graph.degree_of(u) > 0)
+            .collect();
+
+        for &x in &remaining_nodes {
+            graph.remove_edges_at_node(x);
+        }
+
+        let survivor = remaining_nodes.pop().unwrap();
+        for removed in remaining_nodes {
+            contract_seq.merge_node_into(removed, survivor);
+        }
+    }
+}
+
 pub fn prune_leaves<
     G: Clone
         + AdjacencyList

@@ -105,6 +105,16 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
     node_bitset_of!(neighbors_of_as_bitset, neighbors_of);
     node_iterator!(neighbors_as_bitset, neighbors_of_as_bitset, BitSet);
 
+    fn closed_two_neighborhood_of(&self, u: Node) -> BitSet {
+        let mut ns = BitSet::new(self.number_of_nodes());
+        ns.set_bit(u);
+        for &v in self.neighbors_of(u) {
+            ns.set_bit(v);
+            ns.set_bits(self.neighbors_of(v).iter().copied());
+        }
+        ns
+    }
+
     fn edges_of(&self, u: Node, only_normalized: bool) -> impl Iterator<Item = Edge> + '_ {
         self.neighbors_of(u)
             .iter()

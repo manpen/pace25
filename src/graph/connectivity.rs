@@ -12,7 +12,11 @@ where
         let mut partition = Partition::new(self.number_of_nodes());
 
         let start_node = if skip_trivial {
-            self.vertices().find(|&u| self.degree_of(u) > 0).unwrap()
+            if let Some(start_node) = self.vertices().find(|&u| self.degree_of(u) > 0) {
+                start_node
+            } else {
+                return partition;
+            }
         } else {
             0
         };

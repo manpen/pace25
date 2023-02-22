@@ -43,14 +43,13 @@ impl<'a, G: AdjacencyList> DistanceTwoPairsIterator<'a, G> {
         self.neighbors.unset_all();
 
         for &v in self.graph.neighbors_of(self.node) {
-            for &w in self
-                .graph
-                .neighbors_of(v)
-                .iter()
-                .filter(|&&w| w > self.node)
-            {
-                self.neighbors.set_bit(w);
-            }
+            self.neighbors.set_bits(
+                self.graph
+                    .neighbors_of(v)
+                    .iter()
+                    .copied()
+                    .filter(|&w| w > self.node),
+            );
             self.neighbors.set_bit(v);
         }
 
