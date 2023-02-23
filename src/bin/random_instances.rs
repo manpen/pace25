@@ -42,8 +42,7 @@ fn main() {
         .for_each_init(rand::thread_rng, |rng, &(n, p)| {
             let graph = AdjArray::random_black_gnp(rng, n, p);
 
-            let (tww_naive, sol_naive) =
-                naive::naive_solver_two_staged(&graph, Duration::from_millis(100));
+            let (tww_naive, sol_naive) = naive::naive_solver_two_staged(&graph);
             let (tww_sat, sol_sat) =
                 TwoStageSatSolver::new(&graph, Duration::from_millis(100)).solve();
 
