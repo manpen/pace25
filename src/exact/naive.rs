@@ -1,9 +1,6 @@
 use super::*;
-use crate::{
-    graph::{connectivity::Connectivity, *},
-    prelude::monte_carlo_search_tree::timeout_monte_carlo_search_tree_solver_preprocessed,
-};
-use std::{fmt::Debug, time::Duration};
+use crate::prelude::{sweep_solver::heuristic_solve, *};
+use std::{collections::HashMap, fmt::Debug};
 
 pub trait NaiveSolvableGraph:
     Clone
@@ -36,15 +33,13 @@ pub fn naive_solver<G: NaiveSolvableGraph>(input_graph: &G) -> (NumNodes, Contra
 
 pub fn naive_solver_two_staged<G: NaiveSolvableGraph>(
     input_graph: &G,
-    timeout: Duration,
 ) -> (NumNodes, ContractionSequence) {
     let mut graph = input_graph.clone();
 
     let mut contract_seq = ContractionSequence::new(graph.number_of_nodes());
     initial_pruning(&mut graph, &mut contract_seq);
 
-    let (heuristic_tww, heuristic_seq, _) =
-        timeout_monte_carlo_search_tree_solver_preprocessed(&graph, timeout);
+    let (heuristic_tww, heuristic_seq) = heuristic_solve(&graph);
 
     if heuristic_tww == 0 {
         return (0, heuristic_seq);

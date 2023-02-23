@@ -3,12 +3,7 @@ use cat_solver::Solver;
 use splr::Certificate;
 use varisat::{CnfFormula, ExtendFormula, Lit};
 
-use crate::{
-    exact::contraction_sequence::ContractionSequence,
-    graph::{
-        AdjacencyList, ColoredAdjacencyList, ColoredAdjacencyTest, GraphEdgeEditing, GraphEdgeOrder,
-    },
-};
+use crate::prelude::*;
 use core::fmt::Debug;
 use std::cmp::Ordering;
 

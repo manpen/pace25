@@ -8,10 +8,8 @@ use crate::{
 };
 use std::fmt::Debug;
 
-use super::{
-    contraction_sequence::ContractionSequence,
-    reductions::{prune_leaves, prune_twins},
-};
+use super::reductions::{prune_leaves, prune_twins};
+use crate::prelude::*;
 
 /*
 instances/exact-public/exact_002.gr                |     20 |       69 |      6 (     6) |   2.806 ms

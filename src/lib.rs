@@ -9,12 +9,14 @@ pub mod graph;
 pub mod heuristic;
 pub mod io;
 pub mod log;
+pub mod utils;
 
 pub mod prelude {
     pub use super::exact::*;
     pub use super::graph::*;
     pub use super::heuristic::*;
     pub use super::io::*;
+    pub use super::utils::*;
 }
 
 #[cfg(test)]
