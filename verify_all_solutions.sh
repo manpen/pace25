@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-for sol in instances/*/*.solution; do
+for sol in instances/exact-public/*.solution; do
     graph=$(echo "$sol" | perl -pe "s/.gr.*.solution\$/.gr/")
     
     if ./pace_verifier.py $graph $sol ; then
         # verified -> let keep that solution
-        hash=$(sha1sum $sol)
+        hash=$(grep -v 'c' $sol | sha1sum -)
         archived="$graph.vsolution-${hash:0:8}"
         
         if [ ! -f $archived ]; then

@@ -6,20 +6,28 @@ pub trait GraphDigest {
     /// graph data structure used and returns it as a hex string.
     fn digest<D: Digest>(&self) -> String
     where
-        digest::Output<D>: core::fmt::LowerHex;
+        digest::Output<D>: core::fmt::LowerHex,
+    {
+        format!("{:x}", self.binary_digest::<D>())
+    }
 
-    /// Computes a SHA256 digest using [GraphDigest::digest]. The
-    /// returned string is 64 characters long.
+    // Computes the Hash-Digest of a graph that is indepenet of the graph
+    // data structure ised and returns it as binary data.
+    fn binary_digest<D: Digest>(&self) -> digest::Output<D>;
+
+    /// Computes a SHA256 digest using [GraphDigest::digest]. The returned string is 64 characters long.
     fn digest_sha256(&self) -> String {
         self.digest::<sha2::Sha256>()
+    }
+
+    /// Computes a SHA256 digest using [GraphDigest::digest] and returns the binary digest.
+    fn binary_digest_sha256(&self) -> digest::Output<sha2::Sha256> {
+        self.binary_digest::<sha2::Sha256>()
     }
 }
 
 impl<G: ColoredAdjacencyList> GraphDigest for G {
-    fn digest<D: Digest>(&self) -> String
-    where
-        digest::Output<D>: core::fmt::LowerHex,
-    {
+    fn binary_digest<D: Digest>(&self) -> digest::Output<D> {
         let mut hasher = D::new();
         let mut buffer = [0u8; 12];
 
@@ -41,7 +49,7 @@ impl<G: ColoredAdjacencyList> GraphDigest for G {
             hasher.update(buffer);
         }
 
-        format!("{:x}", hasher.finalize())
+        hasher.finalize()
     }
 }
 

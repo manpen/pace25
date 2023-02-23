@@ -1,6 +1,6 @@
 use super::*;
 use crate::prelude::{sweep_solver::heuristic_solve, *};
-use std::{collections::HashMap, fmt::Debug};
+use std::fmt::Debug;
 
 pub trait NaiveSolvableGraph:
     Clone
@@ -26,6 +26,8 @@ impl<G> NaiveSolvableGraph for G where
 {
 }
 
+type SolverResultCache = crate::utils::ResultCache<digest::Output<sha2::Sha256>>;
+
 pub fn naive_solver<G: NaiveSolvableGraph>(input_graph: &G) -> (NumNodes, ContractionSequence) {
     naive_solver_with_bounds(input_graph, 0, input_graph.number_of_nodes())
         .expect("Could not produce feasable solution")
@@ -41,15 +43,19 @@ pub fn naive_solver_two_staged<G: NaiveSolvableGraph>(
 
     let (heuristic_tww, heuristic_seq) = heuristic_solve(&graph);
 
-    if heuristic_tww == 0 {
-        return (0, heuristic_seq);
+    if heuristic_tww > 0 {
+        // a solution with TWW 0 cannot be improved
+        if let Some((tww, seq)) = naive_solver_with_bounds(&graph, 0, heuristic_tww - 1) {
+            contract_seq.append(&seq);
+            contract_seq.add_unmerged_singletons(&graph).unwrap();
+            return (tww, contract_seq);
+        }
     }
 
-    if let Some(sol) = naive_solver_with_bounds(input_graph, 0, heuristic_tww - 1) {
-        return sol;
-    }
+    contract_seq.append(&heuristic_seq);
+    contract_seq.add_unmerged_singletons(input_graph).unwrap();
 
-    (heuristic_tww, heuristic_seq)
+    (heuristic_tww, contract_seq)
 }
 
 pub fn naive_solver_with_bounds<G: NaiveSolvableGraph>(
@@ -59,21 +65,60 @@ pub fn naive_solver_with_bounds<G: NaiveSolvableGraph>(
 ) -> Option<(NumNodes, ContractionSequence)> {
     let mut graph = input_graph.clone();
 
-    let (twin_width, mut contract_seq) = recurse(&mut graph, slack, not_above)?;
+    let mut cache = SolverResultCache::default();
 
-    contract_seq.add_unmerged_singletons(input_graph).unwrap();
+    let (twin_width, mut contract_seq) =
+        try_split_into_cc(&mut cache, &mut graph, slack, not_above)
+            .unwrap_or_else(|| recurse(&mut cache, &mut graph, slack, not_above))?;
 
-    assert_eq!(
-        twin_width,
-        contract_seq
-            .compute_twin_width(input_graph.clone())
-            .unwrap()
+    println!(
+        "hits: {} misses: {}",
+        cache.number_of_cache_hits(),
+        cache.number_of_cache_misses()
     );
+
+    /* contract_seq.add_unmerged_singletons(input_graph).unwrap();
+
+    let tww_of_seq = contract_seq
+        .compute_twin_width(input_graph.clone())
+        .unwrap();
+
+    assert!(
+        twin_width >= tww_of_seq,
+        "{twin_width} >= {tww_of_seq} slack: {slack} not_above: {not_above}"
+    ); */
 
     Some((twin_width, contract_seq))
 }
 
 fn recurse<G: NaiveSolvableGraph>(
+    cache: &mut SolverResultCache,
+    graph: &mut G,
+    slack: Node,
+    not_above: Node,
+) -> Option<(NumNodes, ContractionSequence)> {
+    let num_non_nodes = graph.degrees().filter(|&d| d == 0).count() as NumNodes;
+    let num_nnzs = graph.number_of_nodes() - num_non_nodes;
+
+    if num_nnzs.next_power_of_two() != graph.number_of_nodes().next_power_of_two() {
+        return try_split_into_cc(cache, graph, slack, not_above).unwrap();
+    }
+
+    let hash = graph.binary_digest_sha256();
+
+    if let Some(solution) = cache.get(&hash, slack, not_above) {
+        return solution.cloned();
+    }
+
+    let result = recurse_impl(cache, graph, slack, not_above);
+
+    cache.add_to_cache(hash, result.clone(), slack, not_above);
+
+    result
+}
+
+fn recurse_impl<G: NaiveSolvableGraph>(
+    cache: &mut SolverResultCache,
     graph: &mut G,
     slack: Node,
     mut not_above: Node,
@@ -94,7 +139,7 @@ fn recurse<G: NaiveSolvableGraph>(
     prune_tiny_graph(graph, slack, &mut contract_seq);
     prune_leaves(graph, &mut contract_seq);
     prune_twins(graph, &mut contract_seq);
-    //prune_black_ccs(graph, slack, &mut contract_seq);
+    //prune_red_path(graph, slack, &mut contract_seq);
 
     assert!(red_deg_before >= graph.red_degrees().max().unwrap());
 
@@ -102,21 +147,7 @@ fn recurse<G: NaiveSolvableGraph>(
         return Some((slack, contract_seq));
     }
 
-    if let Some(res) = try_split_into_cc(graph, slack, not_above) {
-        return res.map(|(tww, seq)| {
-            (tww, {
-                contract_seq.append(&seq);
-                contract_seq
-            })
-        });
-    }
-
     assert!(graph.red_degrees().max().unwrap() <= not_above);
-
-    let pairs = contraction_candidates(graph, not_above);
-    if pairs.is_empty() {
-        return None;
-    };
 
     let mut best_solution = None;
     let mergable = {
@@ -137,9 +168,23 @@ fn recurse<G: NaiveSolvableGraph>(
         mergable
     };
 
+    let pairs = contraction_candidates(graph, &mut contract_seq, &mergable, not_above);
+
+    if graph.number_of_edges() == 0 {
+        // contract_candidates may prune, so we've to check again
+        return Some((slack, contract_seq));
+    }
+
+    if pairs.is_empty() {
+        return None;
+    };
+
     'outer: for &(r, (u, v)) in &pairs {
         assert!(graph.degree_of(u) > 0);
-        assert!(graph.degree_of(v) > 0);
+        if graph.degree_of(v) == 0 {
+            continue;
+        }
+
         assert_ne!(u, v);
 
         if r > not_above {
@@ -158,9 +203,12 @@ fn recurse<G: NaiveSolvableGraph>(
             continue;
         }
 
-        if let Some((sol_size, seq)) =
-            recurse(&mut local_graph, slack.max(max_red_degree), not_above)
-        {
+        if let Some((sol_size, seq)) = recurse(
+            cache,
+            &mut local_graph,
+            slack.max(max_red_degree),
+            not_above,
+        ) {
             let sol_size = sol_size.max(max_red_degree);
             assert!(sol_size <= not_above);
             best_solution = Some(((u, v), sol_size, seq));
@@ -180,20 +228,35 @@ fn recurse<G: NaiveSolvableGraph>(
 }
 
 fn contraction_candidates<G: NaiveSolvableGraph>(
-    graph: &G,
+    graph: &mut G,
+    contract_seq: &mut ContractionSequence,
+    mergeable: &BitSet,
     not_above: u32,
 ) -> Vec<(u32, (u32, u32))> {
     let mut pairs = Vec::new();
-    for u in graph.vertices() {
+    let mut mergeable = mergeable.clone();
+    for u in graph.vertices_range() {
+        if !mergeable.unset_bit(u) {
+            continue;
+        }
         let degree_u = graph.degree_of(u);
         if degree_u == 0 {
             continue;
         }
 
         let mut two_neighbors = graph.closed_two_neighborhood_of(u);
-        for v in two_neighbors.iter().filter(|&v| v > u) {
+        two_neighbors.and(&mergeable);
+        for v in two_neighbors.iter() {
+            assert!(v > u);
             let mut red_neighs = graph.red_neighbors_after_merge(u, v, false);
             let mut red_card = red_neighs.cardinality();
+
+            if red_neighs.cardinality() == 0 {
+                contract_seq.merge_node_into(v, u);
+                graph.merge_node_into(v, u);
+                assert_eq!(graph.red_degree_of(v), 0);
+                continue;
+            }
 
             if red_card > not_above {
                 continue;
@@ -222,6 +285,7 @@ fn contraction_candidates<G: NaiveSolvableGraph>(
 
         let distant_nodes = {
             two_neighbors.not();
+            two_neighbors.and(&mergeable);
             two_neighbors
         };
 
@@ -236,7 +300,8 @@ fn contraction_candidates<G: NaiveSolvableGraph>(
             continue;
         }
 
-        for v in distant_nodes.iter().filter(|&v| v > u) {
+        for v in distant_nodes.iter() {
+            assert!(v > u);
             let degree_v = graph.degree_of(v);
             let red_degree = red_deg_of_black_neighbors.max(degree_u + degree_v);
             if degree_v > 0
@@ -255,12 +320,13 @@ fn contraction_candidates<G: NaiveSolvableGraph>(
 }
 
 fn try_split_into_cc<G: NaiveSolvableGraph>(
+    cache: &mut SolverResultCache,
     graph: &mut G,
     slack: u32,
     not_above: u32,
 ) -> Option<Option<(NumNodes, ContractionSequence)>> {
     let part = graph.partition_into_connected_components(true);
-    if part.number_of_classes() == 1 && 10 * part.number_of_unassigned() < graph.number_of_nodes() {
+    if part.number_of_classes() == 1 && part.number_of_unassigned() == 0 {
         return None;
     }
 
@@ -270,7 +336,7 @@ fn try_split_into_cc<G: NaiveSolvableGraph>(
     let mut contract_seq = ContractionSequence::new(graph.number_of_nodes());
 
     for (mut subgraph, mapper) in part.split_into_subgraphs(graph) {
-        if let Some((size, sol)) = recurse(&mut subgraph, slack, not_above) {
+        if let Some((size, sol)) = recurse(cache, &mut subgraph, slack, not_above) {
             slack = slack.max(size);
             max_tww = max_tww.max(size);
             for &(rem, sur) in sol.merges() {
@@ -322,7 +388,7 @@ mod test {
         for (filename, graph, presolved_tww) in
             get_test_graphs_with_tww("instances/small-random/*.gr").step_by(3)
         {
-            if graph.number_of_nodes() > 10 {
+            if graph.number_of_nodes() > 15 {
                 continue;
             }
             println!(" Test {filename}");

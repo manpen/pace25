@@ -109,7 +109,11 @@ impl ContractionSequence {
 
     /// Appends another contraction sequence at the end of this one
     pub fn append(&mut self, other: &ContractionSequence) {
-        self.seq.extend(&other.seq);
+        self.seq.reserve(other.seq.len());
+        for &(u, v) in &other.seq {
+            self.merge_node_into(u, v);
+        }
+        //self.seq.extend(&other.seq);
     }
 
     pub fn checkpoint(&self) -> CSCheckPoint {

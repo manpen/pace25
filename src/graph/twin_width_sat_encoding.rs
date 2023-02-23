@@ -804,7 +804,7 @@ impl<
         let mut last_valid_bound = ub;
         loop {
             let (encoding, _) = self.encode(ub);
-            println!("Solving for width {ub}");
+            //println!("Solving for width {ub}");
 
             let mut kissat_solver = Solver::new();
 
