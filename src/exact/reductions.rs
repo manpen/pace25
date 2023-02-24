@@ -180,3 +180,61 @@ pub fn prune_twins<
         }
     }
 }
+
+pub fn prune_red_path<
+    G: Clone
+        + AdjacencyList
+        + GraphEdgeOrder
+        + ColoredAdjacencyList
+        + ColoredAdjacencyTest
+        + GraphEdgeEditing
+        + ColorFilter
+        + Debug,
+>(
+    graph: &mut G,
+    slack: NumNodes,
+    contract_seq: &mut ContractionSequence,
+) {
+    if slack < 2 {
+        return;
+    }
+
+    let mut path = Vec::new();
+    'next_node: for u in graph.vertices_range() {
+        if graph.degree_of(u) != 1 || graph.red_degree_of(u) > 0 {
+            continue;
+        }
+
+        path.clear();
+        path.push(u);
+
+        let mut parent = u;
+        let mut front = graph.neighbors_of(u)[0];
+
+        loop {
+            if graph.degree_of(front) != 2 {
+                continue 'next_node;
+            }
+
+            path.push(front);
+
+            if graph.red_degree_of(front) > 0 {
+                break;
+            }
+
+            (parent, front) = (
+                front,
+                graph.neighbors_of(front)[(graph.neighbors_of(front)[0] == parent) as usize],
+            );
+        }
+
+        if path.len() < 3 {
+            continue;
+        }
+
+        for (&removed, &survivor) in path.iter().tuple_windows() {
+            contract_seq.merge_node_into(removed, survivor);
+            graph.merge_node_into(removed, survivor);
+        }
+    }
+}

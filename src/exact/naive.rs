@@ -139,7 +139,7 @@ fn recurse_impl<G: NaiveSolvableGraph>(
     prune_tiny_graph(graph, slack, &mut contract_seq);
     prune_leaves(graph, &mut contract_seq);
     prune_twins(graph, &mut contract_seq);
-    //prune_red_path(graph, slack, &mut contract_seq);
+    prune_red_path(graph, slack, &mut contract_seq);
 
     assert!(red_deg_before >= graph.red_degrees().max().unwrap());
 

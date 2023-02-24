@@ -3,8 +3,8 @@ use crate::prelude::*;
 use fxhash::{FxBuildHasher, FxHashMap};
 
 const INITIAL_CAPACITY: usize = 10_000;
-const DEFAULT_MAX_CAPACITY: usize = 10_000_000;
-const EVICITION_SEACH: usize = 10;
+const DEFAULT_MAX_CAPACITY: usize = 100_000_000;
+const EVICITION_SEACH: usize = 100;
 
 pub type Solution = (NumNodes, ContractionSequence);
 
