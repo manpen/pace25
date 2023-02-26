@@ -1,5 +1,6 @@
 pub mod adj_array;
 pub mod bitset;
+pub mod bridges;
 pub mod color_filter;
 pub mod connectivity;
 pub mod cut_vertex;
@@ -14,6 +15,7 @@ pub mod twin_width_sat_encoding;
 
 pub use adj_array::*;
 pub use bitset::*;
+pub use bridges::*;
 pub use color_filter::*;
 pub use connectivity::*;
 pub use cut_vertex::*;
