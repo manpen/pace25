@@ -11,6 +11,7 @@ pub mod gnp;
 pub mod graph_digest;
 pub mod node_mapper;
 pub mod partition;
+pub mod subgraph;
 pub mod traversal;
 pub mod twin_width_sat_encoding;
 
@@ -27,6 +28,7 @@ pub use gnp::*;
 pub use graph_digest::*;
 pub use node_mapper::*;
 pub use partition::*;
+pub use subgraph::*;
 pub use traversal::*;
 
 use itertools::Itertools;
