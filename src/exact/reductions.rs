@@ -1,6 +1,5 @@
 use itertools::Itertools;
 
-use super::*;
 use crate::prelude::*;
 use std::fmt::Debug;
 
@@ -16,8 +15,43 @@ pub fn initial_pruning<
     graph: &mut G,
     contract_seq: &mut ContractionSequence,
 ) {
-    prune_leaves(graph, contract_seq);
-    prune_twins(graph, contract_seq);
+    loop {
+        let m = graph.number_of_edges();
+        let k = contract_seq.merges().len();
+        prune_leaves(graph, contract_seq);
+        prune_twins(graph, contract_seq);
+        if graph.number_of_edges() == m && contract_seq.merges().len() == k {
+            break;
+        }
+    }
+}
+
+pub fn default_pruning<
+    G: Clone
+        + AdjacencyList
+        + GraphEdgeOrder
+        + ColoredAdjacencyList
+        + ColoredAdjacencyTest
+        + ColorFilter
+        + GraphEdgeEditing
+        + Debug,
+>(
+    graph: &mut G,
+    slack: NumNodes,
+    contract_seq: &mut ContractionSequence,
+) {
+    loop {
+        let m = graph.number_of_edges();
+        let k = contract_seq.merges().len();
+        prune_tiny_graph(graph, slack, contract_seq);
+        prune_leaves(graph, contract_seq);
+        prune_leaves_at_red_node(graph, contract_seq);
+        prune_twins(graph, contract_seq);
+        prune_red_path(graph, slack, contract_seq);
+        if graph.number_of_edges() == m && contract_seq.merges().len() == k {
+            break;
+        }
+    }
 }
 
 pub fn prune_tiny_graph<
@@ -58,6 +92,40 @@ pub fn prune_tiny_graph<
         let survivor = remaining_nodes.pop().unwrap();
         for removed in remaining_nodes {
             contract_seq.merge_node_into(removed, survivor);
+        }
+    }
+}
+
+pub fn prune_leaves_at_red_node<
+    G: Clone
+        + AdjacencyList
+        + GraphEdgeOrder
+        + ColoredAdjacencyList
+        + ColoredAdjacencyTest
+        + GraphEdgeEditing
+        + Debug,
+>(
+    graph: &mut G,
+    contract_seq: &mut ContractionSequence,
+) {
+    loop {
+        let merges_before = contract_seq.merges().len();
+        for u in graph.vertices_range() {
+            if graph.degree_of(u) != 1 {
+                continue;
+            }
+
+            let v = graph.neighbors_of(u)[0];
+            if graph.black_degree_of(v) > graph.black_degree_of(u) {
+                continue;
+            }
+
+            graph.remove_edges_at_node(u);
+            contract_seq.merge_node_into(u, v);
+        }
+
+        if contract_seq.merges().len() == merges_before {
+            break;
         }
     }
 }
@@ -235,6 +303,82 @@ pub fn prune_red_path<
         for (&removed, &survivor) in path.iter().tuple_windows() {
             contract_seq.merge_node_into(removed, survivor);
             graph.merge_node_into(removed, survivor);
+        }
+    }
+}
+
+pub fn prune_red_bridges<
+    G: Clone
+        + AdjacencyList
+        + GraphEdgeOrder
+        + ColoredAdjacencyList
+        + ColoredAdjacencyTest
+        + GraphEdgeEditing
+        + ColorFilter
+        + Debug,
+>(
+    graph: &mut G,
+    slack: NumNodes,
+    contract_seq: &mut ContractionSequence,
+    mut solver: impl FnMut(&mut G, Node, NumNodes) -> Option<ContractionSequence>,
+) {
+    if slack < 2 {
+        return;
+    }
+
+    let red_bridges = graph
+        .compute_colored_bridges()
+        .into_iter()
+        .filter(|e| e.2.is_red())
+        .collect_vec();
+
+    if red_bridges.is_empty() {
+        return;
+    }
+
+    for &ColoredEdge(u, v, _) in &red_bridges {
+        let mut local_graph = graph.clone();
+        local_graph.remove_edge(u, v);
+
+        let part = local_graph.partition_into_connected_components(true);
+
+        for (mut cc, mapper) in part.split_into_subgraphs(graph) {
+            if cc.number_of_nodes() > 20 || cc.red_degrees().max().unwrap() >= slack {
+                continue;
+            }
+
+            if let Some(seq) = solver(
+                &mut cc,
+                mapper.new_id_of(u).or(mapper.new_id_of(v)).unwrap(),
+                slack,
+            ) {
+                for (removed, survivor) in seq
+                    .merges()
+                    .iter()
+                    .map(|&(x, y)| (mapper.old_id_of(x).unwrap(), mapper.old_id_of(y).unwrap()))
+                {
+                    graph.merge_node_into(removed, survivor);
+                    contract_seq.merge_node_into(removed, survivor);
+                }
+
+                let last_survivor = contract_seq.merges().last().unwrap().1;
+
+                let over_the_bridge = if part.class_of_node(last_survivor) == part.class_of_node(u)
+                {
+                    v
+                } else {
+                    u
+                };
+
+                assert_ne!(
+                    part.class_of_node(over_the_bridge),
+                    part.class_of_node(last_survivor),
+                    "{u} {v} {graph:?}"
+                );
+
+                graph.try_add_edge(over_the_bridge, last_survivor, EdgeColor::Red);
+                return prune_red_bridges(graph, slack, contract_seq, solver);
+            }
         }
     }
 }
