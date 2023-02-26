@@ -2,6 +2,7 @@ pub mod adj_array;
 pub mod bitset;
 pub mod color_filter;
 pub mod connectivity;
+pub mod cut_vertex;
 pub mod distance_two_pairs;
 pub mod edge;
 pub mod gnp;
@@ -15,6 +16,7 @@ pub use adj_array::*;
 pub use bitset::*;
 pub use color_filter::*;
 pub use connectivity::*;
+pub use cut_vertex::*;
 pub use distance_two_pairs::*;
 pub use edge::*;
 pub use gnp::*;
@@ -250,7 +252,7 @@ pub trait GraphEdgeEditing: GraphNew {
         }
     }
 
-    fn add_colored_edges<I>(&mut self, edges: impl IntoIterator<Item = impl Borrow<ColoredEdge>>) {
+    fn add_colored_edges(&mut self, edges: impl IntoIterator<Item = impl Borrow<ColoredEdge>>) {
         for ColoredEdge(u, v, color) in edges.into_iter().map(|d| *d.borrow()) {
             self.add_edge(u, v, color);
         }
