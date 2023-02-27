@@ -484,7 +484,6 @@ impl<
                 formula,
             );
         } else {
-            
             self.amo_commander(commands, m, formula);
         }
     }
@@ -891,7 +890,10 @@ impl<
                 atleast_encoded.push(var);
                 amocommander_encoded.push(var);
             }
-            RelativeTwinWidthSatEncoding::<G>::cardinality_at_least_1(atleast_encoded, &mut formula);
+            RelativeTwinWidthSatEncoding::<G>::cardinality_at_least_1(
+                atleast_encoded,
+                &mut formula,
+            );
             //self.amo_commander(amocommander_encoded, 2, &mut formula);
             RelativeTwinWidthSatEncoding::<G>::cardinality_naive_at_most_1(
                 &mut self.variable_id,

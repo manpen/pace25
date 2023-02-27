@@ -2,11 +2,9 @@ use crate::prelude::{
     contraction_sequence::ContractionSequence,
     reductions::{prune_leaves, prune_twins},
     AdjacencyList, BitSet, ColoredAdjacencyList, ColoredAdjacencyTest, DistanceTwoPairs,
-    GraphEdgeEditing, GraphEdgeOrder, absolute_twin_width_sat_encoding::AbsoluteTwinWidthSatEncoding, lower_bound_lb1::{self, lower_bound},
+    GraphEdgeEditing, GraphEdgeOrder,
 };
-use std::{fmt::Debug, cmp::Reverse, f32::consts::E, collections::btree_set::SymmetricDifference};
-
-use super::partial_monte_carlo_search_tree::PartialMonteCarloSearchTree;
+use std::fmt::Debug;
 
 /*
 instances/exact-public/exact_002.gr                |     20 |       69 |      6 (     6) |    233 ms | 5 lb
@@ -126,74 +124,56 @@ pub fn heuristic_solve<
     graph: &G,
 ) -> (u32, ContractionSequence) {
     let clone = graph.clone();
-    let result : (u32, ContractionSequence) = if clone.number_of_edges() < 7000 && clone.number_of_nodes() < 200 {
+    let result: (u32, ContractionSequence) = if clone.number_of_edges() < 1000
+        && clone.number_of_nodes() < 200
+    {
         let sweeping_solver = SweepingSolver::new(clone.clone());
-        let mut result = sweeping_solver.solve_greedy_pairwise_fast(None, 0, false,false,1);
+        // Since no upper bound is set it is guaranteed to return a solution
+        let mut result = sweeping_solver.solve_greedy_pairwise_fast(None, 0, 1).unwrap();
         for i in 1..11 {
             let sweeping_solver_i = SweepingSolver::new(clone.clone());
-            let result_i = sweeping_solver_i.solve_greedy_pairwise_fast(None, i, false,false,1);
-            if result_i.0 <= result.0 {
+            let result_i = sweeping_solver_i.solve_greedy_pairwise_fast(Some(result.0), i, 1);
+            if let Some(result_i) = result_i
+                && result_i.0 <= result.0 {
                 result = result_i;
             }
         }
 
         for i in 0..13 {
             let sweeping_solver_i = SweepingSolver::new(clone.clone());
-            let result_i = sweeping_solver_i.solve_greedy_pairwise_fast_full(Some(result.0), i, false,false,1);
-            if result_i.0 <= result.0 {
+            let result_i = sweeping_solver_i.solve_greedy_pairwise_fast_full(Some(result.0), i, 1);
+            if let Some(result_i) = result_i 
+                && result_i.0 <= result.0 {
                 result = result_i;
             }
         }
-        
-        /*for i in 0..6 {
-            let sweeping_solver_i = SweepingSolver::new(clone.clone());
-            let result_i = sweeping_solver_i.solve_greedy_pairwise_fast_full_sym_desced(result.0, i);
-            if result_i.0 <= result.0 {
-                result = result_i;
-            }
-        }*/
 
         // Improves graph 032 && 018 therefore make it faster then it would be good!
         for i in 0..8 {
             let sweeping_solver_i = SweepingSolver::new(clone.clone());
-            let result_i = sweeping_solver_i.solve_greedy_pairwise_fast_full_sym_desced_only(result.0, i);
-            if result_i.0 <= result.0 {
+            let result_i =
+                sweeping_solver_i.solve_greedy_pairwise_fast_full_sym_descend_only(result.0, i);
+            if let Some(result_i) = result_i 
+                && result_i.0 <= result.0 {
                 result = result_i;
             }
         }
-
-        // Use upper bound to refine
-        /*for i in 1..8 {
-            let sweeping_solver_i = SweepingSolver::new(clone.clone());
-            let result_i = sweeping_solver_i.solve_greedy_pairwise_fast(Some(result.0), i, false,false,1);
-            if result_i.0 < result.0 {
-                result = result_i;
-            }
-        }
-
-        for i in 2..5 {
-            let sweeping_solver_i = SweepingSolver::new(clone.clone());
-            let result_i = sweeping_solver_i.solve_greedy_pairwise_fast(Some(result.0), i, true,false,1);
-            if result_i.0 < result.0 {
-                result = result_i;
-            }
-        }*/
 
         result
     } else if clone.number_of_edges() < 6000 && clone.number_of_nodes() < 1000 {
         let sweeping_solver = SweepingSolver::new(clone.clone());
 
-        let result_1 = sweeping_solver.solve_greedy_pairwise_fast(None, 2, false,false,1);
+        let result_1 = sweeping_solver.solve_greedy_pairwise_fast(None, 2, 1).unwrap();
         let sweeping_solver = SweepingSolver::new(clone.clone());
-        let result_2 = sweeping_solver.solve_greedy_pairwise_fast(None, 1, false,false,1);
+        let result_2 = sweeping_solver.solve_greedy_pairwise_fast(Some(result_1.0), 1, 1);
 
-        if result_1.0 <= result_2.0 {
-            result_1
-        } else {
+        if let Some(result_2) = result_2
+            && result_1.0 > result_2.0 {
             result_2
+        } else {
+            result_1
         }
-    }
-    else {
+    } else {
         let sweeping_solver = SweepingSolver::new(clone.clone());
         let result_1 = sweeping_solver.solve_greedy();
 
@@ -222,6 +202,7 @@ impl<
         let mut clone = graph;
         let mut preprocessing_sequence = ContractionSequence::new(clone.number_of_nodes());
 
+        // Preprocess the graph
         prune_leaves(&mut clone, &mut preprocessing_sequence);
         prune_twins(&mut clone, &mut preprocessing_sequence);
 
@@ -232,6 +213,7 @@ impl<
     }
 
     pub fn new_without_preprocessing(graph: G) -> SweepingSolver<G> {
+        // Sidestep preprocessing if it was made before
         let clone = graph.clone();
         SweepingSolver {
             graph: clone,
@@ -239,7 +221,11 @@ impl<
         }
     }
 
-    //Pretty slow for larger graphs
+    // Solve by iterating over all remaining nodes and contract every node which has a neighbor in the
+    // 2-Neighborhood which permits a contraction which limits the red degree to at most k
+    // Increase k by one if no contraction can be found which induces a red degree <= k
+    // Is performing worse than the normal greedy solver which evaluates the position after every move but is
+    // faster for large graphs. Since no upper bound is given it is guaranteed to return a valid contraction sequence
     pub fn solve_greedy(mut self) -> (u32, ContractionSequence) {
         let mut remaining_nodes = self.preprocessing_sequence.remaining_nodes().unwrap();
         if remaining_nodes.cardinality() == 1 {
@@ -291,6 +277,8 @@ impl<
         (tww, self.preprocessing_sequence)
     }
 
+    // Play multiple levels greedy by always choosing the move which induces the least red degree on the surviving node
+    // This function is mainly used to evaluate the viability of a contraction several steps down the road
     fn play_greedy_multiple_levels(
         graph: &G,
         first_move: (u32, u32),
@@ -332,63 +320,46 @@ impl<
         (tww, cloned.red_degrees().sum())
     }
 
-    fn play_greedy_multiple_levels_sym(
-        graph: &G,
-        first_move: (u32, u32),
-        upper_bound: u32,
-        mut remaining_nodes: BitSet,
-        mut num_levels: u32,
-    ) -> (u32, u32) {
-        let mut cloned = graph.clone();
-        cloned.merge_node_into(first_move.0, first_move.1);
-        remaining_nodes.unset_bit(first_move.0);
-        let mut tww = cloned.red_degrees().max().unwrap();
-
-        loop {
-            if remaining_nodes.cardinality() <= 1 {
-                break;
-            }
-
-            let minimum = cloned
-                .distance_two_pairs()
-                .map(|(u, v)| {
-                    let red_neighs = cloned.red_neighbors_after_merge(u, v, false);
-                    (red_neighs.cardinality(), (u, v))
-                })
-                .min();
-
-            if let Some((_, (u, v))) = minimum {
-                cloned.merge_node_into(u, v);
-                remaining_nodes.unset_bit(u);
-
-                tww = tww.max(cloned.red_degrees().max().unwrap());
-            } else {
-                break;
-            }
-
-            num_levels -= 1;
-            if num_levels == 0 {
-                break;
-            }
-        }
-        let mut sym_sum = 0;
-        for x in 0..cloned.number_of_nodes() {
-            let sym = SweepingSolver::<G>::get_node_min_sim(&cloned, x);
-            if sym > upper_bound-1 {
-                sym_sum+=sym-(upper_bound-1);
-            }
-        }
-        (tww, sym_sum)
-    }
-
-
+    // Fast calculation of the total degree after the contraction as well as maximal induced tww by this move
     #[inline]
-    pub fn red_degree_total_deg_after_merge(g: &G, next_move: (u32,u32)) -> (u32,u32) {
-        let edge_0 = g.neighbors_of(next_move.0).len();
-        let edge_1 = g.neighbors_of(next_move.1).len();
-        let new_neighbors = g.red_neighbors_after_merge(next_move.0, next_move.1, false);
-        let max = new_neighbors.cardinality();
-        for x in g.nei
+    pub fn red_degree_total_deg_after_merge(
+        g: &G,
+        initial_deg: u32,
+        next_move: (u32, u32),
+        upper_bound: u32,
+    ) -> Option<(u32, u32)> {
+        let mut red_neighbors_len = g.red_degree_after_merge(next_move.0, next_move.1);
+        if red_neighbors_len > upper_bound - 1 {
+            return None;
+        }
+
+        let mut n_0 = g.neighbors_of_as_bitset(next_move.0);
+        let n_1 = g.neighbors_of_as_bitset(next_move.1);
+
+        let offset = if n_0.at(next_move.1) { -2 } else { 0 };
+        n_0.xor(&n_1);
+        n_0.and_not(&n_1);
+
+        let red_neighbors_new = g.red_neighbors_after_merge(next_move.0, next_move.1, true);
+
+        let delta_deg_a: i32 = n_0.cardinality() as i32 * 2 + offset;
+
+        let delta_deg_b = -2 * (g.degree_of(next_move.0) as i32);
+
+        let red_neigh_before = g.red_neighbors_of_as_bitset(next_move.0);
+        for x in red_neighbors_new.iter() {
+            if !red_neigh_before.at(x) {
+                red_neighbors_len = red_neighbors_len.max(g.red_degree_of(x) + 1);
+                if red_neighbors_len > upper_bound - 1 {
+                    return None;
+                }
+            }
+        }
+
+        let total_degree_of_new_graph =
+            (initial_deg as i32 + delta_deg_a + delta_deg_b).max(0) as u32;
+
+        Some((red_neighbors_len, total_degree_of_new_graph))
     }
 
     fn play_greedy_multiple_levels_sym_full(
@@ -402,6 +373,7 @@ impl<
         cloned.merge_node_into(first_move.0, first_move.1);
         remaining_nodes.unset_bit(first_move.0);
         let mut tww = cloned.red_degrees().max().unwrap();
+        let mut initial_deg: u32 = cloned.degrees().sum();
 
         loop {
             if remaining_nodes.cardinality() <= 1 {
@@ -411,15 +383,13 @@ impl<
             let minimum = cloned
                 .distance_two_pairs()
                 .flat_map(|(u, v)| {
-                    let mut graph = cloned.clone();
-                    graph.merge_node_into(u,v);
-                    if graph.red_degrees().max().unwrap()>upper_bound-1 {
-                        None
-                    }
-                    else {
-                        let deg:u32 = graph.degrees().sum();
-                        Some((deg, (u, v)))
-                    }
+                    Self::red_degree_total_deg_after_merge(
+                        &cloned,
+                        initial_deg,
+                        (u, v),
+                        upper_bound,
+                    )
+                    .map(|x| (x.1, (u, v)))
                 })
                 .min();
 
@@ -428,6 +398,7 @@ impl<
                 remaining_nodes.unset_bit(u);
 
                 tww = tww.max(cloned.red_degrees().max().unwrap());
+                initial_deg = cloned.degrees().sum();
             } else {
                 break;
             }
@@ -441,290 +412,98 @@ impl<
         let mut sym_sum = 0;
         for x in 0..cloned.number_of_nodes() {
             let sym = SweepingSolver::<G>::get_node_min_sim(&cloned, x);
-            if sym > upper_bound-1 {
-                sym_sum+=sym-(upper_bound-1);
+            if sym > upper_bound - 1 {
+                sym_sum += sym - (upper_bound - 1);
             }
         }
         (tww, sym_sum)
     }
 
-    #[allow(unused)]
-    fn play_some_multiple_levels(
-        graph: &G,
-        first_move: (u32, u32),
-        mut remaining_nodes: BitSet,
-        num_levels: u32,
-        ub: u32,
-    ) -> (u32, u32) {
-        let mut cloned = graph.clone();
-        cloned.merge_node_into(first_move.0, first_move.1);
-        remaining_nodes.unset_bit(first_move.0);
-        let tww = cloned.red_degrees().max().unwrap();
-        let minor: u32 = cloned.red_degrees().sum();
-
-        if num_levels == 0 {
-            return (tww, minor);
-        }
-
-        if remaining_nodes.cardinality() <= 2 {
-            return (tww, minor);
-        }
-
-        let mut minimum: Vec<(u32, (u32, u32))> = cloned
-            .distance_two_pairs()
-            .map(|(u, v)| {
-                let mut graph = cloned.clone();
-                graph.merge_node_into(u, v);
-                (graph.red_degrees().max().unwrap(), (u, v))
-            })
-            .collect();
-
-        if minimum.is_empty() {
-            return (tww, minor);
-        }
-
-        minimum.sort();
-
-        let min_red = minimum[0].0;
-
-        let mut min_tww = std::u32::MAX;
-        let mut minor_size = std::u32::MAX;
-        for x in minimum.into_iter() {
-            if (x.0 >= ub) {
-                let res = SweepingSolver::<G>::play_greedy_multiple_levels(&cloned, x.1, remaining_nodes, num_levels-1);
-                min_tww = min_tww.min(res.0);
-                break;
-            }
-            let mut min = SweepingSolver::<G>::play_some_multiple_levels(
-                &cloned,
-                x.1,
-                remaining_nodes.clone(),
-                num_levels - 1,
-                ub,
-            );
-            min.0 = min.0.max(tww);
-            if min_tww < min.0 && minor_size < min.1 {
-                min_tww = min.0;
-                minor_size = min.1;
-            }
-        }
-        (min_tww, minor)
-    }
-
-    #[allow(unused)]
-    fn play_complete_multiple_levels(
-        graph: &G,
-        first_move: (u32, u32),
-        mut remaining_nodes: BitSet,
-        num_levels: u32,
-        ub: u32,
-    ) -> (u32, u32) {
-        let mut cloned = graph.clone();
-        cloned.merge_node_into(first_move.0, first_move.1);
-        remaining_nodes.unset_bit(first_move.0);
-        let tww = cloned.red_degrees().max().unwrap();
-        let minor: u32 = cloned.red_degrees().sum();
-
-        if num_levels == 0 {
-            return (tww, minor);
-        }
-
-        if remaining_nodes.cardinality() <= 2 {
-            return (tww, minor);
-        }
-
-        let mut minimum: Vec<(u32, (u32, u32))> = cloned
-            .distance_two_pairs()
-            .map(|(u, v)| {
-                let mut graph = cloned.clone();
-                graph.merge_node_into(u, v);
-                (graph.red_degrees().max().unwrap(), (u, v))
-            })
-            .collect();
-
-        if minimum.is_empty() {
-            return (tww, minor);
-        }
-
-        minimum.sort();
-
-        let mut min_tww = std::u32::MAX;
-        let mut minor_size = std::u32::MAX;
-        for x in minimum.into_iter() {
-            if x.0 >= ub {
-                min_tww = min_tww.min(tww);
-                break;
-            }
-            let mut min = SweepingSolver::<G>::play_complete_multiple_levels(
-                &cloned,
-                x.1,
-                remaining_nodes.clone(),
-                num_levels - 1,
-                ub,
-            );
-            min.0 = min.0.max(tww);
-            if min_tww < min.0 && minor_size < min.1 {
-                min_tww = min.0;
-                minor_size = min.1;
-            }
-        }
-        (min_tww, minor)
-    }
-
-    pub fn solve_greedy_pairwise(mut self) -> (u32, ContractionSequence) {
-        let remaining_nodes = self.preprocessing_sequence.remaining_nodes().unwrap();
+    //Pretty slow for larger graphs
+    pub fn solve_greedy_pairwise_fast_full(
+        mut self,
+        upper_bound: Option<u32>,
+        played_level: u32,
+        max_delta_beg: u32,
+    ) -> Option<(u32, ContractionSequence)> {
+        let mut remaining_nodes = self.preprocessing_sequence.remaining_nodes().unwrap();
         if remaining_nodes.cardinality() == 1 {
-            return (0, self.preprocessing_sequence);
+            return Some((0, self.preprocessing_sequence));
         }
 
-        let mut global_array = vec![(
-            0,
-            self.graph.clone(),
-            remaining_nodes,
-            ContractionSequence::new(self.graph.number_of_nodes()),
-        )];
+        let mut tww = 0;
+        let mut contraction_sequence = ContractionSequence::new(self.graph.number_of_nodes());
 
         loop {
-            let mut new_array = Vec::new();
-            let mut global_min_tww = std::u32::MAX;
+            if remaining_nodes.cardinality() <= 1 {
+                break;
+            }
 
-            for (mut tww, graph, remaining_nodes, contraction_sequence) in global_array.into_iter()
-            {
-                if remaining_nodes.cardinality() <= 1 {
-                    self.preprocessing_sequence.append(&contraction_sequence);
-                    let _ = self.preprocessing_sequence.remaining_nodes().unwrap();
-                    return (tww, self.preprocessing_sequence);
-                }
-
-                let mut minimum: Vec<_> = graph
+            let minimum: Vec<_> = if let Some(ub) = upper_bound {
+                let mut counter = 0;
+                let res: Vec<_> = self
+                    .graph
                     .distance_two_pairs()
-                    .map(|(u, v)| {
-                        let red_neighs = graph.red_neighbors_after_merge(u, v, false);
-                        (red_neighs.cardinality(), (u, v))
+                    .flat_map(|(u, v)| {
+                        let mut cloned = self.graph.clone();
+                        cloned.merge_node_into(u, v);
+                        let deg = cloned.red_degrees().max().unwrap();
+                        if deg > ub - 1 {
+                            counter += 1;
+                            None
+                        } else {
+                            Some((deg, (u, v)))
+                        }
                     })
                     .collect();
 
-                if minimum.is_empty() {
-                    self.preprocessing_sequence.append(&contraction_sequence);
-                    let _ = self.preprocessing_sequence.remaining_nodes().unwrap();
-                    return (tww, self.preprocessing_sequence);
+                if counter > 0 && res.is_empty() {
+                    return None;
                 }
+                // No sorting needed since every move is checked anyways
+                res
+            } else {
+                let mut res: Vec<_> = self
+                    .graph
+                    .distance_two_pairs()
+                    .map(|(u, v)| {
+                        let mut cloned = self.graph.clone();
+                        cloned.merge_node_into(u, v);
+                        (cloned.red_degrees().max().unwrap(), (u, v))
+                    })
+                    .collect();
 
-                minimum.sort();
-
-                let min_red = minimum[0].0;
-
-                let mut max_red = std::u32::MAX;
-                let mut promising = Vec::new();
-
-                for (red, (u, v)) in minimum.iter() {
-                    // Only allow uphill at most two
-                    if *red > min_red + 1 {
-                        break;
-                    }
-
-                    let (max_reds, _) = SweepingSolver::play_greedy_multiple_levels(
-                        &graph,
-                        (*u, *v),
-                        remaining_nodes.clone(),
-                        5,
-                    );
-                    if max_reds < max_red {
-                        max_red = max_reds;
-                        promising.push((max_reds, (*u, *v)));
-                    }
+                if !res.is_empty() {
+                    res.sort();
                 }
+                res
+            };
 
-                let mut markov = PartialMonteCarloSearchTree::new(&graph, &minimum, 4, max_red);
-                markov.play_games((minimum.len() * 25) as u32);
-                let (tww_mark, markov_move) = markov.into_best_choice_with_tww();
-                if tww_mark < max_red {
-                    promising.push((tww_mark, markov_move));
-                }
-
-                for best_moves in promising.into_iter() {
-                    let mut cloned = graph.clone();
-                    let mut remaining = remaining_nodes.clone();
-                    let mut contraction = contraction_sequence.clone();
-
-                    cloned.merge_node_into(best_moves.1 .0, best_moves.1 .1);
-                    contraction.merge_node_into(best_moves.1 .0, best_moves.1 .1);
-                    remaining.unset_bit(best_moves.0);
-                    tww = tww.max(graph.red_degrees().max().unwrap());
-                    global_min_tww = global_min_tww.min(tww);
-                    new_array.push((tww, cloned, remaining, contraction));
-                }
-            }
-
-            new_array.sort_by_key(|x| x.0);
-
-            if new_array.len() > 16 {
-                new_array.drain(16..);
-            }
-            global_array = new_array;
-        }
-    }
-
-//Pretty slow for larger graphs
-pub fn solve_greedy_pairwise_fast_full(
-    mut self,
-    upper_bound: Option<u32>,
-    played_level: u32,
-    enable_markov: bool,
-    enable_complete_lookahead: bool,
-    max_delta_beg: u32
-) -> (u32, ContractionSequence) {
-    let mut remaining_nodes = self.preprocessing_sequence.remaining_nodes().unwrap();
-    if remaining_nodes.cardinality() == 1 {
-        return (0, self.preprocessing_sequence);
-    }
-
-    let mut tww = 0;
-    let mut contraction_sequence = ContractionSequence::new(self.graph.number_of_nodes());
-
-    loop {
-        if remaining_nodes.cardinality() <= 1 {
-            break;
-        }
-
-        let mut minimum: Vec<_> = self
-            .graph
-            .distance_two_pairs()
-            .map(|(u, v)| {
-                let mut cloned = self.graph.clone();
-                cloned.merge_node_into(u,v);
-                (cloned.red_degrees().max().unwrap(), (u, v))
-            })
-            .collect();
-
-        if minimum.is_empty() {
-            break;
-        }
-
-        minimum.sort();
-
-        let min_red = minimum[0].0;
-
-        let mut min_move = minimum[0].1;
-        let mut max_red = std::u32::MAX;
-        let mut min_total_red_deg = std::u32::MAX;
-
-        let mut frontier_size = 0;
-        for (red, (u, v)) in minimum.iter() {
-            // Only allow uphill at most one
-            if *red > upper_bound.map(|x| x-1).unwrap_or(min_red + max_delta_beg) {
+            if minimum.is_empty() {
                 break;
             }
-            frontier_size += 1;
 
-            if enable_complete_lookahead {
-                // Only use this to try to keep the tww
-                let (max_reds, total_red_deg) = SweepingSolver::play_some_multiple_levels(
+            let min_red = minimum[0].0;
+
+            let mut min_move = minimum[0].1;
+            let mut max_red = std::u32::MAX;
+            let mut min_total_red_deg = std::u32::MAX;
+
+            for (red, (u, v)) in minimum.iter() {
+                // Only allow uphill at most one
+                if *red
+                    > upper_bound
+                        .map(|x| x - 1)
+                        .unwrap_or(min_red + max_delta_beg)
+                {
+                    break;
+                }
+
+                let (max_reds, total_red_deg) = SweepingSolver::play_greedy_multiple_levels(
                     &self.graph,
                     (*u, *v),
                     remaining_nodes.clone(),
                     played_level,
-                    upper_bound.unwrap()
                 );
 
                 if (max_reds < max_red)
@@ -736,55 +515,26 @@ pub fn solve_greedy_pairwise_fast_full(
                 }
             }
 
-
-            let (max_reds, total_red_deg) = SweepingSolver::play_greedy_multiple_levels(
-                &self.graph,
-                (*u, *v),
-                remaining_nodes.clone(),
-                played_level,
-            );
-
-            if (max_reds < max_red)
-                || (max_reds == max_red && total_red_deg < min_total_red_deg)
-            {
-                max_red = max_reds;
-                min_move = (*u, *v);
-                min_total_red_deg = total_red_deg;
-            }
+            self.graph.merge_node_into(min_move.0, min_move.1);
+            contraction_sequence.merge_node_into(min_move.0, min_move.1);
+            remaining_nodes.unset_bit(min_move.0);
+            tww = tww.max(self.graph.red_degrees().max().unwrap());
         }
-
-        if enable_markov {
-            let mut markov =
-                PartialMonteCarloSearchTree::new(&self.graph, &minimum, played_level, max_red);
-            markov.play_games((frontier_size) as u32 * 10);
-            let (tww_mark, markov_move) = markov.into_best_choice_with_tww();
-            if tww_mark < max_red {
-                min_move = markov_move;
-            }
-        }
-
-        self.graph.merge_node_into(min_move.0, min_move.1);
-        contraction_sequence.merge_node_into(min_move.0, min_move.1);
-        remaining_nodes.unset_bit(min_move.0);
-        tww = tww.max(self.graph.red_degrees().max().unwrap());
+        self.preprocessing_sequence.append(&contraction_sequence);
+        let _ = self.preprocessing_sequence.remaining_nodes().unwrap();
+        Some((tww, self.preprocessing_sequence))
     }
-    self.preprocessing_sequence.append(&contraction_sequence);
-    let _ = self.preprocessing_sequence.remaining_nodes().unwrap();
-    (tww, self.preprocessing_sequence)
-}
 
     //Pretty slow for larger graphs
     pub fn solve_greedy_pairwise_fast(
         mut self,
         upper_bound: Option<u32>,
         played_level: u32,
-        enable_markov: bool,
-        enable_complete_lookahead: bool,
-        max_delta_beg: u32
-    ) -> (u32, ContractionSequence) {
+        max_delta_beg: u32,
+    ) -> Option<(u32, ContractionSequence)> {
         let mut remaining_nodes = self.preprocessing_sequence.remaining_nodes().unwrap();
         if remaining_nodes.cardinality() == 1 {
-            return (0, self.preprocessing_sequence);
+            return Some((0, self.preprocessing_sequence));
         }
 
         let mut tww = 0;
@@ -816,33 +566,15 @@ pub fn solve_greedy_pairwise_fast_full(
             let mut max_red = std::u32::MAX;
             let mut min_total_red_deg = std::u32::MAX;
 
-            let mut frontier_size = 0;
             for (red, (u, v)) in minimum.iter() {
                 // Only allow uphill at most one
-                if *red > upper_bound.map(|x| x-1).unwrap_or(min_red + max_delta_beg) {
+                if *red
+                    > upper_bound
+                        .map(|x| x - 1)
+                        .unwrap_or(min_red + max_delta_beg)
+                {
                     break;
                 }
-                frontier_size += 1;
-
-                if enable_complete_lookahead {
-                    // Only use this to try to keep the tww
-                    let (max_reds, total_red_deg) = SweepingSolver::play_some_multiple_levels(
-                        &self.graph,
-                        (*u, *v),
-                        remaining_nodes.clone(),
-                        played_level,
-                        tww
-                    );
-    
-                    if (max_reds < max_red)
-                        || (max_reds == max_red && total_red_deg < min_total_red_deg)
-                    {
-                        max_red = max_reds;
-                        min_move = (*u, *v);
-                        min_total_red_deg = total_red_deg;
-                    }
-                }
-
 
                 let (max_reds, total_red_deg) = SweepingSolver::play_greedy_multiple_levels(
                     &self.graph,
@@ -860,72 +592,22 @@ pub fn solve_greedy_pairwise_fast_full(
                 }
             }
 
-            if enable_markov {
-                let mut markov =
-                    PartialMonteCarloSearchTree::new(&self.graph, &minimum, played_level, max_red);
-                markov.play_games((frontier_size) as u32 * 10);
-                let (tww_mark, markov_move) = markov.into_best_choice_with_tww();
-                if tww_mark < max_red {
-                    min_move = markov_move;
-                }
-            }
-
             self.graph.merge_node_into(min_move.0, min_move.1);
             contraction_sequence.merge_node_into(min_move.0, min_move.1);
             remaining_nodes.unset_bit(min_move.0);
             tww = tww.max(self.graph.red_degrees().max().unwrap());
+            if let Some(ub) = upper_bound.as_ref()
+                && *ub <= tww {
+                    return None;
+            }
         }
         self.preprocessing_sequence.append(&contraction_sequence);
         let _ = self.preprocessing_sequence.remaining_nodes().unwrap();
-        (tww, self.preprocessing_sequence)
+        Some((tww, self.preprocessing_sequence))
     }
 
-    //Pretty slow for larger graphs
-    pub fn solve_markov_pairwise(mut self) -> (u32, ContractionSequence) {
-        let mut remaining_nodes = self.preprocessing_sequence.remaining_nodes().unwrap();
-        if remaining_nodes.cardinality() == 1 {
-            return (0, self.preprocessing_sequence);
-        }
-
-        let mut tww = 0;
-        let mut contraction_sequence = ContractionSequence::new(self.graph.number_of_nodes());
-
-        loop {
-            if remaining_nodes.cardinality() <= 1 {
-                break;
-            }
-
-            let mut minimum: Vec<_> = self
-                .graph
-                .distance_two_pairs()
-                .map(|(u, v)| {
-                    let red_neighs = self.graph.red_neighbors_after_merge(u, v, false);
-                    (red_neighs.cardinality(), (u, v))
-                })
-                .collect();
-
-            if minimum.is_empty() {
-                break;
-            }
-
-            minimum.sort();
-
-            let mut markov =
-                PartialMonteCarloSearchTree::new(&self.graph, &minimum, 4, std::u32::MAX);
-            markov.play_games((minimum.len() * 10) as u32);
-            let min_move = markov.into_best_choice();
-
-            self.graph.merge_node_into(min_move.0, min_move.1);
-            contraction_sequence.merge_node_into(min_move.0, min_move.1);
-            remaining_nodes.unset_bit(min_move.0);
-            tww = tww.max(self.graph.red_degrees().max().unwrap());
-        }
-        self.preprocessing_sequence.append(&contraction_sequence);
-        let _ = self.preprocessing_sequence.remaining_nodes().unwrap();
-        (tww, self.preprocessing_sequence)
-    }
-
-    // Delta adjust the level of uncertainty which is allowed in the contraction
+    // Similiar to solve_greedy but allows the contraction of all nodes with induced red degree of survivor within delta of the best
+    // induced red degree by a contraction. Solves really fast but the error can be quite large
     pub fn solve_sweep(mut self, delta: u32) -> (u32, ContractionSequence) {
         let mut remaining_nodes = self.preprocessing_sequence.remaining_nodes().unwrap();
         if remaining_nodes.cardinality() == 1 {
@@ -978,6 +660,8 @@ pub fn solve_greedy_pairwise_fast_full(
         (tww, self.preprocessing_sequence)
     }
 
+    // Calculate the minimal induced tww when contracting this node. Can be used to define hard nodes and easy nodes and to measure
+    // remaining problem complexity
     pub fn get_node_min_sim(g: &G, node: u32) -> u32 {
         let mut bitset = g.neighbors_of_as_bitset(node);
 
@@ -987,7 +671,7 @@ pub fn solve_greedy_pairwise_fast_full(
         for n in neighbors {
             bitset.or(&g.neighbors_of_as_bitset(*n));
         }
-        
+
         bitset.unset_bit(node);
 
         if bitset.cardinality() == 0 {
@@ -1003,192 +687,208 @@ pub fn solve_greedy_pairwise_fast_full(
         best_tww
     }
 
-    pub fn next_best_move(g: &G, rem_nodes: &BitSet, ub: u32, played_level: u32) -> Option<(u32,u32)> {
+    // Calculates the minimum similiarity of a node to its 2 Neighborhood
+    // Does not calculate induced tww.
+    pub fn get_node_total_sim(g: &G, node: u32) -> u32 {
+        let mut bitset = g.neighbors_of_as_bitset(node);
+
+        let neighbors = g.neighbors_of(node);
+        let mut min_dist = std::u32::MAX;
+
+        for n in neighbors {
+            bitset.or(&g.neighbors_of_as_bitset(*n));
+        }
+
+        bitset.unset_bit(node);
+
+        if bitset.cardinality() == 0 {
+            return 0;
+        }
+
+        let base = g.neighbors_of_as_bitset(node);
+        for n in bitset.iter() {
+            let mut nb = g.neighbors_of_as_bitset(n);
+            nb.xor(&base);
+
+            min_dist = min_dist.min(nb.cardinality());
+        }
+        min_dist
+    }
+
+    // Get the next best move which is not larger than the upper bound and evaluate each move by playing multiple levels
+    pub fn next_best_move(
+        g: &G,
+        rem_nodes: &BitSet,
+        ub: u32,
+        played_level: u32,
+    ) -> Option<(u32, u32)> {
         let mut minimum: Vec<_> = g
+            .distance_two_pairs()
+            .flat_map(|(u, v)| {
+                let mut merge_g = g.clone();
+                merge_g.merge_node_into(u, v);
+                let tww = merge_g.red_degrees().max().unwrap();
+                if tww <= ub - 1 {
+                    Some((tww, (u, v)))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if minimum.is_empty() {
+            return None;
+        }
+
+        minimum.sort();
+
+        let mut min_move = None;
+        let mut max_red = std::u32::MAX;
+        let mut min_total_red_deg = std::u32::MAX;
+
+        for (_, (u, v)) in minimum.iter() {
+            let (max_reds, total_red_deg) = SweepingSolver::play_greedy_multiple_levels(
+                g,
+                (*u, *v),
+                rem_nodes.clone(),
+                played_level,
+            );
+
+            if (max_reds < max_red) || (max_reds == max_red && total_red_deg < min_total_red_deg) {
+                max_red = max_reds;
+                min_move = Some((*u, *v));
+                min_total_red_deg = total_red_deg;
+            }
+        }
+        return min_move;
+    }
+
+    // Try to improve heuristics by minimizing the sum of node similarities across moves
+    // should in theory provide a good measure of current problem complexity
+    fn play_greedy_multiple_levels_nn(
+        graph: &G,
+        first_move: (u32, u32),
+        ub: u32,
+        mut remaining_nodes: BitSet,
+        mut num_levels: u32,
+    ) -> u32 {
+        let mut cloned = graph.clone();
+        cloned.merge_node_into(first_move.0, first_move.1);
+        remaining_nodes.unset_bit(first_move.0);
+        let mut objective: u32 = (0..graph.len())
+            .map(|x| Self::get_node_total_sim(&graph, x as u32))
+            .sum();
+
+        loop {
+            if remaining_nodes.cardinality() <= 1 {
+                break;
+            }
+
+            let minimum: Option<(u32, (u32, u32))> = cloned
                 .distance_two_pairs()
                 .flat_map(|(u, v)| {
-                    let mut merge_g = g.clone();
-                    merge_g.merge_node_into(u, v);
-                    let tww = merge_g.red_degrees().max().unwrap();
-                    if tww <= ub-1 {
-                        Some((tww, (u, v)))
-                    }
-                    else {
+                    let mut graph = cloned.clone();
+                    graph.merge_node_into(u, v);
+
+                    let red_d = graph.red_degrees().max().unwrap();
+                    if red_d > ub - 1 {
                         None
+                    } else {
+                        let x = (0..graph.len())
+                            .map(|x| Self::get_node_total_sim(&graph, x as u32))
+                            .sum();
+                        Some((x, (u, v)))
                     }
                 })
-                .collect();
+                .min();
 
-            if minimum.is_empty() {
-                return None;
-            }
-
-            minimum.sort();
-
-
-            let mut min_move = None;
-            let mut max_red = std::u32::MAX;
-            let mut min_total_red_deg = std::u32::MAX;
-
-            for (_, (u, v)) in minimum.iter() {
-                let (max_reds, total_red_deg) = SweepingSolver::play_greedy_multiple_levels(
-                    g,
-                    (*u, *v),
-                    rem_nodes.clone(),
-                    played_level,
-                );
-
-                if (max_reds < max_red)
-                    || (max_reds == max_red && total_red_deg < min_total_red_deg)
-                {
-                    max_red = max_reds;
-                    min_move = Some((*u, *v));
-                    min_total_red_deg = total_red_deg;
+            if let Some((ob, (u, v))) = minimum {
+                cloned.merge_node_into(u, v);
+                remaining_nodes.unset_bit(u);
+                objective = objective.max(ob);
+            } else {
+                if cloned.distance_two_pairs().count() > 0 {
+                    return std::u32::MAX;
                 }
+                break;
             }
-            return min_move;
-    }
-    
 
-    pub fn collapse_onto_hard_nodes(mut self, ub: u32) -> (u32,ContractionSequence) {
+            num_levels -= 1;
+            if num_levels == 0 {
+                break;
+            }
+        }
+
+        objective
+    }
+
+    // Greedily optimize node similarity across the graph, by playing at most `level` for each move
+    pub fn greedy_optimize_sim_nn(mut self, ub: u32, level: u32) -> (u32, ContractionSequence) {
         let mut remaining_nodes = self.preprocessing_sequence.remaining_nodes().unwrap();
         if remaining_nodes.cardinality() == 1 {
             return (0, self.preprocessing_sequence);
-        }
-
-        let mut hard_nodes : fxhash::FxHashSet<u32> = fxhash::FxHashSet::default();
-
-        for x in 0..self.graph.number_of_nodes() {
-            if SweepingSolver::<G>::get_node_min_sim(&self.graph, x) > ub-1 {
-                hard_nodes.insert(x);
-            }
         }
 
         let mut tww = 0;
         let mut contraction_sequence = ContractionSequence::new(self.graph.number_of_nodes());
 
         loop {
-            let mut min_move = (0,0);
-            let mut hard_node = 0;
-            let mut possible_moves = Vec::new();
-
-            // Try to improve near a hard node without hitting the upper bound
-            for x in hard_nodes.iter() {
-                let neighbors = self.graph.neighbors_of(*x);
-                let sym = SweepingSolver::<G>::get_node_min_sim(&self.graph, *x);
-
-                // First order collapsing
-                for first in neighbors.iter() {
-                    for second in neighbors.iter() {
-                        if *first == *second {
-                            continue;
-                        }
-                        let mut merge_g = self.graph.clone();
-                        merge_g.merge_node_into(*first, *second);
-                        let tww = merge_g.red_degrees().max().unwrap();
-                        if tww <= ub-1 {
-                            possible_moves.push((tww,*x,(*first,*second)));
-                            min_move = (*first,*second);
-                        }
-                    }
-                }
-
-
-                // Try second order collapse
-                for first in neighbors.iter() {
-                    let nb = self.graph.neighbors_of(*first);
-
-                    for second in nb.iter() {
-                        if *first == *second  {
-                            continue;
-                        }
-                        let mut merge_g = self.graph.clone();
-                        merge_g.merge_node_into(*first, *second);
-                        let tww = merge_g.red_degrees().max().unwrap();
-                        if tww <= ub-1 && sym > SweepingSolver::<G>::get_node_min_sim(&merge_g, *x) {
-                            possible_moves.push((tww,*x,(*first,*second)));
-                        }
-                    }
-                }        
-           }
-
-           if !possible_moves.is_empty() {
-                possible_moves.sort();
-
-                min_move = possible_moves[0].2;
-                let mut max_red = std::u32::MAX;
-                let mut min_total_red_deg = std::u32::MAX;
-    
-                for (_,nd, (u, v)) in possible_moves.iter() {
-                    let (max_reds, total_red_deg) = SweepingSolver::play_greedy_multiple_levels(
-                        &self.graph,
-                        (*u, *v),
-                        remaining_nodes.clone(),
-                        4,
-                    );
-    
-                    if (max_reds < max_red)
-                        || (max_reds == max_red && total_red_deg < min_total_red_deg)
-                    {
-                        max_red = max_reds;
-                        min_move = (*u, *v);
-                        hard_node = *nd;
-                        min_total_red_deg = total_red_deg;
-                    }
-                }
-           }
-
-           if min_move != (0,0) {
-                self.graph.merge_node_into(min_move.0, min_move.1);
-                contraction_sequence.merge_node_into(min_move.0, min_move.1);
-                remaining_nodes.unset_bit(min_move.0);
-                tww = tww.max(self.graph.red_degrees().max().unwrap());
-                if SweepingSolver::<G>::get_node_min_sim(&self.graph, hard_node) <= ub-1 {
-                    hard_nodes.remove(&hard_node);
-                }
-            }
-            else {
-                let mut sample_best_moves = Vec::new();
-                for i in 0..13 {
-                    if let Some(result) = SweepingSolver::<G>::next_best_move(&self.graph, &remaining_nodes, ub, i) {
-                        sample_best_moves.push(result);
-                    }
-                }
-                
-                if sample_best_moves.is_empty() {
-                    println!("Remaining {}",remaining_nodes.cardinality());
-                    return (ub+1,self.preprocessing_sequence);
-                }
-
-                let mut min_move = (0,0);
-                let mut min_tww = std::u32::MAX;
-                for x in sample_best_moves.into_iter() {
-                    let mut gc_clone = self.graph.clone();
-                    gc_clone.merge_node_into(x.0, x.1);
-                    let tww = self.graph.red_degrees().max().unwrap();
-                    if tww <= min_tww {
-                        min_move = x;
-                        min_tww = tww;
-                    }
-                }
-                self.graph.merge_node_into(min_move.0, min_move.1);
-                contraction_sequence.merge_node_into(min_move.0, min_move.1);
-                remaining_nodes.unset_bit(min_move.0);
-                tww = tww.max(self.graph.red_degrees().max().unwrap());
-            }
-
-
-            for x in 0..self.graph.number_of_nodes() {
-                let sym = SweepingSolver::<G>::get_node_min_sim(&self.graph, x);
-                if sym > ub-1 {
-                    println!("Sym {} Node {}",sym,x);
-                    hard_nodes.insert(x);
-                }
-            }
-
             if remaining_nodes.cardinality() <= 1 {
                 break;
             }
+
+            let minimum: Vec<(u32, (u32, u32))> = self
+                .graph
+                .distance_two_pairs()
+                .flat_map(|(u, v)| {
+                    let mut graph = self.graph.clone();
+                    graph.merge_node_into(u, v);
+
+                    let red_d = graph.red_degrees().max().unwrap();
+                    if red_d > ub - 1 {
+                        None
+                    } else {
+                        let x = (0..graph.len())
+                            .map(|x| Self::get_node_total_sim(&graph, x as u32))
+                            .sum();
+                        Some((x, (u, v)))
+                    }
+                })
+                .collect();
+
+            if minimum.is_empty() {
+                if self.graph.distance_two_pairs().count() > 0 {
+                    return (ub + 1, self.preprocessing_sequence);
+                }
+            }
+
+            let mut min_move = (0, 0);
+            let mut min_objective = std::u32::MAX;
+
+            for (_, (u, v)) in minimum.iter() {
+                let objective = SweepingSolver::play_greedy_multiple_levels_nn(
+                    &self.graph,
+                    (*u, *v),
+                    ub,
+                    remaining_nodes.clone(),
+                    level,
+                );
+
+                if objective < min_objective {
+                    min_objective = objective;
+                    min_move = (*u, *v);
+                }
+            }
+
+            // No valid move anymore
+            if min_move == (0, 0) {
+                return (ub + 1, self.preprocessing_sequence);
+            }
+
+            self.graph.merge_node_into(min_move.0, min_move.1);
+            contraction_sequence.merge_node_into(min_move.0, min_move.1);
+            remaining_nodes.unset_bit(min_move.0);
+            tww = tww.max(self.graph.red_degrees().max().unwrap());
         }
 
         self.preprocessing_sequence.append(&contraction_sequence);
@@ -1197,149 +897,75 @@ pub fn solve_greedy_pairwise_fast_full(
         (tww, self.preprocessing_sequence)
     }
 
-
-//Pretty slow for larger graphs
-pub fn solve_greedy_pairwise_fast_full_sym_desced(
-    mut self,
-    upper_bound: u32,
-    played_level: u32
-) -> (u32, ContractionSequence) {
-    let mut remaining_nodes = self.preprocessing_sequence.remaining_nodes().unwrap();
-    if remaining_nodes.cardinality() == 1 {
-        return (0, self.preprocessing_sequence);
-    }
-
-    let mut tww = 0;
-    let mut contraction_sequence = ContractionSequence::new(self.graph.number_of_nodes());
-
-    loop {
-        if remaining_nodes.cardinality() <= 1 {
-            break;
+    // Solve greedily by optimizing for tww as first criterion and total degree as second criterion
+    pub fn solve_greedy_pairwise_fast_full_sym_descend_only(
+        mut self,
+        upper_bound: u32,
+        played_level: u32,
+    ) -> Option<(u32, ContractionSequence)> {
+        let mut remaining_nodes = self.preprocessing_sequence.remaining_nodes().unwrap();
+        if remaining_nodes.cardinality() == 1 {
+            return Some((0, self.preprocessing_sequence));
         }
 
-        let mut minimum: Vec<_> = self
-            .graph
-            .distance_two_pairs()
-            .map(|(u, v)| {
-                let mut cloned = self.graph.clone();
-                cloned.merge_node_into(u,v);
-                (cloned.red_degrees().max().unwrap(), (u, v))
-            })
-            .collect();
+        let mut tww = 0;
+        let mut contraction_sequence = ContractionSequence::new(self.graph.number_of_nodes());
 
-        if minimum.is_empty() {
-            break;
-        }
-
-        minimum.sort();
-
-        let min_red = minimum[0].0;
-
-        let mut min_move = minimum[0].1;
-        let mut max_red = std::u32::MAX;
-        let mut min_total_red_deg = std::u32::MAX;
-
-        let mut frontier_size = 0;
-        for (red, (u, v)) in minimum.iter() {
-            // Only allow uphill at most one
-            if *red > upper_bound-1 {
-                break;
-            }
-            frontier_size += 1;
-
-            let (max_reds, total_red_deg) = SweepingSolver::play_greedy_multiple_levels_sym(
-                &self.graph,
-                (*u, *v),
-                upper_bound,
-                remaining_nodes.clone(),
-                played_level,
-            );
-
-            if (max_reds < max_red)
-                || (max_reds == max_red && total_red_deg < min_total_red_deg)
-            {
-                max_red = max_reds;
-                min_move = (*u, *v);
-                min_total_red_deg = total_red_deg;
-            }
-        }
-
-        self.graph.merge_node_into(min_move.0, min_move.1);
-        contraction_sequence.merge_node_into(min_move.0, min_move.1);
-        remaining_nodes.unset_bit(min_move.0);
-        tww = tww.max(self.graph.red_degrees().max().unwrap());
-    }
-    self.preprocessing_sequence.append(&contraction_sequence);
-    let _ = self.preprocessing_sequence.remaining_nodes().unwrap();
-    (tww, self.preprocessing_sequence)
-}
-    
-    //Pretty slow for larger graphs
-pub fn solve_greedy_pairwise_fast_full_sym_desced_only(
-    mut self,
-    upper_bound: u32,
-    played_level: u32
-) -> (u32, ContractionSequence) {
-    let mut remaining_nodes = self.preprocessing_sequence.remaining_nodes().unwrap();
-    if remaining_nodes.cardinality() == 1 {
-        return (0, self.preprocessing_sequence);
-    }
-
-    let mut tww = 0;
-    let mut contraction_sequence = ContractionSequence::new(self.graph.number_of_nodes());
-
-    loop {
-        if remaining_nodes.cardinality() <= 1 {
-            break;
-        }
-
-        let mut minimum: Vec<_> = self
-            .graph
-            .distance_two_pairs()
-            .map(|(u, v)| {
-                let mut cloned = self.graph.clone();
-                cloned.merge_node_into(u,v);
-                (cloned.red_degrees().max().unwrap(), (u, v))
-            })
-            .collect();
-
-        if minimum.is_empty() {
-            break;
-        }
-
-        minimum.sort();
-
-        let mut min_move = minimum[0].1;
-        let mut min_total_red_deg = std::u32::MAX;
-
-        for (red, (u, v)) in minimum.iter() {
-            // Only allow uphill at most one
-            if *red > upper_bound-1 {
+        loop {
+            if remaining_nodes.cardinality() <= 1 {
                 break;
             }
 
-            let (max_reds, total_red_deg) = SweepingSolver::play_greedy_multiple_levels_sym_full(
-                &self.graph,
-                (*u, *v),
-                upper_bound,
-                remaining_nodes.clone(),
-                played_level,
-            );
+            let mut counter = 0;
+            let minimum: Vec<_> = self
+                .graph
+                .distance_two_pairs()
+                .flat_map(|(u, v)| {
+                    let mut cloned = self.graph.clone();
+                    cloned.merge_node_into(u, v);
+                    counter += 1;
+                    let deg = cloned.red_degrees().max().unwrap();
+                    if deg > upper_bound - 1 {
+                        None
+                    } else {
+                        Some((deg, (u, v)))
+                    }
+                })
+                .collect();
 
-            if (max_reds <= upper_bound-1) && (total_red_deg < min_total_red_deg)
-            {
-                min_move = (*u, *v);
-                min_total_red_deg = total_red_deg;
+            if minimum.is_empty() {
+                if counter > 0 {
+                    return None;
+                }
+                break;
             }
-        }
 
-        self.graph.merge_node_into(min_move.0, min_move.1);
-        contraction_sequence.merge_node_into(min_move.0, min_move.1);
-        remaining_nodes.unset_bit(min_move.0);
-        tww = tww.max(self.graph.red_degrees().max().unwrap());
+            let mut min_move = minimum[0].1;
+            let mut min_total_red_deg = std::u32::MAX;
+
+            for (_, (u, v)) in minimum.iter() {
+                let (max_reds, total_red_deg) =
+                    SweepingSolver::play_greedy_multiple_levels_sym_full(
+                        &self.graph,
+                        (*u, *v),
+                        upper_bound,
+                        remaining_nodes.clone(),
+                        played_level,
+                    );
+
+                if (max_reds <= upper_bound - 1) && (total_red_deg < min_total_red_deg) {
+                    min_move = (*u, *v);
+                    min_total_red_deg = total_red_deg;
+                }
+            }
+
+            self.graph.merge_node_into(min_move.0, min_move.1);
+            contraction_sequence.merge_node_into(min_move.0, min_move.1);
+            remaining_nodes.unset_bit(min_move.0);
+            tww = tww.max(self.graph.red_degrees().max().unwrap());
+        }
+        self.preprocessing_sequence.append(&contraction_sequence);
+        let _ = self.preprocessing_sequence.remaining_nodes().unwrap();
+        Some((tww, self.preprocessing_sequence))
     }
-    self.preprocessing_sequence.append(&contraction_sequence);
-    let _ = self.preprocessing_sequence.remaining_nodes().unwrap();
-    (tww, self.preprocessing_sequence)
-}
 }

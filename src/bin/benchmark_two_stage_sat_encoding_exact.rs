@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     fs::File,
     io::{BufRead, BufReader},
-    time::Instant, str::FromStr,
+    time::Instant,
 };
 
 use glob::glob;

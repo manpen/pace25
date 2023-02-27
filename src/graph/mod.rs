@@ -1,3 +1,4 @@
+pub mod absolute_twin_width_sat_encoding;
 pub mod adj_array;
 pub mod bitset;
 pub mod color_filter;
@@ -8,9 +9,8 @@ pub mod gnp;
 pub mod graph_digest;
 pub mod node_mapper;
 pub mod partition;
-pub mod traversal;
 pub mod relative_twin_width_sat_encoding;
-pub mod absolute_twin_width_sat_encoding;
+pub mod traversal;
 
 pub use adj_array::*;
 pub use bitset::*;

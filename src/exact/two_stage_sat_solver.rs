@@ -1,7 +1,7 @@
 use crate::{
     graph::{
-        relative_twin_width_sat_encoding::RelativeTwinWidthSatEncoding, AdjacencyList, ColoredAdjacencyList,
-        ColoredAdjacencyTest, GraphEdgeEditing, GraphEdgeOrder,
+        relative_twin_width_sat_encoding::RelativeTwinWidthSatEncoding, AdjacencyList,
+        ColoredAdjacencyList, ColoredAdjacencyTest, GraphEdgeEditing, GraphEdgeOrder,
     },
     heuristic::monte_carlo_search_tree::timeout_monte_carlo_search_tree_solver_preprocessed,
     prelude::{sweep_solver::heuristic_solve, Connectivity, Getter},
@@ -67,17 +67,28 @@ pub struct TwoStageSatSolver<G> {
     time: std::time::Duration,
 }
 
-pub fn print_contraction_sequence<G: Clone
+pub fn print_contraction_sequence<
+    G: Clone
         + AdjacencyList
         + GraphEdgeOrder
         + ColoredAdjacencyList
         + ColoredAdjacencyTest
         + Debug
-        + GraphEdgeEditing>(graph: &G, seq: &ContractionSequence) {
+        + GraphEdgeEditing,
+>(
+    graph: &G,
+    seq: &ContractionSequence,
+) {
     let mut cloned = graph.clone();
     for x in seq.merges() {
         cloned.merge_node_into(x.0, x.1);
-        println!("Pair ({},{}) red deg: {} total red {}",x.0,x.1,cloned.red_degrees().max().unwrap(),cloned.red_degrees().sum::<u32>());
+        println!(
+            "Pair ({},{}) red deg: {} total red {}",
+            x.0,
+            x.1,
+            cloned.red_degrees().max().unwrap(),
+            cloned.red_degrees().sum::<u32>()
+        );
     }
 }
 
