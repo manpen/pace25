@@ -124,12 +124,12 @@ pub fn heuristic_solve<
     graph: &G,
 ) -> (u32, ContractionSequence) {
     let clone = graph.clone();
-    let result: (u32, ContractionSequence) = if clone.number_of_edges() < 1000
-        && clone.number_of_nodes() < 200
-    {
+    if clone.number_of_edges() < 1000 && clone.number_of_nodes() < 200 {
         let sweeping_solver = SweepingSolver::new(clone.clone());
         // Since no upper bound is set it is guaranteed to return a solution
-        let mut result = sweeping_solver.solve_greedy_pairwise_fast(None, 0, 1).unwrap();
+        let mut result = sweeping_solver
+            .solve_greedy_pairwise_fast(None, 0, 1)
+            .unwrap();
         for i in 1..11 {
             let sweeping_solver_i = SweepingSolver::new(clone.clone());
             let result_i = sweeping_solver_i.solve_greedy_pairwise_fast(Some(result.0), i, 1);
@@ -142,7 +142,7 @@ pub fn heuristic_solve<
         for i in 0..13 {
             let sweeping_solver_i = SweepingSolver::new(clone.clone());
             let result_i = sweeping_solver_i.solve_greedy_pairwise_fast_full(Some(result.0), i, 1);
-            if let Some(result_i) = result_i 
+            if let Some(result_i) = result_i
                 && result_i.0 <= result.0 {
                 result = result_i;
             }
@@ -153,7 +153,7 @@ pub fn heuristic_solve<
             let sweeping_solver_i = SweepingSolver::new(clone.clone());
             let result_i =
                 sweeping_solver_i.solve_greedy_pairwise_fast_full_sym_descend_only(result.0, i);
-            if let Some(result_i) = result_i 
+            if let Some(result_i) = result_i
                 && result_i.0 <= result.0 {
                 result = result_i;
             }
@@ -163,8 +163,10 @@ pub fn heuristic_solve<
     } else if clone.number_of_edges() < 6000 && clone.number_of_nodes() < 1000 {
         let sweeping_solver = SweepingSolver::new(clone.clone());
 
-        let result_1 = sweeping_solver.solve_greedy_pairwise_fast(None, 2, 1).unwrap();
-        let sweeping_solver = SweepingSolver::new(clone.clone());
+        let result_1 = sweeping_solver
+            .solve_greedy_pairwise_fast(None, 2, 1)
+            .unwrap();
+        let sweeping_solver = SweepingSolver::new(clone);
         let result_2 = sweeping_solver.solve_greedy_pairwise_fast(Some(result_1.0), 1, 1);
 
         if let Some(result_2) = result_2
@@ -174,13 +176,9 @@ pub fn heuristic_solve<
             result_1
         }
     } else {
-        let sweeping_solver = SweepingSolver::new(clone.clone());
-        let result_1 = sweeping_solver.solve_greedy();
-
-        result_1
-    };
-
-    result
+        let sweeping_solver = SweepingSolver::new(clone);
+        sweeping_solver.solve_greedy()
+    }
 }
 
 pub struct SweepingSolver<G> {
@@ -728,7 +726,7 @@ impl<
                 let mut merge_g = g.clone();
                 merge_g.merge_node_into(u, v);
                 let tww = merge_g.red_degrees().max().unwrap();
-                if tww <= ub - 1 {
+                if tww < ub {
                     Some((tww, (u, v)))
                 } else {
                     None
@@ -760,7 +758,7 @@ impl<
                 min_total_red_deg = total_red_deg;
             }
         }
-        return min_move;
+        min_move
     }
 
     // Try to improve heuristics by minimizing the sum of node similarities across moves
@@ -776,7 +774,7 @@ impl<
         cloned.merge_node_into(first_move.0, first_move.1);
         remaining_nodes.unset_bit(first_move.0);
         let mut objective: u32 = (0..graph.len())
-            .map(|x| Self::get_node_total_sim(&graph, x as u32))
+            .map(|x| Self::get_node_total_sim(graph, x as u32))
             .sum();
 
         loop {
@@ -856,10 +854,8 @@ impl<
                 })
                 .collect();
 
-            if minimum.is_empty() {
-                if self.graph.distance_two_pairs().count() > 0 {
-                    return (ub + 1, self.preprocessing_sequence);
-                }
+            if minimum.is_empty() && self.graph.distance_two_pairs().count() > 0 {
+                return (ub + 1, self.preprocessing_sequence);
             }
 
             let mut min_move = (0, 0);
@@ -953,7 +949,7 @@ impl<
                         played_level,
                     );
 
-                if (max_reds <= upper_bound - 1) && (total_red_deg < min_total_red_deg) {
+                if (max_reds < upper_bound) && (total_red_deg < min_total_red_deg) {
                     min_move = (*u, *v);
                     min_total_red_deg = total_red_deg;
                 }

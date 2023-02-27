@@ -242,26 +242,30 @@ impl<
         }
 
         // Unfinished!
-        for i in 0..self.graph_mapping.len() {
+        for (i, item) in auxillarys_variables
+            .iter()
+            .enumerate()
+            .take(self.graph_mapping.len())
+        {
             for j in 0..self.graph_mapping.len() {
                 let node_id = *self.graph_mapping.get(&(j as u32)).unwrap();
                 let neighbors = self.graph.neighbors_of_as_bitset(node_id);
-                for k in 0..self.graph_mapping.len() {
+                for (k, var) in item.iter().enumerate().take(self.graph_mapping.len()) {
                     if j == k {
                         continue;
                     }
                     let value = *self.graph_reverse_mapping.get(&(k as u32)).unwrap();
                     if neighbors.at(value) {
-                        formula.push(vec![-self.get_ord(i, j), auxillarys_variables[i][k]]);
+                        formula.push(vec![-self.get_ord(i, j), *var]);
                     } else {
-                        formula.push(vec![-self.get_ord(i, j), -auxillarys_variables[i][k]]);
+                        formula.push(vec![-self.get_ord(i, j), -*var]);
                     }
                 }
                 let mut vars: Vec<i32> = neighbors
                     .iter()
                     .map(|x| self.get_ord(i, *self.graph_mapping.get(&x).unwrap() as usize))
                     .collect();
-                vars.push(-auxillarys_variables[i][j]);
+                vars.push(-item[j]);
                 formula.push(vars);
             }
         }
@@ -281,10 +285,14 @@ impl<
             }
         }
 
-        for i in 0..self.graph_mapping.len() - self.d as usize {
-            for j in 0..self.graph_mapping.len() {
+        for (i, item) in auxillarys_variables
+            .iter()
+            .enumerate()
+            .take(self.graph_mapping.len() - self.d as usize)
+        {
+            for (j, var) in item.iter().enumerate().take(self.graph_mapping.len()) {
                 for k in j + 1..self.graph_mapping.len() {
-                    formula.push(vec![-auxillarys_variables[i][j], self.get_ord(i, k)]);
+                    formula.push(vec![-*var, self.get_ord(i, k)]);
                 }
             }
         }
@@ -461,37 +469,35 @@ impl<
 
     // Please note that this will run the sat solver for every integer <= upper bound until the solution becomes unsatisfiable
     pub fn solve_kissat(&mut self) -> Result<(u32, ContractionSequence), SatEncodingError> {
-        loop {
-            let encoding = self.encode();
-            println!("Solving for width {}", self.d);
+        let encoding = self.encode();
+        println!("Solving for width {}", self.d);
 
-            let mut kissat_solver = cat_solver::Solver::new();
+        let mut kissat_solver = cat_solver::Solver::new();
 
-            let mut mapping: fxhash::FxHashSet<i32> = fxhash::FxHashSet::default();
-            for x in encoding.into_iter() {
-                x.iter().for_each(|v| {
-                    mapping.insert(v.abs());
-                });
-                kissat_solver.add_clause(x.into_iter());
-            }
+        let mut mapping: fxhash::FxHashSet<i32> = fxhash::FxHashSet::default();
+        for x in encoding.into_iter() {
+            x.iter().for_each(|v| {
+                mapping.insert(v.abs());
+            });
+            kissat_solver.add_clause(x.into_iter());
+        }
 
-            // Max the limits
-            kissat_solver.set_limit("conflicts", 10_000_000).unwrap();
-            kissat_solver.set_limit("decisions", 10_000_000).unwrap();
+        // Max the limits
+        kissat_solver.set_limit("conflicts", 10_000_000).unwrap();
+        kissat_solver.set_limit("decisions", 10_000_000).unwrap();
 
-            if let Some(solved) = kissat_solver.solve() {
-                if solved {
-                    return Ok((
-                        self.d,
-                        ContractionSequence::new(self.graph.number_of_nodes()),
-                    ));
-                } else {
-                    return Err(SatEncodingError::Unsat);
-                }
+        if let Some(solved) = kissat_solver.solve() {
+            if solved {
+                Ok((
+                    self.d,
+                    ContractionSequence::new(self.graph.number_of_nodes()),
+                ))
             } else {
-                println!("Ressource expired!");
-                return Err(SatEncodingError::ResourcesDepleted);
+                Err(SatEncodingError::Unsat)
             }
+        } else {
+            println!("Ressource expired!");
+            Err(SatEncodingError::ResourcesDepleted)
         }
     }
 }
