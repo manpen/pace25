@@ -325,12 +325,11 @@ impl<
         initial_deg: u32,
         next_move: (u32, u32),
         upper_bound: u32,
-    ) -> Option<(u32, u32)> {
+    ) -> (u32, u32) {
         let mut red_neighbors_len = g.red_degree_after_merge(next_move.0, next_move.1);
         if red_neighbors_len > upper_bound - 1 {
-            return None;
+            return (red_neighbors_len, initial_deg);
         }
-
         let mut n_0 = g.neighbors_of_as_bitset(next_move.0);
         let n_1 = g.neighbors_of_as_bitset(next_move.1);
 
@@ -349,7 +348,7 @@ impl<
             if !red_neigh_before.at(x) {
                 red_neighbors_len = red_neighbors_len.max(g.red_degree_of(x) + 1);
                 if red_neighbors_len > upper_bound - 1 {
-                    return None;
+                    return (red_neighbors_len, initial_deg);
                 }
             }
         }
@@ -357,7 +356,7 @@ impl<
         let total_degree_of_new_graph =
             (initial_deg as i32 + delta_deg_a + delta_deg_b).max(0) as u32;
 
-        Some((red_neighbors_len, total_degree_of_new_graph))
+        (red_neighbors_len, total_degree_of_new_graph)
     }
 
     fn play_greedy_multiple_levels_sym_full(
@@ -372,8 +371,11 @@ impl<
         remaining_nodes.unset_bit(first_move.0);
         let mut tww = cloned.red_degrees().max().unwrap();
         let mut initial_deg: u32 = cloned.degrees().sum();
+        let mut min_sim: Vec<(u32, u32)> = vec![(0, 0); cloned.number_of_nodes() as usize];
 
+        let mut round = 1;
         loop {
+            round += 1;
             if remaining_nodes.cardinality() <= 1 {
                 break;
             }
@@ -381,13 +383,31 @@ impl<
             let minimum = cloned
                 .distance_two_pairs()
                 .flat_map(|(u, v)| {
-                    Self::red_degree_total_deg_after_merge(
+                    let result = Self::red_degree_total_deg_after_merge(
                         &cloned,
                         initial_deg,
                         (u, v),
                         upper_bound,
-                    )
-                    .map(|x| (x.1, (u, v)))
+                    );
+                    (result.0 < upper_bound)
+                        .then(|| {
+                            if min_sim[u as usize].0 < round || min_sim[u as usize].1 > result.0 {
+                                min_sim[u as usize] = (round, result.0);
+                            }
+                            if min_sim[v as usize].0 < round || min_sim[v as usize].1 > result.0 {
+                                min_sim[v as usize] = (round, result.0);
+                            }
+                            (result.1, (u, v))
+                        })
+                        .or_else(|| {
+                            if min_sim[u as usize].0 < round || min_sim[u as usize].1 > result.0 {
+                                min_sim[u as usize] = (round, result.0);
+                            }
+                            if min_sim[v as usize].0 < round || min_sim[v as usize].1 > result.0 {
+                                min_sim[v as usize] = (round, result.0);
+                            }
+                            None
+                        })
                 })
                 .min();
 
@@ -407,14 +427,17 @@ impl<
             }
         }
 
-        let mut sym_sum = 0;
-        for x in 0..cloned.number_of_nodes() {
-            let sym = SweepingSolver::<G>::get_node_min_sim(&cloned, x);
-            if sym > upper_bound - 1 {
-                sym_sum += sym - (upper_bound - 1);
-            }
-        }
-        (tww, sym_sum)
+        let sym_sum_fast = min_sim
+            .iter()
+            .flat_map(|(_, v)| {
+                if *v > upper_bound - 1 {
+                    Some(*v - (upper_bound - 1))
+                } else {
+                    None
+                }
+            })
+            .sum();
+        (tww, sym_sum_fast)
     }
 
     //Pretty slow for larger graphs
