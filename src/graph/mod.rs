@@ -108,6 +108,30 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
         self.neighbors_of(u).len() as NumNodes
     }
 
+    // Returns an iterator to all vertices with non-zero degree
+    fn vertices_with_neighbors(&self) -> impl Iterator<Item = Node> + '_ {
+        self.degrees()
+            .enumerate()
+            .filter_map(|(u, d)| (d > 0).then_some(u as Node))
+    }
+
+    // Returns the number of nodes with non-zero degree
+    fn number_of_nodes_with_neighbors(&self) -> NumNodes {
+        self.vertices_with_neighbors().count() as NumNodes
+    }
+
+    // Returns a distribution sorted by degree
+    fn degree_distribution(&self) -> Vec<(NumNodes, NumNodes)> {
+        let mut distr = self
+            .degrees()
+            .counts()
+            .into_iter()
+            .map(|(d, n)| (d, n as NumNodes))
+            .collect_vec();
+        distr.sort_by_key(|(d, _)| *d);
+        distr
+    }
+
     node_iterator!(degrees, degree_of, NumNodes);
     node_iterator!(neighbors, neighbors_of, &[Node]);
     node_bitset_of!(neighbors_of_as_bitset, neighbors_of);
@@ -117,6 +141,16 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
         let mut ns = BitSet::new(self.number_of_nodes());
         ns.set_bit(u);
         for &v in self.neighbors_of(u) {
+            ns.set_bit(v);
+            ns.set_bits(self.neighbors_of(v).iter().copied());
+        }
+        ns
+    }
+
+    fn closed_three_neighborhood_of(&self, u: Node) -> BitSet {
+        let mut ns = BitSet::new(self.number_of_nodes());
+        ns.set_bit(u);
+        for v in self.closed_two_neighborhood_of(u).iter() {
             ns.set_bit(v);
             ns.set_bits(self.neighbors_of(v).iter().copied());
         }
@@ -289,4 +323,28 @@ pub trait GraphEdgeEditing: GraphNew {
 
     /// Dry-run of [`GraphEdgeEditing::merge_node_into`] that only returns the red-neighbors after a merge
     fn red_neighbors_after_merge(&self, removed: Node, survivor: Node, only_new: bool) -> BitSet;
+}
+
+pub trait FullfledgedGraph:
+    Clone
+    + AdjacencyList
+    + GraphEdgeOrder
+    + ColoredAdjacencyList
+    + ColoredAdjacencyTest
+    + GraphEdgeEditing
+    + ColorFilter
+    + std::fmt::Debug
+{
+}
+
+impl<G> FullfledgedGraph for G where
+    G: Clone
+        + AdjacencyList
+        + GraphEdgeOrder
+        + ColoredAdjacencyList
+        + ColoredAdjacencyTest
+        + GraphEdgeEditing
+        + ColorFilter
+        + std::fmt::Debug
+{
 }
