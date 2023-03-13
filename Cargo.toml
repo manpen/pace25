@@ -26,7 +26,9 @@ cadical = "0.1.14"
 log = "0.4"
 env_logger = "0.9"
 structopt="0.3"
+futures = "0.3"
 
 [profile.release]
-lto="fat"
-codegen-units=1
+#lto="fat"
+#codegen-units=1
+debug=true

@@ -1,9 +1,6 @@
-use crate::prelude::{
-    contraction_sequence::ContractionSequence,
-    reductions::{prune_leaves, prune_twins},
-    AdjacencyList, BitSet, ColoredAdjacencyList, ColoredAdjacencyTest, DistanceTwoPairs,
-    GraphEdgeEditing, GraphEdgeOrder,
-};
+use log::trace;
+
+use crate::prelude::*;
 use std::fmt::Debug;
 
 use super::partial_monte_carlo_search_tree::PartialMonteCarloSearchTree;
@@ -14,65 +11,43 @@ pub fn heuristic_solve<
         + GraphEdgeOrder
         + ColoredAdjacencyList
         + ColoredAdjacencyTest
+        + ColorFilter
         + Debug
         + GraphEdgeEditing,
 >(
     graph: &G,
-) -> (u32, ContractionSequence) {
+) -> (NumNodes, ContractionSequence) {
+    trace!("Start heuristic solver");
+
     if graph.number_of_edges() < 1000 {
-        let sweeping_solver = SweepingSolver::new(graph.clone());
-        let result_1 = sweeping_solver.solve_greedy_pairwise_fast(None, 2, false);
-        let sweeping_solver = SweepingSolver::new(graph.clone());
-        let result_2 = sweeping_solver.solve_greedy_pairwise_fast(None, 1, false);
-        let sweeping_solver = SweepingSolver::new(graph.clone());
-        let result_3 = sweeping_solver.solve_greedy_pairwise_fast(None, 3, false);
-        let sweeping_solver = SweepingSolver::new(graph.clone());
-        let result_4 = sweeping_solver.solve_greedy_pairwise_fast(None, 4, false);
+        let mut upper_bound = None;
+        let mut best_solution = None;
 
-        let sweeping_solver = SweepingSolver::new(graph.clone());
-        let result_5 = sweeping_solver.solve_greedy_pairwise_fast(None, 3, true);
+        for (played_levels, enable_markov) in [
+            (2, false),
+            (1, false),
+            (3, false),
+            (4, false),
+            (3, true),
+            (2, true),
+        ] {
+            let (tww, cs) = SweepingSolver::new(graph.clone()).solve_greedy_pairwise_fast(
+                None, // todo: actually, we should be able to pass the previous ub to the next iteration
+                played_levels,
+                enable_markov,
+            );
 
-        let sweeping_solver = SweepingSolver::new(graph.clone());
-        let result_6 = sweeping_solver.solve_greedy_pairwise_fast(None, 2, true);
+            if tww < upper_bound.unwrap_or(NumNodes::MAX) {
+                upper_bound = Some(tww);
+                best_solution = Some(cs);
+            }
 
-        if result_1.0 <= result_2.0
-            && result_1.0 <= result_3.0
-            && result_1.0 <= result_4.0
-            && result_1.0 <= result_5.0
-            && result_1.0 <= result_6.0
-        {
-            result_1
-        } else if result_2.0 <= result_1.0
-            && result_2.0 <= result_3.0
-            && result_2.0 <= result_4.0
-            && result_2.0 <= result_5.0
-            && result_2.0 <= result_6.0
-        {
-            result_2
-        } else if result_3.0 <= result_1.0
-            && result_3.0 <= result_2.0
-            && result_3.0 <= result_4.0
-            && result_3.0 <= result_5.0
-            && result_3.0 <= result_6.0
-        {
-            result_3
-        } else if result_4.0 <= result_1.0
-            && result_4.0 <= result_2.0
-            && result_4.0 <= result_3.0
-            && result_4.0 <= result_5.0
-            && result_4.0 <= result_6.0
-        {
-            result_4
-        } else if result_5.0 <= result_1.0
-            && result_5.0 <= result_2.0
-            && result_5.0 <= result_3.0
-            && result_5.0 <= result_4.0
-            && result_5.0 <= result_6.0
-        {
-            result_5
-        } else {
-            result_6
+            if tww == 0 {
+                break;
+            }
         }
+
+        (upper_bound.unwrap(), best_solution.unwrap())
     } else {
         let sweeping_solver = SweepingSolver::new(graph.clone());
 
@@ -100,6 +75,7 @@ impl<
             + ColoredAdjacencyList
             + ColoredAdjacencyTest
             + Debug
+            + ColorFilter
             + GraphEdgeEditing,
     > SweepingSolver<G>
 {
@@ -107,8 +83,7 @@ impl<
         let mut clone = graph;
         let mut preprocessing_sequence = ContractionSequence::new(clone.number_of_nodes());
 
-        prune_leaves(&mut clone, &mut preprocessing_sequence);
-        prune_twins(&mut clone, &mut preprocessing_sequence);
+        initial_pruning(&mut clone, &mut preprocessing_sequence);
 
         SweepingSolver {
             graph: clone,
@@ -356,6 +331,7 @@ impl<
                     remaining.unset_bit(best_moves.0);
                     tww = tww.max(graph.red_degrees().max().unwrap());
                     global_min_tww = global_min_tww.min(tww);
+                    default_pruning(&mut cloned, tww, &mut contraction);
                     new_array.push((tww, cloned, remaining, contraction));
                 }
             }
@@ -444,10 +420,16 @@ impl<
                 }
             }
 
+            if min_move == (0, 0) {
+                break;
+            }
+
             self.graph.merge_node_into(min_move.0, min_move.1);
             contraction_sequence.merge_node_into(min_move.0, min_move.1);
             remaining_nodes.unset_bit(min_move.0);
             tww = tww.max(self.graph.red_degrees().max().unwrap());
+
+            default_pruning(&mut self.graph, tww, &mut contraction_sequence);
         }
         self.preprocessing_sequence.append(&contraction_sequence);
         let _ = self.preprocessing_sequence.remaining_nodes().unwrap();

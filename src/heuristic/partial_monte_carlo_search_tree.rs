@@ -1,7 +1,7 @@
 use rand::{rngs::ThreadRng, thread_rng, Rng};
 
 use crate::prelude::{
-    AdjacencyList, ColoredAdjacencyList, ColoredAdjacencyTest, DistanceTwoPairs, GraphEdgeEditing,
+    AdjacencyList, ColoredAdjacencyList, ColoredAdjacencyTest, DistancePairs, GraphEdgeEditing,
     GraphEdgeOrder,
 };
 use std::fmt::Debug;
