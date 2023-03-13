@@ -4,6 +4,7 @@
 #![feature(let_chains)]
 #![feature(linked_list_cursors)]
 
+pub mod algorithm;
 pub mod exact;
 pub mod graph;
 pub mod heuristic;
@@ -12,6 +13,7 @@ pub mod log;
 pub mod utils;
 
 pub mod prelude {
+    pub use super::algorithm::*;
     pub use super::exact::*;
     pub use super::graph::*;
     pub use super::heuristic::*;
