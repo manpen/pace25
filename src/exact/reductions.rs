@@ -277,8 +277,11 @@ pub fn prune_twins<
         }
 
         if graph.red_degree_of(u) != 0 && graph.red_degree_of(v) != 0 {
-            let ru = graph.red_neighbors_of_as_bitset(u);
-            let rv = graph.red_neighbors_of_as_bitset(v);
+            let mut ru = graph.red_neighbors_of_as_bitset(u);
+            let mut rv = graph.red_neighbors_of_as_bitset(v);
+
+            ru.unset_bit(v);
+            rv.unset_bit(u);
 
             if !ru.is_subset_of(&rv) && !rv.is_subset_of(&ru) {
                 return false;

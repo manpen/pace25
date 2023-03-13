@@ -1,5 +1,3 @@
-use std::ops::Neg;
-
 use itertools::Itertools;
 use log::trace;
 
@@ -248,11 +246,11 @@ fn recurse_impl<G: FullfledgedGraph>(
 
                     let mut easy_graph: G = graph.sub_graph(&easy_nodes);
                     easy_graph.add_edge(easy_node, hard_node, EdgeColor::Red);
-                    let easy_slack = slack
+                    let _easy_slack = slack
                         .saturating_sub(1)
                         .max(easy_graph.red_degrees().max().unwrap());
 
-                    let (easy_tww, easy_sol) =
+                    let (easy_tww, _easy_sol) =
                         if let Some(x) = recurse(cache, &mut easy_graph, easy_tww, not_above) {
                             x
                         } else if ub == not_above {
@@ -522,6 +520,7 @@ fn try_split_into_cc<G: FullfledgedGraph>(
 #[cfg(test)]
 mod test {
     use super::*;
+    #[allow(unused_imports)]
     use crate::{log::build_pace_logger_for_level, testing::get_test_graphs_with_tww};
     use std::{fs::File, io::BufReader};
 

@@ -134,6 +134,10 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
         distr
     }
 
+    fn max_degree(&self) -> NumNodes {
+        self.degrees().max().unwrap_or(0)
+    }
+
     node_iterator!(degrees, degree_of, NumNodes);
     node_iterator!(neighbors, neighbors_of, &[Node]);
     node_bitset_of!(neighbors_of_as_bitset, neighbors_of);
@@ -202,6 +206,14 @@ pub trait ColoredAdjacencyList: AdjacencyList {
     /// Returns the number of red neighbors of from `u`
     fn red_degree_of(&self, u: Node) -> NumNodes {
         self.red_neighbors_of(u).len() as NumNodes
+    }
+
+    fn max_red_degree(&self) -> NumNodes {
+        self.red_degrees().max().unwrap_or(0)
+    }
+
+    fn max_black_degree(&self) -> NumNodes {
+        self.black_degrees().max().unwrap_or(0)
     }
 
     /// Returns an iterator of the colored edges incident to `u`

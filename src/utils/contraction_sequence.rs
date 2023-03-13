@@ -5,7 +5,7 @@ use log::debug;
 
 use crate::graph::*;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Default)]
 pub struct ContractionSequence {
     num_nodes: NumNodes,
     seq: Vec<(Node, Node)>,
