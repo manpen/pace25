@@ -32,6 +32,8 @@ pub(super) struct Frame<G> {
 
     pub(super) initial_slack: NumNodes,
     pub(super) initial_not_above: NumNodes,
+
+    pub(super) protected_nodes: BitSet,
 }
 
 pub(super) trait BranchMode<G> {
@@ -56,12 +58,13 @@ impl<G: FullfledgedGraph> Frame<G> {
             contract_seq: ContractionSequence::new(n),
             initial_slack: slack,
             initial_not_above: not_above,
+            protected_nodes: BitSet::new(n),
         }
     }
 
     /// This function carries out kernelization and decides upon a branching strategy.
     pub(super) fn initialize(&mut self) -> BBResult<G> {
-        default_pruning(&mut self.graph, self.slack, &mut self.contract_seq);
+        self.kernelization();
 
         if self.graph.number_of_edges() == 0 {
             trace!("Left with empty kernel");
@@ -87,6 +90,19 @@ impl<G: FullfledgedGraph> Frame<G> {
         let result = branching.as_mut().unwrap().resume(self, from_child);
         self.resume_with = branching;
         result
+    }
+
+    fn kernelization(&mut self) {
+        let mut kernelization = Kernelization::new_with_protected(
+            &mut self.graph,
+            &mut self.contract_seq,
+            self.slack,
+            self.protected_nodes.clone(), // TODO: better pass reference!
+        );
+        kernelization.run_recursion_defaults();
+        let kernel_slack = kernelization.slack();
+
+        self.update_slack(kernel_slack);
     }
 
     fn update_slack(&mut self, slack: NumNodes) {

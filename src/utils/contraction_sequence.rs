@@ -165,4 +165,12 @@ impl ContractionSequence {
         }
         Ok(())
     }
+
+    pub fn len(&self) -> NumNodes {
+        self.merges().len() as NumNodes
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.merges().is_empty()
+    }
 }

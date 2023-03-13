@@ -89,6 +89,7 @@ impl ContractBranch {
             }
         }
 
+        mergable.and_not(&frame.protected_nodes);
         mergable
     }
 

@@ -8,6 +8,9 @@ use std::fmt::Debug;
 mod frame;
 use frame::*;
 
+mod kernelization;
+use kernelization::Kernelization;
+
 #[derive(Clone, Debug)]
 pub struct TwwSolution {
     tww: NumNodes,
