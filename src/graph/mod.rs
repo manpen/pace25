@@ -1,3 +1,4 @@
+pub mod absolute_twin_width_sat_encoding;
 pub mod adj_array;
 pub mod bipartite;
 pub mod bitset;
@@ -13,9 +14,9 @@ pub mod graph_digest;
 pub mod modules;
 pub mod node_mapper;
 pub mod partition;
+pub mod relative_twin_width_sat_encoding;
 pub mod subgraph;
 pub mod traversal;
-pub mod twin_width_sat_encoding;
 
 pub use adj_array::*;
 pub use bipartite::*;

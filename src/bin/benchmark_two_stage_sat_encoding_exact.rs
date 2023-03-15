@@ -51,16 +51,16 @@ fn main() {
         .collect_vec();
 
     let best_known = load_best_known().unwrap_or_default();
-    //let files = vec![std::path::PathBuf::from_str("instances/exact-public/exact_064.gr").unwrap()];
+    //let files = vec![std::path::PathBuf::from_str("instances/exact-public/exact_060.gr").unwrap()];
 
     println!("Found {} best known values", best_known.len());
 
-    files.iter().take(35).for_each(|file| {
+    files.iter().for_each(|file| {
         let filename = String::from(file.as_os_str().to_str().unwrap());
         let graph = AdjArray::try_read_pace_file(file).expect("Cannot open PACE file");
 
         let start = Instant::now();
-        let mut two_stage = TwoStageSatSolver::new(&graph, std::time::Duration::from_millis(10000));
+        let mut two_stage = TwoStageSatSolver::new(&graph, std::time::Duration::from_millis(100));
 
         let (sol_size, _sol) = two_stage.solve();
         let duration = start.elapsed();

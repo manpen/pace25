@@ -1,7 +1,7 @@
 use crate::{
     graph::{
-        twin_width_sat_encoding::TwinWidthSatEncoding, AdjacencyList, ColoredAdjacencyList,
-        ColoredAdjacencyTest, GraphEdgeEditing, GraphEdgeOrder,
+        relative_twin_width_sat_encoding::RelativeTwinWidthSatEncoding, AdjacencyList,
+        ColoredAdjacencyList, ColoredAdjacencyTest, GraphEdgeEditing, GraphEdgeOrder,
     },
     heuristic::monte_carlo_search_tree::timeout_monte_carlo_search_tree_solver_preprocessed,
     prelude::{sweep_solver::heuristic_solve, Connectivity, Getter},
@@ -65,6 +65,31 @@ pub struct TwoStageSatSolver<G> {
     time: std::time::Duration,
 }
 
+pub fn print_contraction_sequence<
+    G: Clone
+        + AdjacencyList
+        + GraphEdgeOrder
+        + ColoredAdjacencyList
+        + ColoredAdjacencyTest
+        + Debug
+        + GraphEdgeEditing,
+>(
+    graph: &G,
+    seq: &ContractionSequence,
+) {
+    let mut cloned = graph.clone();
+    for x in seq.merges() {
+        cloned.merge_node_into(x.0, x.1);
+        println!(
+            "Pair ({},{}) red deg: {} total red {}",
+            x.0,
+            x.1,
+            cloned.red_degrees().max().unwrap(),
+            cloned.red_degrees().sum::<u32>()
+        );
+    }
+}
+
 impl<
         G: Clone
             + AdjacencyList
@@ -120,7 +145,7 @@ impl<
                 let mut total_solution = self.preprocessing_sequence.clone();
 
                 for (subgraph, mapper) in part.split_into_subgraphs(&self.graph) {
-                    let mut sat_encoding = TwinWidthSatEncoding::new(&subgraph);
+                    let mut sat_encoding = RelativeTwinWidthSatEncoding::new(&subgraph);
                     if let Some((size, seq)) = sat_encoding.solve_kissat(best_solution - 1) {
                         max_tww = max_tww.max(size);
                         if max_tww == best_solution {
@@ -149,9 +174,9 @@ impl<
             else {
                 // Twin Width of 1 is most of the time faster if we use the complement graph
                 let mut sat_encoding = if best_solution == 2 {
-                    TwinWidthSatEncoding::new_complement_graph(&self.graph)
+                    RelativeTwinWidthSatEncoding::new_complement_graph(&self.graph)
                 } else {
-                    TwinWidthSatEncoding::new(&self.graph)
+                    RelativeTwinWidthSatEncoding::new(&self.graph)
                 };
 
                 if let Some((tww, seq)) = sat_encoding.solve_kissat(best_solution - 1) {
