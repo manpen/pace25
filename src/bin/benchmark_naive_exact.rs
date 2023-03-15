@@ -8,8 +8,7 @@ use std::{
 
 use glob::glob;
 use itertools::Itertools;
-use log::{trace, LevelFilter};
-use tww::{log::build_pace_logger_for_level, prelude::*};
+use tww::prelude::*;
 
 #[allow(unused_imports)]
 use rayon::prelude::*;

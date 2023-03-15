@@ -78,8 +78,17 @@ pub fn naive_solver_with_bounds<G: FullfledgedGraph>(
 
     let mut cache = SolverResultCache::default();
 
-    try_split_into_cc(&mut cache, &mut graph, slack, not_above)
-        .unwrap_or_else(|| recurse(&mut cache, &mut graph, slack, not_above))
+    let protected = BitSet::new(input_graph.number_of_nodes());
+
+    let result = try_split_into_cc(&mut cache, &mut graph, slack, not_above, &protected)
+        .unwrap_or_else(|| recurse(&mut cache, &mut graph, slack, not_above, &protected));
+
+    println!(
+        "Iterations: {}",
+        cache.number_of_cache_hits() + cache.number_of_cache_misses()
+    );
+
+    result
 }
 
 fn recurse<G: FullfledgedGraph>(
@@ -87,6 +96,7 @@ fn recurse<G: FullfledgedGraph>(
     graph: &mut G,
     slack: Node,
     not_above: Node,
+    protected: &BitSet,
 ) -> Option<(NumNodes, ContractionSequence)> {
     trace!(
         "Recurse n={:>5} m={:>5} slack={slack:>5} not_above={not_above:>5}",
@@ -94,13 +104,23 @@ fn recurse<G: FullfledgedGraph>(
         graph.number_of_edges(),
     );
 
-    if graph.number_of_nodes() == 0 || graph.number_of_edges() == 0 {
+    let edges_on_protected = protected
+        .iter()
+        .map(|u| graph.degree_of(u) as NumEdges)
+        .sum::<NumEdges>();
+
+    if graph.number_of_nodes() == 0 || graph.number_of_edges() == edges_on_protected {
         return Some((0, ContractionSequence::new(graph.number_of_nodes())));
     }
 
     if graph.degrees().any(|d| d == 0) {
         let (mut graph, mapper) = graph.remove_disconnected_verts();
-        let (tww, mut seq) = recurse(cache, &mut graph, slack, not_above)?;
+
+        let protected = BitSet::new_all_unset_but(
+            graph.number_of_nodes(),
+            mapper.get_filtered_new_ids(protected.iter()),
+        );
+        let (tww, mut seq) = recurse(cache, &mut graph, slack, not_above, &protected)?;
         seq.apply_mapper(&mapper);
         return Some((tww, seq));
     }
@@ -114,24 +134,31 @@ fn recurse<G: FullfledgedGraph>(
         let mut complement = graph.trigraph_complement();
         assert!(complement.number_of_edges() < graph.number_of_edges());
 
-        return recurse(cache, &mut complement, slack, not_above).map(|(tww, mut seq)| {
-            seq.add_unmerged_singletons(&graph.trigraph_complement())
-                .unwrap();
-            (tww, seq)
-        });
+        return recurse(cache, &mut complement, slack, not_above, protected).map(
+            |(tww, mut seq)| {
+                seq.add_unmerged_singletons(&graph.trigraph_complement())
+                    .unwrap();
+                (tww, seq)
+            },
+        );
     }
 
-    let hash = graph.binary_digest_sha256();
+    if protected.cardinality() == 0 {
+        let hash = graph.binary_digest_sha256();
 
-    if let Some(solution) = cache.get(&hash, slack, not_above) {
-        return solution.cloned();
+        if let Some(solution) = cache.get(&hash, slack, not_above) {
+            return solution.cloned();
+        }
+
+        let result = recurse_impl(cache, graph, slack, not_above, protected);
+
+        if protected.cardinality() == 0 {
+            cache.add_to_cache(hash, result.clone(), slack, not_above);
+        }
+        result
+    } else {
+        recurse_impl(cache, graph, slack, not_above, protected)
     }
-
-    let result = recurse_impl(cache, graph, slack, not_above);
-
-    cache.add_to_cache(hash, result.clone(), slack, not_above);
-
-    result
 }
 
 type BestSolution = (Option<(Node, Node)>, NumNodes, ContractionSequence);
@@ -141,6 +168,7 @@ fn recurse_impl<G: FullfledgedGraph>(
     graph: &mut G,
     mut slack: Node,
     not_above: Node,
+    protected: &BitSet,
 ) -> Option<(NumNodes, ContractionSequence)> {
     if slack > not_above {
         return None;
@@ -155,21 +183,34 @@ fn recurse_impl<G: FullfledgedGraph>(
 
     let mut contract_seq = ContractionSequence::new(graph.number_of_nodes());
 
-    default_pruning(graph, slack, &mut contract_seq);
+    let mut kernel =
+        Kernelization::new_with_protected(graph, &mut contract_seq, slack, protected.clone());
+    kernel.run_recursion_defaults();
+    slack = slack.max(kernel.slack());
 
-    if graph.number_of_edges() == 0 {
+    let edges_on_protected = protected
+        .iter()
+        .map(|u| graph.degree_of(u) as NumEdges)
+        .sum::<NumEdges>();
+
+    if graph.number_of_edges() == edges_on_protected {
         trace!("Left with empty kernel: {:?}", contract_seq.merges());
         return Some((slack, contract_seq));
     }
 
     let mut best_solution: Option<BestSolution> = None;
+
     // red bridges
-    {
+    if false {
         let red_bridges: Vec<_> = graph
             .compute_colored_bridges()
             .into_iter()
             .filter(|&ColoredEdge(u, v, c)| {
-                c.is_red() && graph.degree_of(u) > 1 && graph.degree_of(v) > 1
+                c.is_red()
+                    && graph.degree_of(u) > 1
+                    && graph.degree_of(v) > 1
+                    && !protected[u]
+                    && !protected[v]
             })
             .collect();
 
@@ -183,99 +224,79 @@ fn recurse_impl<G: FullfledgedGraph>(
                 continue;
             }
 
-            if part.number_in_class(0).min(part.number_in_class(1)) * 3
-                < part.number_in_class(0) + part.number_in_class(1)
+            let (small_node, large_node) = if part.number_in_class(part.class_of_node(u).unwrap())
+                <= part.number_in_class(part.class_of_node(v).unwrap())
+            {
+                (u, v)
+            } else {
+                (v, u)
+            };
+
+            let small_class = part.class_of_node(small_node).unwrap();
+            let _large_class = part.class_of_node(large_node).unwrap();
+
+            if part.number_in_class(small_class) < 3 {
+                continue;
+            }
+
+            let extract_subgraph = |class_idx, other_node| -> G {
+                let mut nodes = BitSet::new_all_unset_but(
+                    graph.number_of_nodes(),
+                    part.members_of_class(class_idx),
+                );
+                nodes.set_bit(other_node);
+                graph.sub_graph(&nodes)
+            };
+
+            let mut small_graph = extract_subgraph(small_class, large_node);
+            let mut small_protected = protected.clone();
+            small_protected.set_bit(large_node);
+
+            let sol = recurse(
+                cache,
+                &mut small_graph.clone(),
+                slack,
+                not_above,
+                &small_protected,
+            );
+
+            if sol.is_none() {
+                continue;
+            }
+
+            let (tww_with_prot, seq_with_prot) = sol.unwrap();
+
+            assert!(seq_with_prot
+                .merges()
+                .iter()
+                .all(|&(u, v)| !small_protected[u] && !small_protected[v]));
+
+            if tww_with_prot > slack
+                && recurse(
+                    cache,
+                    &mut small_graph,
+                    slack,
+                    tww_with_prot.saturating_sub(1),
+                    protected,
+                )
+                .is_some()
             {
                 continue;
             }
 
-            for (easy_node, hard_node, easy_class) in [
-                (u, v, part.class_of_node(u).unwrap()),
-                (v, u, part.class_of_node(v).unwrap()),
-            ] {
-                let ub = best_solution
-                    .as_ref()
-                    .map_or(not_above, |(_, tww, _)| *tww - 1);
+            assert!(!seq_with_prot.is_empty());
 
-                let mut easy_nodes = BitSet::new_all_unset_but(
-                    graph.number_of_nodes(),
-                    part.members_of_class(easy_class),
-                );
-
-                let mut easy_graph: G = graph.sub_graph(&easy_nodes);
-                let easy_slack = slack
-                    .saturating_sub(1)
-                    .max(easy_graph.red_degrees().max().unwrap());
-
-                let (easy_tww, mut easy_sol) =
-                    if let Some(x) = recurse(cache, &mut easy_graph, easy_slack, ub) {
-                        x
-                    } else if ub == not_above {
-                        return None;
-                    } else {
-                        continue;
-                    };
-
-                let mut hard_nodes = {
-                    easy_nodes.not();
-                    easy_nodes
-                };
-
-                let mut hard_graph: G = graph.sub_graph(&hard_nodes);
-                let remain_in_easy = easy_sol.merges().last().unwrap().1;
-                hard_graph.add_edge(remain_in_easy, hard_node, EdgeColor::Red);
-
-                let (hard_tww, hard_sol) =
-                    if let Some(x) = recurse(cache, &mut hard_graph, slack, ub) {
-                        x
-                    } else if ub == not_above {
-                        return None;
-                    } else {
-                        continue;
-                    };
-
-                let total_tww = (easy_tww + 1).max(hard_tww);
-
-                if hard_tww < easy_tww {
-                    println!("Invert");
-
-                    let easy_nodes = {
-                        hard_nodes.not();
-                        hard_nodes
-                    };
-
-                    let mut easy_graph: G = graph.sub_graph(&easy_nodes);
-                    easy_graph.add_edge(easy_node, hard_node, EdgeColor::Red);
-                    let _easy_slack = slack
-                        .saturating_sub(1)
-                        .max(easy_graph.red_degrees().max().unwrap());
-
-                    let (easy_tww, _easy_sol) =
-                        if let Some(x) = recurse(cache, &mut easy_graph, easy_tww, not_above) {
-                            x
-                        } else if ub == not_above {
-                            return None;
-                        } else {
-                            continue;
-                        };
-
-                    if easy_tww > hard_tww {
-                        println!("Still");
-                    }
-                }
-
-                if easy_tww < hard_tww || total_tww <= slack {
-                    contract_seq.append(&easy_sol);
-                    contract_seq.append(&hard_sol);
-                    return Some((hard_tww, contract_seq));
-                } else if total_tww < ub {
-                    easy_sol.append(&hard_sol);
-                    best_solution = Some((None, total_tww, easy_sol));
-                    slack = slack.max(hard_tww).max(easy_tww);
-                }
-
-                break;
+            let mut large_graph = graph.clone();
+            for &(u, v) in seq_with_prot.merges() {
+                large_graph.merge_node_into(u, v);
             }
+
+            let (tww, seq) = recurse(cache, &mut large_graph, slack, not_above, protected)?;
+
+            contract_seq.append(&seq_with_prot);
+            contract_seq.append(&seq);
+
+            return Some((tww_with_prot.max(tww).max(slack), contract_seq));
         }
     }
 
@@ -295,6 +316,8 @@ fn recurse_impl<G: FullfledgedGraph>(
                 mergable.set_bits(graph.neighbors_of(u).iter().copied());
             }
         }
+
+        mergable.and_not(protected);
 
         mergable
     };
@@ -321,6 +344,10 @@ fn recurse_impl<G: FullfledgedGraph>(
         .map_or(not_above, |(_, tww, _)| *tww - 1);
 
     'outer: for &(r, (u, v)) in &pairs {
+        if protected[u] || protected[v] {
+            continue;
+        }
+
         assert!(graph.degree_of(u) > 0);
         if graph.degree_of(v) == 0 {
             continue;
@@ -349,6 +376,7 @@ fn recurse_impl<G: FullfledgedGraph>(
             &mut local_graph,
             slack.max(max_red_degree),
             not_above,
+            protected,
         ) {
             let sol_size = sol_size.max(max_red_degree);
             assert!(sol_size <= not_above);
@@ -395,6 +423,7 @@ fn contraction_candidates<G: FullfledgedGraph>(
         })
         .collect_vec();
 
+    let is_bipartite = graph.is_bipartite();
     for u in graph.vertices_range() {
         if !mergeable.unset_bit(u) {
             continue;
@@ -406,6 +435,15 @@ fn contraction_candidates<G: FullfledgedGraph>(
 
         let mut two_neighbors = graph.closed_two_neighborhood_of(u);
         two_neighbors.and(&mergeable);
+
+        if is_bipartite && graph.degree_of(u) > 1 {
+            for &x in graph.neighbors_of(u) {
+                if graph.degree_of(x) > 1 {
+                    two_neighbors.unset_bit(x);
+                }
+            }
+        }
+
         for v in two_neighbors.iter() {
             assert!(v > u);
             let mut red_neighs = graph.red_neighbors_after_merge(u, v, false);
@@ -439,7 +477,7 @@ fn contraction_candidates<G: FullfledgedGraph>(
             }
         }
 
-        if degree_u > not_above {
+        if is_bipartite || degree_u > not_above {
             continue;
         }
 
@@ -488,7 +526,10 @@ fn try_split_into_cc<G: FullfledgedGraph>(
     graph: &mut G,
     slack: u32,
     not_above: u32,
+    protected: &BitSet,
 ) -> Option<Option<(NumNodes, ContractionSequence)>> {
+    assert_eq!(protected.cardinality(), 0); // TODO: currently not implemented
+
     let part = graph.partition_into_connected_components(true);
     if part.number_of_classes() == 1 && part.number_of_unassigned() == 0 {
         return None;
@@ -500,7 +541,8 @@ fn try_split_into_cc<G: FullfledgedGraph>(
     let mut contract_seq = ContractionSequence::new(graph.number_of_nodes());
 
     for (mut subgraph, mapper) in part.split_into_subgraphs(graph) {
-        if let Some((size, sol)) = recurse(cache, &mut subgraph, slack, not_above) {
+        let protected = BitSet::new(subgraph.number_of_nodes());
+        if let Some((size, sol)) = recurse(cache, &mut subgraph, slack, not_above, &protected) {
             slack = slack.max(size);
             max_tww = max_tww.max(size);
             for &(rem, sur) in sol.merges() {

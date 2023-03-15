@@ -12,7 +12,7 @@ where
                     continue;
                 }
 
-                let mut neighbors = self
+                let mut neighbors: Vec<_> = self
                     .graph
                     .neighbors_of(host)
                     .iter()
@@ -20,7 +20,7 @@ where
                         host != v && self.graph.degree_of(v) == 1 && !self.is_protected(v)
                     })
                     .copied()
-                    .collect_vec();
+                    .collect();
 
                 if neighbors.len() < 2 {
                     continue;

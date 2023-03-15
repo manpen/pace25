@@ -1,4 +1,4 @@
-use super::*;
+use crate::prelude::*;
 
 mod leaves;
 mod pairs;
@@ -29,6 +29,7 @@ impl<'a, G> Kernelization<'a, G>
 where
     G: FullfledgedGraph,
 {
+    #[allow(dead_code)]
     pub fn new(graph: &'a mut G, sequence: &'a mut ContractionSequence) -> Self {
         let protected_nodes = BitSet::new(graph.number_of_nodes());
         Self::new_with_protected(graph, sequence, 0, protected_nodes)
@@ -48,6 +49,7 @@ where
         }
     }
 
+    #[allow(dead_code)]
     pub fn run_first_round(&mut self) -> bool {
         repeat_while!({ self.rule_pairs() || self.rule_leaves() || self.rule_twins() })
     }

@@ -265,6 +265,7 @@ mod test {
 
     #[test]
     fn small_random() {
+        let mut total_iters = 0;
         for (filename, graph, presolved_tww) in
             get_test_graphs_with_tww("instances/small-random/*.gr").step_by(3)
         {
@@ -273,16 +274,18 @@ mod test {
             }
             println!(" Test {filename}");
 
-            let TwwSolution { tww, mut sequence } = BranchAndBound::new(graph.clone())
-                .run_to_completion()
-                .unwrap()
-                .unwrap();
+            let mut algo = BranchAndBound::new(graph.clone());
+            let TwwSolution { tww, mut sequence } = algo.run_to_completion().unwrap().unwrap();
+            total_iters += algo.number_of_iterations();
 
             sequence.add_unmerged_singletons(&graph);
             let tww_of_seq = sequence.compute_twin_width(graph).unwrap();
             assert_eq!(tww_of_seq, tww, "file: {filename}");
-
             assert_eq!(tww, presolved_tww, "file: {filename}");
         }
+        println!("Num Iters: {total_iters}");
     }
 }
+
+// with guards: 32'719'702
+// without:     37'865'316
