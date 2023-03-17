@@ -1,6 +1,9 @@
-use log::trace;
-
-use crate::prelude::*;
+use crate::prelude::{
+    contraction_sequence::ContractionSequence,
+    reductions::{prune_leaves, prune_twins},
+    AdjacencyList, BitSet, ColoredAdjacencyList, ColoredAdjacencyTest, DistanceTwoPairs,
+    GraphEdgeEditing, GraphEdgeOrder,
+};
 use std::fmt::Debug;
 
 /*
@@ -115,7 +118,6 @@ pub fn heuristic_solve<
         + GraphEdgeOrder
         + ColoredAdjacencyList
         + ColoredAdjacencyTest
-        + ColorFilter
         + Debug
         + GraphEdgeEditing,
 >(
@@ -137,52 +139,42 @@ pub fn heuristic_solve<
             }
         }
 
-        let sweeping_solver = SweepingSolver::new(graph.clone());
-        let result_5 = sweeping_solver.solve_greedy_pairwise_fast(None, 3, true);
-
-        let sweeping_solver = SweepingSolver::new(graph.clone());
-        let result_6 = sweeping_solver.solve_greedy_pairwise_fast(None, 2, true);
-
-        if result_1.0 <= result_2.0
-            && result_1.0 <= result_3.0
-            && result_1.0 <= result_4.0
-            && result_1.0 <= result_5.0
-            && result_1.0 <= result_6.0
-        {
-            result_1
-        } else if result_2.0 <= result_1.0
-            && result_2.0 <= result_3.0
-            && result_2.0 <= result_4.0
-            && result_2.0 <= result_5.0
-            && result_2.0 <= result_6.0
-        {
-            result_2
-        } else if result_3.0 <= result_1.0
-            && result_3.0 <= result_2.0
-            && result_3.0 <= result_4.0
-            && result_3.0 <= result_5.0
-            && result_3.0 <= result_6.0
-        {
-            result_3
-        } else if result_4.0 <= result_1.0
-            && result_4.0 <= result_2.0
-            && result_4.0 <= result_3.0
-            && result_4.0 <= result_5.0
-            && result_4.0 <= result_6.0
-        {
-            result_4
-        } else if result_5.0 <= result_1.0
-            && result_5.0 <= result_2.0
-            && result_5.0 <= result_3.0
-            && result_5.0 <= result_4.0
-            && result_5.0 <= result_6.0
-        {
-            result_5
-        } else {
-            result_6
+        for i in 0..13 {
+            let sweeping_solver_i = SweepingSolver::new(clone.clone());
+            let result_i = sweeping_solver_i.solve_greedy_pairwise_fast_full(Some(result.0), i, 1);
+            if let Some(result_i) = result_i
+                && result_i.0 <= result.0 {
+                result = result_i;
+            }
         }
 
-        (upper_bound.unwrap(), best_solution.unwrap())
+        // Improves graph 032 && 018 therefore make it faster then it would be good!
+        for i in 0..8 {
+            let sweeping_solver_i = SweepingSolver::new(clone.clone());
+            let result_i =
+                sweeping_solver_i.solve_greedy_pairwise_fast_full_sym_descend_only(result.0, i);
+            if let Some(result_i) = result_i
+                && result_i.0 <= result.0 {
+                result = result_i;
+            }
+        }
+
+        result
+    } else if clone.number_of_edges() < 6000 && clone.number_of_nodes() < 1000 {
+        let sweeping_solver = SweepingSolver::new(clone.clone());
+
+        let result_1 = sweeping_solver
+            .solve_greedy_pairwise_fast(None, 2, 1)
+            .unwrap();
+        let sweeping_solver = SweepingSolver::new(clone);
+        let result_2 = sweeping_solver.solve_greedy_pairwise_fast(Some(result_1.0), 1, 1);
+
+        if let Some(result_2) = result_2
+            && result_1.0 > result_2.0 {
+            result_2
+        } else {
+            result_1
+        }
     } else {
         let sweeping_solver = SweepingSolver::new(clone);
         sweeping_solver.solve_greedy()
@@ -201,7 +193,6 @@ impl<
             + ColoredAdjacencyList
             + ColoredAdjacencyTest
             + Debug
-            + ColorFilter
             + GraphEdgeEditing,
     > SweepingSolver<G>
 {
@@ -209,6 +200,7 @@ impl<
         let mut clone = graph;
         let mut preprocessing_sequence = ContractionSequence::new(clone.number_of_nodes());
 
+        // Preprocess the graph
         prune_leaves(&mut clone, &mut preprocessing_sequence);
         prune_twins(&mut clone, &mut preprocessing_sequence);
 
@@ -544,26 +536,15 @@ impl<
                 }
             }
 
-                let mut markov = PartialMonteCarloSearchTree::new(&graph, &minimum, 4, max_red);
-                markov.play_games((minimum.len() * 25) as u32);
-                let (tww_mark, markov_move) = markov.into_best_choice_with_tww();
-                if tww_mark < max_red {
-                    promising.push((tww_mark, markov_move));
-                }
-
-                for best_moves in promising.into_iter() {
-                    let mut cloned = graph.clone();
-                    let mut remaining = remaining_nodes.clone();
-                    let mut contraction = contraction_sequence.clone();
-
-                    cloned.merge_node_into(best_moves.1 .0, best_moves.1 .1);
-                    contraction.merge_node_into(best_moves.1 .0, best_moves.1 .1);
-                    remaining.unset_bit(best_moves.0);
-                    tww = tww.max(graph.red_degrees().max().unwrap());
-                    global_min_tww = global_min_tww.min(tww);
-                    new_array.push((tww, cloned, remaining, contraction));
-                }
-            }
+            self.graph.merge_node_into(min_move.0, min_move.1);
+            contraction_sequence.merge_node_into(min_move.0, min_move.1);
+            remaining_nodes.unset_bit(min_move.0);
+            tww = tww.max(self.graph.red_degrees().max().unwrap());
+        }
+        self.preprocessing_sequence.append(&contraction_sequence);
+        let _ = self.preprocessing_sequence.remaining_nodes().unwrap();
+        Some((tww, self.preprocessing_sequence))
+    }
 
     //Pretty slow for larger graphs
     pub fn solve_greedy_pairwise_fast(
@@ -632,20 +613,14 @@ impl<
                 }
             }
 
-            if enable_markov {
-                let mut markov =
-                    PartialMonteCarloSearchTree::new(&self.graph, &minimum, played_level, max_red);
-                markov.play_games((frontier_size) as u32 * 10);
-                let (tww_mark, markov_move) = markov.into_best_choice_with_tww();
-                if tww_mark < max_red {
-                    min_move = markov_move;
-                }
-            }
-
             self.graph.merge_node_into(min_move.0, min_move.1);
             contraction_sequence.merge_node_into(min_move.0, min_move.1);
             remaining_nodes.unset_bit(min_move.0);
             tww = tww.max(self.graph.red_degrees().max().unwrap());
+            if let Some(ub) = upper_bound.as_ref()
+                && *ub <= tww {
+                    return None;
+            }
         }
         self.preprocessing_sequence.append(&contraction_sequence);
         let _ = self.preprocessing_sequence.remaining_nodes().unwrap();
