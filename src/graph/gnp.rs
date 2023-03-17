@@ -109,28 +109,13 @@ mod test {
         let rng = &mut rand::thread_rng();
 
         // empty range
-        assert_eq!(
-            BernoulliSamplingRange::new(rng, 0, 0, 1.0)
-                .into_iter()
-                .count(),
-            0
-        );
+        assert_eq!(BernoulliSamplingRange::new(rng, 0, 0, 1.0).count(), 0);
 
         // p=1
-        assert_eq!(
-            BernoulliSamplingRange::new(rng, 0, 10, 1.0)
-                .into_iter()
-                .count(),
-            10
-        );
+        assert_eq!(BernoulliSamplingRange::new(rng, 0, 10, 1.0).count(), 10);
 
         // p=0
-        assert_eq!(
-            BernoulliSamplingRange::new(rng, 0, 100, 0.0)
-                .into_iter()
-                .count(),
-            0
-        );
+        assert_eq!(BernoulliSamplingRange::new(rng, 0, 100, 0.0).count(), 0);
 
         // test that we see each element ~p*n times
         let min = 3;
@@ -165,7 +150,6 @@ mod test {
             let n = 100;
 
             let mean_edges = (0..repeats)
-                .into_iter()
                 .map(|_| AdjArray::random_black_gnp(rng, n, p).number_of_edges() as f64)
                 .sum::<f64>()
                 / repeats as f64;
