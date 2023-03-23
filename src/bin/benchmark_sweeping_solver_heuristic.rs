@@ -56,6 +56,7 @@ fn main() {
 
     let best_known = load_best_known().unwrap_or_default();
     println!("Found {} best known values", best_known.len());
+    //let files = vec![std::path::PathBuf::from_str("instances/exact-public/exact_032.gr").unwrap()];
 
     let cumulative_score = std::sync::Arc::new(std::sync::Mutex::new(0));
     let mut cumulative_best_known = 0;

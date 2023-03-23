@@ -7,7 +7,7 @@ use crate::prelude::*;
 use core::fmt::Debug;
 use std::cmp::Ordering;
 
-pub struct TwinWidthSatEncoding<G> {
+pub struct RelativeTwinWidthSatEncoding<G> {
     graph: G,
     edges: fxhash::FxHashMap<u32, fxhash::FxHashMap<u32, fxhash::FxHashMap<u32, i32>>>,
     ord: fxhash::FxHashMap<u32, fxhash::FxHashMap<u32, i32>>,
@@ -30,7 +30,7 @@ impl<
             + ColoredAdjacencyTest
             + GraphEdgeEditing
             + Debug,
-    > TwinWidthSatEncoding<G>
+    > RelativeTwinWidthSatEncoding<G>
 {
     #[inline]
     pub fn add_new_variable(&mut self) -> i32 {
@@ -44,7 +44,7 @@ impl<
     }
 
     pub fn new_complement_graph(graph: &G) -> Self {
-        let mut encoding = TwinWidthSatEncoding::<G>::new(graph);
+        let mut encoding = RelativeTwinWidthSatEncoding::<G>::new(graph);
         encoding.complement_graph = true;
         encoding
     }
@@ -128,7 +128,7 @@ impl<
             }
         }
 
-        TwinWidthSatEncoding {
+        RelativeTwinWidthSatEncoding {
             graph: graph.clone(),
             edges,
             ord,
@@ -233,7 +233,7 @@ impl<
             }
             return;
         } else if upper_bound == 1 {
-            return TwinWidthSatEncoding::<G>::cardinality_naive_at_most_1(
+            return RelativeTwinWidthSatEncoding::<G>::cardinality_naive_at_most_1(
                 id_counter, vars, formula,
             );
         }
@@ -356,7 +356,7 @@ impl<
             }
             return;
         } else if upper_bound == 1 {
-            return TwinWidthSatEncoding::<G>::cardinality_naive_at_most_1_encode_assumption(
+            return RelativeTwinWidthSatEncoding::<G>::cardinality_naive_at_most_1_encode_assumption(
                 id_counter, vars, assumption, formula,
             );
         }
@@ -462,18 +462,18 @@ impl<
 
                 commands.push(new_command);
                 current_group.push(-new_command);
-                TwinWidthSatEncoding::<G>::cardinality_naive_at_most_1(
+                RelativeTwinWidthSatEncoding::<G>::cardinality_naive_at_most_1(
                     &mut self.variable_id,
                     &current_group,
                     formula,
                 );
-                TwinWidthSatEncoding::<G>::cardinality_at_least_1(current_group, formula);
+                RelativeTwinWidthSatEncoding::<G>::cardinality_at_least_1(current_group, formula);
             } else {
                 commands.push(current_group[0]);
             }
         }
         if commands.len() < 2 * m as usize {
-            TwinWidthSatEncoding::<G>::cardinality_naive_at_most_1(
+            RelativeTwinWidthSatEncoding::<G>::cardinality_naive_at_most_1(
                 &mut self.variable_id,
                 &commands,
                 formula,
@@ -885,8 +885,16 @@ impl<
                 atleast_encoded.push(var);
                 amocommander_encoded.push(var);
             }
-            TwinWidthSatEncoding::<G>::cardinality_at_least_1(atleast_encoded, &mut formula);
-            self.amo_commander(amocommander_encoded, 2, &mut formula);
+            RelativeTwinWidthSatEncoding::<G>::cardinality_at_least_1(
+                atleast_encoded,
+                &mut formula,
+            );
+            //self.amo_commander(amocommander_encoded, 2, &mut formula);
+            RelativeTwinWidthSatEncoding::<G>::cardinality_naive_at_most_1(
+                &mut self.variable_id,
+                &amocommander_encoded,
+                &mut formula,
+            );
         }
 
         for (skip_len, node_id) in self
@@ -963,7 +971,7 @@ impl<
 
                 if self.assumptions_enabled {
                     for d in 0..(at_most_d + 1) {
-                        TwinWidthSatEncoding::<G>::cardinality_at_most_k_sequential_encoding_encode_assumption(
+                        RelativeTwinWidthSatEncoding::<G>::cardinality_at_most_k_sequential_encoding_encode_assumption(
                             &mut self.variable_id,
                             &vars,
                             d,
@@ -972,7 +980,7 @@ impl<
                         );
                     }
                 } else {
-                    TwinWidthSatEncoding::<G>::cardinality_at_most_k_sequential_encoding(
+                    RelativeTwinWidthSatEncoding::<G>::cardinality_at_most_k_sequential_encoding(
                         &mut self.variable_id,
                         &vars,
                         at_most_d,
@@ -1027,12 +1035,12 @@ pub mod tests {
         io::PaceReader,
     };
 
-    use super::TwinWidthSatEncoding;
+    use super::RelativeTwinWidthSatEncoding;
 
     #[test]
     fn simple_encoding() {
         let graph = AdjArray::test_only_from([(1, 2), (1, 0), (4, 3), (0, 5), (5, 4)]);
-        let mut encoding = TwinWidthSatEncoding::new(&graph);
+        let mut encoding = RelativeTwinWidthSatEncoding::new(&graph);
 
         encoding.encode(2);
     }
@@ -1042,7 +1050,7 @@ pub mod tests {
         let vars = vec![1, -2, 3, 4, 5, 6];
         let mut id = 7;
         let mut formula = Vec::new();
-        TwinWidthSatEncoding::<AdjArray>::cardinality_at_most_k_sequential_encoding(
+        RelativeTwinWidthSatEncoding::<AdjArray>::cardinality_at_most_k_sequential_encoding(
             &mut id,
             &vars,
             2,
@@ -1080,7 +1088,7 @@ pub mod tests {
             let mut graph = AdjArray::new(pace_reader.number_of_nodes());
             graph.add_edges(pace_reader, EdgeColor::Black);
 
-            let mut solver = TwinWidthSatEncoding::new(&graph);
+            let mut solver = RelativeTwinWidthSatEncoding::new(&graph);
             if let Some((size, _)) = solver.solve_varisat(tww) {
                 assert_eq!(size, tww);
             } else {
