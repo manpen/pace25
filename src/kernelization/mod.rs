@@ -2,7 +2,9 @@ use crate::prelude::*;
 
 mod leaves;
 mod pairs;
+mod tree;
 mod twins;
+mod two_paths;
 
 macro_rules! repeat_while {
     ($body : block) => {{
@@ -51,11 +53,19 @@ where
 
     #[allow(dead_code)]
     pub fn run_first_round(&mut self) -> bool {
-        repeat_while!({ self.rule_pairs() || self.rule_leaves() || self.rule_twins() })
+        repeat_while!({
+            self.rule_pairs()
+                || self.rule_leaves()
+                || self.rule_twins()
+                || self.rule_tree()
+                || self.rule_two_path()
+        })
     }
 
     pub fn run_recursion_defaults(&mut self) -> bool {
-        repeat_while!({ self.rule_pairs() || self.rule_leaves() || self.rule_twins() })
+        repeat_while!({
+            self.rule_pairs() || self.rule_leaves() || self.rule_twins() || self.rule_two_path()
+        })
     }
 
     pub fn slack(&self) -> NumNodes {

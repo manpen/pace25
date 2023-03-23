@@ -28,8 +28,10 @@ where
                     continue;
                 }
 
+                let red_before = self.graph.red_degree_of(u).max(self.graph.red_degree_of(v));
                 self.sequence.merge_node_into(u, v);
                 self.graph.merge_node_into(u, v);
+                assert!(red_before >= self.graph.red_degree_of(v));
 
                 let mut nu = std::mem::take(&mut neighbors[u as usize]);
                 neighbors[v as usize].or(&nu);
@@ -47,37 +49,37 @@ where
     }
 
     fn are_twins(&self, neighbors: &mut [BitSet], u: Node, v: Node) -> bool {
-        debug_assert_ne!(u, v);
-
         if self.is_protected(u) || self.is_protected(v) {
             return false;
         }
 
-        // sutable degree 1 nodes were taken care by [`prune_leaves`]
-        if self.graph.degree_of(u) < 2 || self.graph.degree_of(u) != self.graph.degree_of(v) {
-            return false;
-        }
+        self.are_twins_impl(neighbors, u, v) || self.are_twins_impl(neighbors, v, u)
+    }
 
-        if self.graph.red_degree_of(u) != 0 && self.graph.red_degree_of(v) != 0 {
-            let mut ru = self.graph.red_neighbors_of_as_bitset(u);
-            let mut rv = self.graph.red_neighbors_of_as_bitset(v);
+    fn are_twins_impl(&self, neighbors: &mut [BitSet], smaller: Node, larger: Node) -> bool {
+        debug_assert_ne!(smaller, larger);
 
-            ru.unset_bit(v);
-            rv.unset_bit(u);
+        let was_set_before = neighbors[smaller as usize].set_bit(larger);
 
-            if !ru.is_subset_of(&rv) && !rv.is_subset_of(&ru) {
+        let are_twins = (|| {
+            let mut lneighbor = neighbors[larger as usize].clone();
+            lneighbor.set_bit(smaller);
+
+            if !neighbors[smaller as usize].is_subset_of(&lneighbor) {
                 return false;
             }
-        }
 
-        let was_set_before = neighbors[u as usize].set_bit(v);
-        neighbors[v as usize].set_bit(u);
+            lneighbor.and_not(&neighbors[smaller as usize]);
 
-        let are_twins = neighbors[u as usize] == neighbors[v as usize];
+            lneighbor.is_subset_of(&self.graph.red_neighbors_of_as_bitset(larger))
+                && self
+                    .graph
+                    .red_neighbors_of_as_bitset(smaller)
+                    .is_subset_of(&self.graph.red_neighbors_of_as_bitset(larger))
+        })();
 
         if !was_set_before {
-            neighbors[u as usize].unset_bit(v);
-            neighbors[v as usize].unset_bit(u);
+            neighbors[smaller as usize].unset_bit(larger);
         }
 
         are_twins
