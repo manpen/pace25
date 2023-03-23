@@ -1,4 +1,4 @@
-//! All our DFVS algorithms should be implemented using the [`IterativeAlgorithm`] trait.
+//! All our tww algorithms should be implemented using the [`IterativeAlgorithm`] trait.
 //!
 //! The idea is to allow co-operative threading, i.e. an algorithm does some work (say a few
 //! milliseconds) and then breaks to yield  to another algorithm. An external entity (scheduler)
@@ -23,14 +23,14 @@ use std::time::{Duration, Instant};
 ///
 /// # Example
 /// ```
-/// use dfvs::algorithm::IterativeAlgorithm;
-/// use dfvs::graph::{AdjacencyList, Node};
+/// use tww::algorithm::IterativeAlgorithm;
+/// use tww::graph::{AdjacencyList, Node};
 /// struct MyAlgorithm<'a, G> {
 ///    graph: &'a G,
-///    solution: Option<Vec<Node>>
+///    solution: Option<u32>
 /// }
 ///
-/// impl<'a, G> IterativeAlgorithm for MyAlgorithm<'a, G> where G: 'a + AdjacencyList {
+/// impl<'a, G> IterativeAlgorithm<u32> for MyAlgorithm<'a, G> where G: 'a + AdjacencyList {
 ///     fn execute_step(&mut self) {
 ///         // do some magic to improve the solution. To avoid overhead, the computation
 ///         // should take at least a few milliseconds but less than a second.
@@ -41,8 +41,8 @@ use std::time::{Duration, Instant};
 ///         false
 ///     }
 ///
-///     fn best_known_solution(&mut self) -> Option<&[Node]> {
-///         self.solution.as_deref()
+///     fn best_known_solution(&mut self) -> Option<u32> {
+///         self.solution.clone()
 ///     }
 /// }
 /// ```
@@ -90,7 +90,7 @@ pub trait IterativeAlgorithm<Result> {
 /// # Example
 ///
 /// ```ignore
-/// use dfvs::algorithm::{IterativeAlgorithm, TerminatingIterativeAlgorithm};
+/// use tww::algorithm::{IterativeAlgorithm, TerminatingIterativeAlgorithm};
 ///
 /// struct MyAlgorithm {};
 ///
