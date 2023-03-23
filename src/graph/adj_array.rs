@@ -367,10 +367,7 @@ mod test {
             assert_eq!(graph.number_of_nodes(), n);
 
             assert_eq!(graph.vertices_range().len(), n as usize);
-            assert_eq!(
-                graph.vertices().collect_vec(),
-                (0..n).into_iter().collect_vec()
-            );
+            assert_eq!(graph.vertices().collect_vec(), (0..n).collect_vec());
         }
     }
 

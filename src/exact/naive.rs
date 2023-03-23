@@ -67,9 +67,8 @@ pub fn naive_solver_with_bounds<G: NaiveSolvableGraph>(
 
     let mut cache = SolverResultCache::default();
 
-    let (twin_width, mut contract_seq) =
-        try_split_into_cc(&mut cache, &mut graph, slack, not_above)
-            .unwrap_or_else(|| recurse(&mut cache, &mut graph, slack, not_above))?;
+    let (twin_width, contract_seq) = try_split_into_cc(&mut cache, &mut graph, slack, not_above)
+        .unwrap_or_else(|| recurse(&mut cache, &mut graph, slack, not_above))?;
 
     println!(
         "hits: {} misses: {}",
