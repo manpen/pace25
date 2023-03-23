@@ -15,7 +15,7 @@ pub mod utils;
 
 pub mod prelude {
     pub use super::algorithm::*;
-    pub use super::exact::*;
+    pub use super::exact::{branch_and_bound::BranchAndBound, *};
     pub use super::graph::*;
     pub use super::heuristic::*;
     pub use super::io::*;

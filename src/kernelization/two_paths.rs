@@ -7,7 +7,7 @@ where
     G: FullfledgedGraph,
 {
     #[allow(dead_code)]
-    pub(super) fn rule_two_path(&mut self) -> bool {
+    pub(super) fn rule_two_paths(&mut self) -> bool {
         if self.slack < 2 {
             return false;
         }
@@ -27,7 +27,9 @@ where
                     .iter()
                     .filter_map(|&v| {
                         let w = self.graph.continue_path(host, v)?;
-                        (self.graph.has_black_edge(host, v) && self.graph.degree_of(w) == 1)
+                        (!self.is_protected(w)
+                            && self.graph.has_black_edge(host, v)
+                            && self.graph.degree_of(w) == 1)
                             .then_some((v, w))
                     })
                     .collect();
