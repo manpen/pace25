@@ -1,8 +1,11 @@
 use std::io::Write;
 
+use itertools::Itertools;
+use log::debug;
+
 use crate::graph::*;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Default)]
 pub struct ContractionSequence {
     num_nodes: NumNodes,
     seq: Vec<(Node, Node)>,
@@ -67,6 +70,10 @@ impl ContractionSequence {
             }
 
             if graph.degrees().any(|d| d > 0) {
+                debug!(
+                    "Contraction Sequence does not completely merge graph: {:?}",
+                    graph.vertices_with_neighbors().collect_vec()
+                );
                 return None;
             }
 
@@ -89,6 +96,7 @@ impl ContractionSequence {
         let mut node_exists = BitSet::new_all_set(self.num_nodes);
 
         for &(removed, survivor) in &self.seq {
+            assert!(removed < self.num_nodes, "{removed} {}", self.num_nodes);
             let exists_before_removal = node_exists.unset_bit(removed);
             let still_exists = node_exists[survivor];
 
@@ -116,6 +124,14 @@ impl ContractionSequence {
         //self.seq.extend(&other.seq);
     }
 
+    pub fn append_mapped<M: Getter>(&mut self, other: &ContractionSequence, mapper: &M) {
+        self.seq.reserve(other.seq.len());
+        for &(u, v) in &other.seq {
+            self.merge_node_into(mapper.old_id_of(u).unwrap(), mapper.old_id_of(v).unwrap());
+        }
+        //self.seq.extend(&other.seq);
+    }
+
     pub fn checkpoint(&self) -> CSCheckPoint {
         CSCheckPoint(self.seq.len())
     }
@@ -128,10 +144,33 @@ impl ContractionSequence {
         &self.seq
     }
 
+    pub fn last_survivor(&self) -> Option<Node> {
+        self.seq.last().map(|(_, v)| *v)
+    }
+
+    pub fn apply_mapper<M: Getter>(&mut self, mapper: &M) {
+        for (u, v) in &mut self.seq {
+            *u = mapper.old_id_of(*u).unwrap();
+            *v = mapper.old_id_of(*v).unwrap();
+        }
+
+        if let Some(max) = self.seq.iter().map(|&(u, v)| u.max(v)).max() {
+            self.num_nodes = self.num_nodes.max(max + 1);
+        }
+    }
+
     pub fn pace_writer<W: Write>(&self, mut writer: W) -> std::io::Result<()> {
         for &(rem, sur) in &self.seq {
             writeln!(writer, "{} {}", sur + 1, rem + 1)?;
         }
         Ok(())
+    }
+
+    pub fn len(&self) -> NumNodes {
+        self.merges().len() as NumNodes
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.merges().is_empty()
     }
 }

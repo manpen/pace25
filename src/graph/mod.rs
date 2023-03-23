@@ -1,5 +1,6 @@
 pub mod absolute_twin_width_sat_encoding;
 pub mod adj_array;
+pub mod bipartite;
 pub mod bitset;
 pub mod bridges;
 pub mod color_filter;
@@ -10,13 +11,16 @@ pub mod distance_two_pairs;
 pub mod edge;
 pub mod gnp;
 pub mod graph_digest;
+pub mod modules;
 pub mod node_mapper;
 pub mod partition;
-pub mod subgraph;
 pub mod relative_twin_width_sat_encoding;
+pub mod subgraph;
 pub mod traversal;
+pub mod weisfeiler_lehman;
 
 pub use adj_array::*;
+pub use bipartite::*;
 pub use bitset::*;
 pub use bridges::*;
 pub use color_filter::*;
@@ -27,10 +31,12 @@ pub use distance_two_pairs::*;
 pub use edge::*;
 pub use gnp::*;
 pub use graph_digest::*;
+pub use modules::Modules;
 pub use node_mapper::*;
 pub use partition::*;
 pub use subgraph::*;
 pub use traversal::*;
+pub use weisfeiler_lehman::*;
 
 use itertools::Itertools;
 use std::{borrow::Borrow, ops::Range};
@@ -133,6 +139,10 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
         distr
     }
 
+    fn max_degree(&self) -> NumNodes {
+        self.degrees().max().unwrap_or(0)
+    }
+
     node_iterator!(degrees, degree_of, NumNodes);
     node_iterator!(neighbors, neighbors_of, &[Node]);
     node_bitset_of!(neighbors_of_as_bitset, neighbors_of);
@@ -201,6 +211,14 @@ pub trait ColoredAdjacencyList: AdjacencyList {
     /// Returns the number of red neighbors of from `u`
     fn red_degree_of(&self, u: Node) -> NumNodes {
         self.red_neighbors_of(u).len() as NumNodes
+    }
+
+    fn max_red_degree(&self) -> NumNodes {
+        self.red_degrees().max().unwrap_or(0)
+    }
+
+    fn max_black_degree(&self) -> NumNodes {
+        self.black_degrees().max().unwrap_or(0)
     }
 
     /// Returns an iterator of the colored edges incident to `u`

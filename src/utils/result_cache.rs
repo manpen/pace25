@@ -1,6 +1,8 @@
 use crate::prelude::*;
 
 use fxhash::{FxBuildHasher, FxHashMap};
+use log::trace;
+use std::fmt::Debug;
 
 const INITIAL_CAPACITY: usize = 10_000;
 const DEFAULT_MAX_CAPACITY: usize = 100_000_000;
@@ -25,7 +27,7 @@ pub struct ResultCache<K> {
 
 impl<K> Default for ResultCache<K>
 where
-    K: std::cmp::Eq + std::hash::Hash + Clone,
+    K: std::cmp::Eq + std::hash::Hash + Clone + Debug,
 {
     fn default() -> Self {
         Self::new()
@@ -34,7 +36,7 @@ where
 
 impl<K> ResultCache<K>
 where
-    K: std::cmp::Eq + std::hash::Hash + Clone,
+    K: std::cmp::Eq + std::hash::Hash + Clone + Debug,
 {
     pub fn new() -> Self {
         Self {
@@ -86,8 +88,14 @@ where
         not_above: NumNodes,
     ) {
         if self.cache.len() > self.capacity {
+            trace!("Evict elements");
             self.evict_element()
         }
+
+        if self.cache.len() % 10000 == 0 {
+            trace!("Cache size: {}", self.cache.len());
+        }
+
         self.cache.insert(
             digest,
             CacheEntry {
@@ -97,6 +105,7 @@ where
                 solution,
             },
         );
+
         self.timestamp += 1;
     }
 

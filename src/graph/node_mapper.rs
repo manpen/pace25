@@ -85,18 +85,36 @@ pub trait Getter {
 
     /// Applies [`Getter::old_id_of`] to each iterator item. Uses the iterator item (new) as a fallback
     /// if the mapping(old, new) doesn't exist.
-    fn get_old_ids(&self, new_ids: impl Iterator<Item = Node>) -> Vec<Node> {
-        new_ids
-            .map(|new| self.old_id_of(new).unwrap_or(new))
-            .collect_vec()
+    fn get_old_ids<'a>(
+        &'a self,
+        new_ids: impl Iterator<Item = Node> + 'a,
+    ) -> impl Iterator<Item = Node> + 'a {
+        new_ids.map(|new| self.old_id_of(new).unwrap_or(new))
+    }
+
+    /// Applies [`Getter::old_id_of`] to each iterator item and returns the items for which a new id is known.
+    fn get_filtered_old_ids<'a>(
+        &'a self,
+        new_ids: impl Iterator<Item = Node> + 'a,
+    ) -> impl Iterator<Item = Node> + 'a {
+        new_ids.filter_map(|new| self.old_id_of(new))
     }
 
     /// Applies [`Getter::new_id_of`] to each iterator item. Uses the iterator item (old) as a fallback
     /// if the mapping(old, new) doesn't exist.
-    fn get_new_ids(&self, old_ids: impl Iterator<Item = Node>) -> Vec<Node> {
-        old_ids
-            .map(|old| self.new_id_of(old).unwrap_or(old))
-            .collect_vec()
+    fn get_new_ids<'a>(
+        &'a self,
+        old_ids: impl Iterator<Item = Node> + 'a,
+    ) -> impl Iterator<Item = Node> + 'a {
+        old_ids.map(|old| self.new_id_of(old).unwrap_or(old))
+    }
+
+    /// Applies [`Getter::new_id_of`] to each iterator item and returns the items for which a new id is known.
+    fn get_filtered_new_ids<'a>(
+        &'a self,
+        old_ids: impl Iterator<Item = Node> + 'a,
+    ) -> impl Iterator<Item = Node> + 'a {
+        old_ids.filter_map(|old| self.new_id_of(old))
     }
 
     /// Create a 'copy' of type `GO` from the input graph where all nodes are relabelled according to this mapper.
@@ -156,7 +174,7 @@ pub trait Compose {
     /// Takes two Mapper M1 (original -> intermediate) and M2 (intermediate -> final)
     /// and produces a new mapper (original -> final). All mappings without a correspondence
     /// in the other mapper are dropped
-    fn compose(first: &Self, second: &Self) -> Self;
+    fn compose<S: Getter + Clone>(first: &Self, second: &S) -> Self;
 }
 
 pub trait Inverse {
@@ -238,15 +256,7 @@ impl Getter for NodeMapper {
 }
 
 impl Compose for NodeMapper {
-    fn compose(first: &NodeMapper, second: &NodeMapper) -> Self {
-        if first.is_identity {
-            return second.clone();
-        }
-
-        if second.is_identity {
-            return first.clone();
-        }
-
+    fn compose<S: Getter + Clone>(first: &Self, second: &S) -> Self {
         let mut composition = Self::with_capacity(second.len() as Node);
         for (&original, &intermediate) in first.old_to_new.iter() {
             if let Some(new) = second.new_id_of(intermediate) {

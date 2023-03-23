@@ -252,3 +252,18 @@ impl Partition {
         self.split_into_subgraphs_as(graph)
     }
 }
+
+impl From<BitSet> for Partition {
+    fn from(set: BitSet) -> Self {
+        let mut part = Partition::new(set.len());
+
+        assert_eq!(part.add_class(std::iter::empty()), 0);
+        assert_eq!(part.add_class(std::iter::empty()), 1);
+
+        for i in 0..set.len() {
+            part.move_node(i, set[i] as u32);
+        }
+
+        part
+    }
+}

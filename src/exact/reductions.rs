@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use log::trace;
 
 use crate::prelude::*;
 use std::fmt::Debug;
@@ -10,20 +11,38 @@ pub fn initial_pruning<
         + ColoredAdjacencyList
         + ColoredAdjacencyTest
         + GraphEdgeEditing
+        + ColorFilter
         + Debug,
 >(
     graph: &mut G,
     contract_seq: &mut ContractionSequence,
 ) {
+    trace!(
+        "Start initial pruning n={} nnz={} m={}",
+        graph.number_of_nodes(),
+        graph.number_of_nodes_with_neighbors(),
+        graph.number_of_edges()
+    );
+
     loop {
         let m = graph.number_of_edges();
         let k = contract_seq.merges().len();
+
         prune_leaves(graph, contract_seq);
         prune_twins(graph, contract_seq);
+
         if graph.number_of_edges() == m && contract_seq.merges().len() == k {
             break;
         }
     }
+
+    trace!(
+        "Done initial pruning n={} nnz={} m={} dd={:?}",
+        graph.number_of_nodes(),
+        graph.number_of_nodes_with_neighbors(),
+        graph.number_of_edges(),
+        graph.degree_distribution()
+    );
 }
 
 pub fn default_pruning<
@@ -40,6 +59,13 @@ pub fn default_pruning<
     slack: NumNodes,
     contract_seq: &mut ContractionSequence,
 ) {
+    trace!(
+        "Start default pruning n={} nnz={} m={}",
+        graph.number_of_nodes(),
+        graph.number_of_nodes_with_neighbors(),
+        graph.number_of_edges()
+    );
+
     loop {
         let m = graph.number_of_edges();
         let k = contract_seq.merges().len();
@@ -50,6 +76,60 @@ pub fn default_pruning<
         prune_red_path(graph, slack, contract_seq);
         if graph.number_of_edges() == m && contract_seq.merges().len() == k {
             break;
+        }
+    }
+
+    trace!(
+        "Done default pruning n={} nnz={} m={}",
+        graph.number_of_nodes(),
+        graph.number_of_nodes_with_neighbors(),
+        graph.number_of_edges()
+    );
+}
+
+pub fn prune_outer_paths<
+    G: Clone
+        + AdjacencyList
+        + GraphEdgeOrder
+        + ColoredAdjacencyList
+        + ColoredAdjacencyTest
+        + GraphEdgeEditing
+        + Debug,
+>(
+    graph: &mut G,
+    slack: NumNodes,
+    contract_seq: &mut ContractionSequence,
+) {
+    if slack < 1 {
+        return;
+    }
+
+    let mut contracts_before = usize::MAX;
+
+    while contracts_before != contract_seq.merges().len() {
+        contracts_before = contract_seq.merges().len();
+        for middle in graph.vertices_range() {
+            if graph.degree_of(middle) != 2 {
+                continue;
+            }
+
+            let mut leaf = graph.neighbors_of(middle)[0];
+            let mut inner = graph.neighbors_of(middle)[1];
+
+            if graph.degree_of(leaf) != 1 {
+                std::mem::swap(&mut leaf, &mut inner);
+            }
+
+            if !(graph.degree_of(leaf) == 1 && graph.degree_of(inner) == 2) {
+                continue;
+            }
+
+            if graph.red_degree_of(inner) != 0 && !graph.has_red_edge(middle, inner) {
+                continue;
+            }
+
+            contract_seq.merge_node_into(leaf, middle);
+            graph.merge_node_into(leaf, middle);
         }
     }
 }
@@ -197,8 +277,11 @@ pub fn prune_twins<
         }
 
         if graph.red_degree_of(u) != 0 && graph.red_degree_of(v) != 0 {
-            let ru = graph.red_neighbors_of_as_bitset(u);
-            let rv = graph.red_neighbors_of_as_bitset(v);
+            let mut ru = graph.red_neighbors_of_as_bitset(u);
+            let mut rv = graph.red_neighbors_of_as_bitset(v);
+
+            ru.unset_bit(v);
+            rv.unset_bit(u);
 
             if !ru.is_subset_of(&rv) && !rv.is_subset_of(&ru) {
                 return false;

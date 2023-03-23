@@ -7,11 +7,7 @@ use std::{
 
 use glob::glob;
 use itertools::Itertools;
-use tww::{
-    graph::{AdjArray, GraphEdgeOrder, GraphNodeOrder, NumNodes},
-    io::GraphPaceReader,
-    prelude::{lower_bound_lb1::lower_bound, sweep_solver::heuristic_solve},
-};
+use tww::prelude::*;
 
 fn load_best_known() -> std::io::Result<HashMap<String, NumNodes>> {
     let reader = File::open("instances/best_known_solutions.csv")?;
@@ -68,7 +64,7 @@ fn main() {
         let start = Instant::now();
         let result = heuristic_solve(&graph);
 
-        let lb = lower_bound(&graph, 0);
+        let lb = lower_bound_lb1(&graph, 0);
 
         let sol_size = result.0;
 

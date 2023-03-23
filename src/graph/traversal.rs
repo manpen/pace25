@@ -328,12 +328,32 @@ pub trait TraversalTree<'a, G: 'a + AdjacencyList>:
         }
     }
 
-    /// Calls allocates a vector of size [graph.len()] and calls [self.parent_array_into] on it.
+    /// Calls allocates a vector of size [`graph.len()`] and calls [self.parent_array_into] on it.
     /// Unvisited nodes have themselves as parents.
     fn parent_array(&mut self) -> Vec<Node> {
         let mut tree: Vec<_> = self.graph().vertices_range().collect();
         self.parent_array_into(&mut tree);
         tree
+    }
+
+    /// Consumes the underlying graph traversal iterator and depth of nodes in the implied
+    /// tree structure, i.e. `result[i]` stores the depth of node `i` where a root has depth 0.
+    /// It is the calling code's responsibility to ensure that the slice `depths` is sufficiently
+    /// large to store all reachable nodes (i.e. in general of size at least `graph.len()`).
+    fn depths_into(&mut self, depths: &mut [Node]) {
+        for pred_with_item in self.by_ref() {
+            depths[pred_with_item.item() as usize] = pred_with_item
+                .predecessor()
+                .map_or(0, |p| depths[p as usize] + 1);
+        }
+    }
+
+    /// Calls allocates a vector of size [`graph.len()`] and calls [self.parent_array_into] on it.
+    /// Unvisited nodes have themselves as parents.
+    fn depths(&mut self) -> Vec<Node> {
+        let mut depths: Vec<_> = vec![0; self.graph().number_of_nodes() as usize];
+        self.depths_into(&mut depths);
+        depths
     }
 }
 
