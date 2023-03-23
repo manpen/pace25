@@ -54,17 +54,15 @@ where
     #[allow(dead_code)]
     pub fn run_first_round(&mut self) -> bool {
         repeat_while!({
-            self.rule_pairs()
-                || self.rule_leaves()
-                || self.rule_twins()
-                || self.rule_tree()
-                || self.rule_two_path()
+            self.rule_pairs() || self.rule_leaves() || self.rule_twins()
+            //   || self.rule_tree()
+            //   || self.rule_two_path()
         })
     }
 
     pub fn run_recursion_defaults(&mut self) -> bool {
         repeat_while!({
-            self.rule_pairs() || self.rule_leaves() || self.rule_twins() || self.rule_two_path()
+            self.rule_pairs() || self.rule_leaves() || self.rule_twins() // || self.rule_two_path()
         })
     }
 

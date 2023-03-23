@@ -6,6 +6,7 @@ impl<'a, G> Kernelization<'a, G>
 where
     G: FullfledgedGraph,
 {
+    #[allow(dead_code)]
     pub(super) fn rule_two_path(&mut self) -> bool {
         if self.slack < 2 {
             return false;

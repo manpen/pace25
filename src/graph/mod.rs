@@ -110,6 +110,15 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
     /// ** Panics if the v >= n **
     fn neighbors_of(&self, u: Node) -> &[Node];
 
+    /// If v has degree two (i.e. neighbors [u, w]), this function continues
+    /// the walk `u`, `v`, `w` and returns `Some(w)`. Otherwise it returns `None`.
+    fn continue_path(&self, u: Node, v: Node) -> Option<Node> {
+        (self.degree_of(v) == 2).then(|| {
+            let idx = self.neighbors_of(v)[0] == u;
+            self.neighbors_of(v)[idx as usize]
+        })
+    }
+
     /// Returns the number of neighbors of from `u`
     fn degree_of(&self, u: Node) -> NumNodes {
         self.neighbors_of(u).len() as NumNodes

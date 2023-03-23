@@ -174,7 +174,7 @@ pub trait Compose {
     /// Takes two Mapper M1 (original -> intermediate) and M2 (intermediate -> final)
     /// and produces a new mapper (original -> final). All mappings without a correspondence
     /// in the other mapper are dropped
-    fn compose<S: Getter + Clone>(first: &Self, second: &S) -> Self;
+    fn compose(first: &Self, second: &Self) -> Self;
 }
 
 pub trait Inverse {
@@ -256,7 +256,15 @@ impl Getter for NodeMapper {
 }
 
 impl Compose for NodeMapper {
-    fn compose<S: Getter + Clone>(first: &Self, second: &S) -> Self {
+    fn compose(first: &Self, second: &Self) -> Self {
+        if first.is_identity {
+            return second.clone();
+        }
+
+        if second.is_identity {
+            return first.clone();
+        }
+
         let mut composition = Self::with_capacity(second.len() as Node);
         for (&original, &intermediate) in first.old_to_new.iter() {
             if let Some(new) = second.new_id_of(intermediate) {

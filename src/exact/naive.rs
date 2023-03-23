@@ -1,8 +1,7 @@
 use itertools::Itertools;
+#[allow(unused_imports)]
 use log::{info, trace};
-use num::Integer;
 
-use super::*;
 use crate::prelude::*;
 
 type SolverResultCache = crate::utils::ResultCache<digest::Output<sha2::Sha256>>;
@@ -18,7 +17,9 @@ pub fn naive_solver_two_staged<G: FullfledgedGraph>(
     let mut graph = input_graph.clone();
 
     let mut contract_seq = ContractionSequence::new(graph.number_of_nodes());
-    initial_pruning(&mut graph, &mut contract_seq);
+    let mut kernel = Kernelization::new(&mut graph, &mut contract_seq);
+    kernel.run_first_round();
+    let mut slack = kernel.slack();
 
     let part = graph.partition_into_connected_components(true);
     let mut subgraphs = part.split_into_subgraphs(&graph);
@@ -26,7 +27,6 @@ pub fn naive_solver_two_staged<G: FullfledgedGraph>(
 
     trace!("Number of CCs: {}", subgraphs.len());
 
-    let mut slack = 0;
     for (subgraph, mapper) in subgraphs {
         let (tww, mut seq) = escalate_solvers(&subgraph, slack);
         contract_seq.append_mapped(&seq, &mapper);
@@ -84,7 +84,7 @@ pub fn naive_solver_with_bounds<G: FullfledgedGraph>(
     let result = try_split_into_cc(&mut cache, &mut graph, slack, not_above, &protected)
         .unwrap_or_else(|| recurse(&mut cache, &mut graph, slack, not_above, &protected));
 
-    println!(
+    info!(
         "Iterations: {}",
         cache.number_of_cache_hits() + cache.number_of_cache_misses()
     );

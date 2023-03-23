@@ -6,6 +6,7 @@ impl<'a, G> Kernelization<'a, G>
 where
     G: FullfledgedGraph,
 {
+    #[allow(dead_code)]
     pub(super) fn rule_tree(&mut self) -> bool {
         repeat_while!({
             let merges_before = self.sequence.len();

@@ -1,10 +1,4 @@
-use crate::prelude::{
-    contraction_sequence::ContractionSequence,
-    reductions::{prune_leaves, prune_twins},
-    AdjacencyList, BitSet, ColoredAdjacencyList, ColoredAdjacencyTest, DistanceTwoPairs,
-    GraphEdgeEditing, GraphEdgeOrder,
-};
-use std::fmt::Debug;
+use crate::prelude::*;
 
 /*
 instances/exact-public/exact_002.gr                |     20 |       69 |      6 (     6) |    233 ms | 5 lb
@@ -112,17 +106,7 @@ Heuristic Solver:   Cumulative: 131
                     Comparison on 31 best known.
  */
 
-pub fn heuristic_solve<
-    G: Clone
-        + AdjacencyList
-        + GraphEdgeOrder
-        + ColoredAdjacencyList
-        + ColoredAdjacencyTest
-        + Debug
-        + GraphEdgeEditing,
->(
-    graph: &G,
-) -> (u32, ContractionSequence) {
+pub fn heuristic_solve<G: FullfledgedGraph>(graph: &G) -> (u32, ContractionSequence) {
     let clone = graph.clone();
     if clone.number_of_edges() < 1000 && clone.number_of_nodes() < 200 {
         let sweeping_solver = SweepingSolver::new(clone.clone());
@@ -186,23 +170,13 @@ pub struct SweepingSolver<G> {
     preprocessing_sequence: ContractionSequence,
 }
 
-impl<
-        G: Clone
-            + AdjacencyList
-            + GraphEdgeOrder
-            + ColoredAdjacencyList
-            + ColoredAdjacencyTest
-            + Debug
-            + GraphEdgeEditing,
-    > SweepingSolver<G>
-{
+impl<G: FullfledgedGraph> SweepingSolver<G> {
     pub fn new(graph: G) -> SweepingSolver<G> {
         let mut clone = graph;
         let mut preprocessing_sequence = ContractionSequence::new(clone.number_of_nodes());
 
         // Preprocess the graph
-        prune_leaves(&mut clone, &mut preprocessing_sequence);
-        prune_twins(&mut clone, &mut preprocessing_sequence);
+        Kernelization::new(&mut clone, &mut preprocessing_sequence).run_first_round();
 
         SweepingSolver {
             graph: clone,
@@ -281,14 +255,14 @@ impl<
         graph: &G,
         first_move: (u32, u32),
         mut remaining_nodes: BitSet,
-        mut num_levels: u32,
+        num_levels: u32,
     ) -> (u32, u32) {
         let mut cloned = graph.clone();
         cloned.merge_node_into(first_move.0, first_move.1);
         remaining_nodes.unset_bit(first_move.0);
         let mut tww = cloned.red_degrees().max().unwrap();
 
-        loop {
+        for _ in 0..num_levels {
             if remaining_nodes.cardinality() <= 1 {
                 break;
             }
@@ -307,11 +281,6 @@ impl<
 
                 tww = tww.max(cloned.red_degrees().max().unwrap());
             } else {
-                break;
-            }
-
-            num_levels -= 1;
-            if num_levels == 0 {
                 break;
             }
         }
@@ -364,7 +333,7 @@ impl<
         first_move: (u32, u32),
         upper_bound: u32,
         mut remaining_nodes: BitSet,
-        mut num_levels: u32,
+        num_levels: u32,
     ) -> (u32, u32) {
         let mut cloned = graph.clone();
         cloned.merge_node_into(first_move.0, first_move.1);
@@ -374,7 +343,7 @@ impl<
         let mut min_sim: Vec<(u32, u32)> = vec![(0, 0); cloned.number_of_nodes() as usize];
 
         let mut round = 1;
-        loop {
+        for _ in 0..num_levels {
             round += 1;
             if remaining_nodes.cardinality() <= 1 {
                 break;
@@ -418,11 +387,6 @@ impl<
                 tww = tww.max(cloned.red_degrees().max().unwrap());
                 initial_deg = cloned.degrees().sum();
             } else {
-                break;
-            }
-
-            num_levels -= 1;
-            if num_levels == 0 {
                 break;
             }
         }

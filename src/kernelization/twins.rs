@@ -4,6 +4,7 @@ impl<'a, G> Kernelization<'a, G>
 where
     G: FullfledgedGraph,
 {
+    #[allow(dead_code)]
     pub(super) fn rule_twins(&mut self) -> bool {
         let mut neighbors: Vec<_> = self.graph.neighbors_as_bitset().collect();
         neighbors.iter_mut().enumerate().for_each(|(i, bs)| {
