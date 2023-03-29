@@ -1,8 +1,47 @@
 use super::*;
 
 pub trait BipartiteTest {
+    /// Tests whether the given candidate partition is a valid bipartition.
+    ///
+    /// # Examples
+    /// ```
+    /// use tww::prelude::*;
+    /// let mut graph = AdjArray::new(2);
+    /// graph.add_edge(0, 1, EdgeColor::Black);
+    ///
+    /// assert!(graph.is_bipartition(&BitSet::new_all_unset_but(2, [0u32])));
+    /// assert!(!graph.is_bipartition(&BitSet::new(2)));
+    /// ```
     fn is_bipartition(&self, candidate: &BitSet) -> bool;
+
+    /// Computes a valid bipartition of the graph, if one exists.
+    ///
+    /// # Examples
+    /// ```
+    /// use tww::prelude::*;
+    /// let mut graph = AdjArray::new(4); // path graph
+    /// graph.add_edges([(0, 1), (1, 2), (2, 3)], EdgeColor::Black);
+    ///
+    /// let partition = graph.compute_bipartition().unwrap();
+    /// assert!(graph.is_bipartition(&partition));
+    ///
+    /// graph.add_edge(0, 2, EdgeColor::Black);
+    /// assert!(graph.compute_bipartition().is_none());
+    /// ```
     fn compute_bipartition(&self) -> Option<BitSet>;
+
+    /// Tests whether the graph is bipartite.
+    ///
+    /// # Examples
+    /// use tww::prelude::*;
+    /// let mut graph = AdjArray::new(4); // path graph
+    /// graph.add_edges([(0, 1), (1, 2), (2, 3)], EdgeColor::Black);
+    ///
+    /// assert!(graph.is_bipartite());
+    ///
+    /// graph.add_edge(0, 2, EdgeColor::Black);
+    /// assert!(!graph.is_bipartite());
+    /// ```
     fn is_bipartite(&self) -> bool {
         self.compute_bipartition().is_some()
     }
@@ -20,6 +59,43 @@ where
     fn compute_bipartition(&self) -> Option<BitSet> {
         let candidate = propose_possibly_illegal_bipartition(self);
         self.is_bipartition(&candidate).then_some(candidate)
+    }
+}
+
+pub trait BipartiteEdit {
+    /// Remove all edges that connect nodes in the same partition.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tww::prelude::*;
+    /// let mut graph = AdjArray::new(4);
+    /// graph.add_edges([(0, 1), (1, 2), (2, 3)], EdgeColor::Black);
+    /// let partition = BitSet::new_all_unset_but(4, [0u32, 2]);
+    ///
+    /// // no change, since it's actually bipartite
+    /// graph.remove_edges_within_partition(&partition);
+    /// assert_eq!(graph.number_of_edges(), 3);
+    ///
+    /// // add non-bipartite edges
+    /// graph.add_edges([(0, 2), (1, 3)], EdgeColor::Black);
+    /// assert_eq!(graph.number_of_edges(), 5);
+    /// graph.remove_edges_within_partition(&partition);
+    /// assert_eq!(graph.number_of_edges(), 3);
+    /// ```
+    fn remove_edges_within_bipartition_class(&mut self, bipartition: &BitSet);
+}
+
+impl<G> BipartiteEdit for G
+where
+    G: AdjacencyList + GraphEdgeEditing,
+{
+    fn remove_edges_within_bipartition_class(&mut self, bipartition: &BitSet) {
+        let to_delete: Vec<_> = self
+            .edges(true)
+            .filter(|&Edge(u, v)| bipartition[u] == bipartition[v])
+            .collect();
+        self.remove_edges(to_delete);
     }
 }
 

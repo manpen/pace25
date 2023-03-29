@@ -332,6 +332,12 @@ pub trait GraphEdgeEditing: GraphNew {
         assert!(self.try_remove_edge(u, v).is_some())
     }
 
+    fn remove_edges(&mut self, edges: impl IntoIterator<Item = impl Borrow<Edge>>) {
+        for Edge(u, v) in edges.into_iter().map(|d| *d.borrow()) {
+            self.remove_edge(u, v);
+        }
+    }
+
     /// Removes the directed edge *(u,v)* from the graph. I.e., the edge FROM u TO v.
     /// If the edge was removed, returns *true* and *false* otherwise.
     /// ** Panics if u, v >= n **
