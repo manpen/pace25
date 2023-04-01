@@ -3,7 +3,7 @@
 perf.data
 /instances/small-random/*
 /instances/heuristic-public/*
-/instances/*/*.edges
+/instances/*/*
 *.solution
 *.vsolution-*
 /*dampf*

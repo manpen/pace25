@@ -39,7 +39,7 @@ impl ContractionSequence {
 
     pub fn compute_twin_width<G>(&self, mut graph: G) -> Option<NumNodes>
     where
-        G: GraphEdgeEditing + ColoredAdjacencyList,
+        G: GraphEdgeEditing + ColoredAdjacencyList + std::fmt::Debug,
     {
         // this is a checker; let's make it plain stupid to avoid bugs
         let mut twin_width = 0;
@@ -50,7 +50,15 @@ impl ContractionSequence {
             twin_width = twin_width.max(max_red_deg);
         }
 
-        graph.degrees().all(|d| d == 0).then_some(twin_width)
+        assert!(
+            // TODO: Removes this assertion and return None instead
+            graph.degrees().all(|d| d == 0),
+            "merges: {:?} graph: {:?}",
+            self.seq,
+            &graph
+        ); //  .then_some(twin_width)
+
+        Some(twin_width)
     }
 
     /// If the sequence is legal and produces a graph without edges, this function

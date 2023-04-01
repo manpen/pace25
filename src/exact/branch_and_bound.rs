@@ -126,22 +126,34 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
             .sum::<NumEdges>();
 
         if self.graph.number_of_nodes() == 0 || self.graph.number_of_edges() == edges_on_protected {
-            return Some((0, ContractionSequence::new(self.graph.number_of_nodes())));
+            return Some((0, take(&mut self.sequence)));
         }
 
         return_if_some!(self.try_split_into_ccs());
         return_if_some!(self.try_remove_singletons());
         return_if_some!(self.try_complement());
 
-        if self.features.use_cache && self.protected.cardinality() == 0 {
+        let org_graph = self.features.paranoid.then(|| self.graph.clone());
+
+        let result = if self.features.use_cache && self.protected.cardinality() == 0 {
             self.try_cache_first()
         } else {
             self.solver_impl()
+        };
+
+        if let Some(org_graph) = org_graph {
+            if let Some((tww, seq)) = result.as_ref() {
+                let comp_tww = seq.compute_twin_width(org_graph).unwrap();
+                assert!(*tww >= comp_tww);
+            }
         }
+
+        result
     }
 
     fn try_complement(&mut self) -> Option<OptSolution> {
         return_none_if!(!self.features.try_complement);
+        assert!(self.sequence.is_empty());
 
         let all_edges = (self.graph.number_of_nodes() as NumEdges)
             * (self.graph.number_of_nodes() as NumEdges - 1)
@@ -170,6 +182,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
     fn try_remove_singletons(&mut self) -> Option<OptSolution> {
         return_none_if!(!self.features.try_remove_isolated);
         return_none_if!(self.graph.degrees().all(|d| d != 0));
+        assert!(self.sequence.is_empty());
 
         let (graph, mapper) = self.graph.remove_disconnected_verts();
 
@@ -187,6 +200,8 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
     }
 
     fn try_cache_first(&mut self) -> Option<(u32, ContractionSequence)> {
+        assert!(self.sequence.is_empty());
+
         let hash = self.graph.binary_digest_sha256();
 
         if let Some(solution) = self
@@ -377,7 +392,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
     }
 
     fn try_red_bridges(&mut self) -> Option<OptSolution> {
-        return_none_if!(self.features.red_bridges);
+        return_none_if!(!self.features.red_bridges);
 
         let red_bridges: Vec<_> = self
             .graph
@@ -478,9 +493,9 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
         None
     }
 
-    fn contraction_candidates(&mut self, mergeable: &BitSet) -> Vec<(u32, (u32, u32))> {
+    fn contraction_candidates(&mut self, org_mergeable: &BitSet) -> Vec<(u32, (u32, u32))> {
         let mut pairs = Vec::new();
-        let mut mergeable = mergeable.clone();
+        let mut mergeable = org_mergeable.clone();
 
         let red_degs_of_black_neighbors = self
             .graph
@@ -514,7 +529,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
 
             if is_bipartite && self.graph.degree_of(u) > 1 {
                 for &x in self.graph.neighbors_of(u) {
-                    if self.graph.degree_of(x) > 1 {
+                    if self.graph.degree_of(x) > 2 {
                         two_neighbors.unset_bit(x);
                     }
                 }
@@ -525,11 +540,15 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
                 let mut red_neighs = self.graph.red_neighbors_after_merge(u, v, false);
                 let mut red_card = red_neighs.cardinality();
 
+                trace!("{u} {v} {red_card} {:?}", red_neighs.iter().collect_vec());
+
                 if red_neighs.cardinality() == 0 {
+                    // this should not happend in practice, but is a short-cut if
+                    // the kernelization feature is disabled
                     self.sequence.merge_node_into(v, u);
                     self.graph.merge_node_into(v, u);
                     assert_eq!(self.graph.red_degree_of(v), 0);
-                    continue;
+                    return self.contraction_candidates(org_mergeable);
                 }
 
                 if red_card > self.not_above {
@@ -553,14 +572,18 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
                 }
             }
 
-            if is_bipartite || degree_u > self.not_above {
+            if degree_u > self.not_above {
                 continue;
             }
 
             let distant_nodes = {
                 let mut three_neighbors = BitSet::new(self.graph.number_of_nodes());
-                for x in two_neighbors.iter() {
-                    three_neighbors.set_bits(self.graph.neighbors_of(x).iter().copied());
+                if self.features.atmost_distance_three {
+                    for x in two_neighbors.iter() {
+                        three_neighbors.set_bits(self.graph.neighbors_of(x).iter().copied());
+                    }
+                } else {
+                    three_neighbors.set_all();
                 }
                 three_neighbors.and_not(&two_neighbors);
                 three_neighbors.and(&mergeable);
@@ -585,6 +608,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
                 let red_degree = red_deg_of_black_neighbors.max(degree_u + degree_v);
                 if degree_v > 0
                     && red_degree <= self.not_above
+                    && (!is_bipartite || degree_v < 3 || degree_u < 3)
                     && self
                         .graph
                         .black_neighbors_of(v)
@@ -604,8 +628,11 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
 mod test {
     use super::*;
     #[allow(unused_imports)]
-    use crate::{log::build_pace_logger_for_level, testing::get_test_graphs_with_tww};
+    use crate::{log::build_pace_logger_for_level, testing::*};
+    use log::LevelFilter;
     use paste::paste;
+    #[allow(unused_imports)]
+    use rayon::prelude::*;
     use std::{fs::File, io::BufReader};
 
     #[test]
