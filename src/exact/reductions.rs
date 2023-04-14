@@ -340,7 +340,6 @@ pub fn prune_red_path<
         + ColoredAdjacencyList
         + ColoredAdjacencyTest
         + GraphEdgeEditing
-        + ColorFilter
         + Debug,
 >(
     graph: &mut G,
@@ -398,7 +397,6 @@ pub fn prune_red_bridges<
         + ColoredAdjacencyList
         + ColoredAdjacencyTest
         + GraphEdgeEditing
-        + ColorFilter
         + Debug,
 >(
     graph: &mut G,
