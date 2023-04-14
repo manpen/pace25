@@ -106,14 +106,17 @@ if __name__ == "__main__":
         cs_path = sys.argv[2]
         output_path = sys.argv[3]
 
-    elif len(sys.argv) == 3:
+    elif 2 <= len(sys.argv) <= 3:
         cs_path = sys.argv[1]
         assert (".gr." in cs_path)
         graph_path = cs_path
         while not graph_path.endswith(".gr"):
             graph_path = graph_path[:-1]
 
-        output_path = sys.argv[2]
+        if len(sys.argv) == 3:
+            output_path = sys.argv[2]
+        else:
+            output_path = cs_path[len(graph_path)+1:] + ".pdf"
 
     else:
         print("""Usage: %s [graph] <contraction sequence> <pdf-output>)
