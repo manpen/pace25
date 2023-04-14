@@ -1,6 +1,5 @@
 use std::{cell::RefCell, mem::take, rc::Rc};
 
-use itertools::Itertools;
 #[allow(unused_imports)]
 use log::{info, trace};
 
@@ -519,21 +518,14 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
         let mut pairs = Vec::new();
         let mut mergeable = org_mergeable.clone();
 
-        let red_degs_of_black_neighbors = self
-            .graph
-            .vertices()
-            .map(|u| {
-                if !mergeable[u] {
-                    return self.not_above + 1;
-                }
-
-                self.graph
-                    .black_neighbors_of(u)
-                    .map(|v| self.graph.red_degree_of(v) + 1)
-                    .max()
-                    .unwrap_or(0)
-            })
-            .collect_vec();
+        let black_neighbors_with_critical_red_degree = BitSet::new_all_unset_but(
+            self.graph.number_of_nodes(),
+            self.graph
+                .red_degrees()
+                .enumerate()
+                .filter_map(|(u, deg)| (deg >= self.not_above).then_some(u as Node))
+                .flat_map(|v| self.graph.black_neighbors_of(v)),
+        );
 
         let is_bipartite = self.features.test_bipartite && self.graph.is_bipartite();
         for u in self.graph.vertices_range() {
@@ -620,7 +612,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
                 .max()
                 .unwrap_or(0);
 
-            if red_degs_of_black_neighbors[u as usize] > self.not_above {
+            if black_neighbors_with_critical_red_degree[u] {
                 continue;
             }
 
