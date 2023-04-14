@@ -39,8 +39,12 @@ impl GraphEdgeOrder for AdjArray {
 }
 
 impl AdjacencyList for AdjArray {
+    type NeighborIter<'a> = impl Iterator<Item = Node> + 'a
+    where
+        Self: 'a;
+
     forward!(degree_of, degree, NumNodes);
-    forward!(neighbors_of, neighbors, &[Node]);
+    forward!(neighbors_of, neighbors, Self::NeighborIter<'_>);
 }
 
 impl ColoredAdjacencyList for AdjArray {
@@ -169,7 +173,7 @@ impl GraphEdgeEditing for AdjArray {
 impl AdjArray {
     pub fn unordered_edges(&self) -> impl Iterator<Item = Edge> + '_ {
         self.vertices_range()
-            .flat_map(|u| self.neighbors_of(u).iter().map(move |&v| Edge(u, v)))
+            .flat_map(|u| self.neighbors_of(u).map(move |v| Edge(u, v)))
     }
 
     pub fn unordered_colored_edges(&self) -> impl Iterator<Item = ColoredEdge> + '_ {
@@ -220,8 +224,8 @@ impl Neighborhood {
         self.red_degree
     }
 
-    fn neighbors(&self) -> &[Node] {
-        &self.nodes
+    fn neighbors(&self) -> impl Iterator<Item = Node> + '_ {
+        self.nodes.iter().copied()
     }
 
     fn black_neighbors(&self) -> &[Node] {
@@ -243,7 +247,7 @@ impl Neighborhood {
     }
 
     fn has_neighbor(&self, v: Node) -> bool {
-        self.neighbors().iter().any(|&u| u == v)
+        self.neighbors().any(|u| u == v)
     }
 
     fn has_black_neighbor(&self, v: Node) -> bool {
@@ -282,7 +286,7 @@ impl Neighborhood {
     }
 
     fn find_neighbor(&self, v: Node) -> (Option<usize>, EdgeKind) {
-        let position = self.neighbors().iter().position(|&x| x == v);
+        let position = self.neighbors().position(|x| x == v);
 
         match position {
             None => (None, EdgeKind::None),
@@ -417,7 +421,7 @@ mod test {
 
                 red_black.sort();
 
-                let mut neighs = graph.neighbors_of(u).iter().copied().collect_vec();
+                let mut neighs = graph.neighbors_of(u).collect_vec();
                 neighs.sort();
 
                 assert_eq!(neighs.len(), graph.degree_of(u) as usize);

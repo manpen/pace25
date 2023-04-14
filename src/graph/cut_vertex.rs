@@ -55,7 +55,7 @@ impl<'a, T: AdjacencyList> ArticulationPointSearch<'a, T> {
 
         // counts number of tree neighbors
         let mut tree_neighbors = 0;
-        for &v in self.graph.neighbors_of(u) {
+        for v in self.graph.neighbors_of(u) {
             // tree edge
             if !self.visited[v] {
                 tree_neighbors += 1;

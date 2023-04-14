@@ -95,32 +95,28 @@ macro_rules! node_iterator {
 macro_rules! node_bitset_of {
     ($bitset : ident, $slice : ident) => {
         fn $bitset(&self, node: Node) -> BitSet {
-            BitSet::new_all_unset_but::<NumNodes, _, _>(
-                self.number_of_nodes(),
-                self.$slice(node).iter(),
-            )
+            BitSet::new_all_unset_but::<NumNodes, _, _>(self.number_of_nodes(), self.$slice(node))
         }
     };
 }
 
 pub trait AdjacencyList: GraphNodeOrder + Sized {
+    type NeighborIter<'a>: Iterator<Item = Node> + 'a
+    where
+        Self: 'a;
+
     /// Returns a slice of neighbors of a given vertex.
     /// ** Panics if the v >= n **
-    fn neighbors_of(&self, u: Node) -> &[Node];
+    fn neighbors_of(&self, u: Node) -> Self::NeighborIter<'_>;
 
     /// If v has degree two (i.e. neighbors [u, w]), this function continues
     /// the walk `u`, `v`, `w` and returns `Some(w)`. Otherwise it returns `None`.
     fn continue_path(&self, u: Node, v: Node) -> Option<Node> {
-        (self.degree_of(v) == 2).then(|| {
-            let idx = self.neighbors_of(v)[0] == u;
-            self.neighbors_of(v)[idx as usize]
-        })
+        (self.degree_of(v) == 2).then(|| self.neighbors_of(v).find(|&w| w != u).unwrap())
     }
 
     /// Returns the number of neighbors of from `u`
-    fn degree_of(&self, u: Node) -> NumNodes {
-        self.neighbors_of(u).len() as NumNodes
-    }
+    fn degree_of(&self, u: Node) -> NumNodes;
 
     // Returns an iterator to all vertices with non-zero degree
     fn vertices_with_neighbors(&self) -> impl Iterator<Item = Node> + '_ {
@@ -151,16 +147,16 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
     }
 
     node_iterator!(degrees, degree_of, NumNodes);
-    node_iterator!(neighbors, neighbors_of, &[Node]);
+    node_iterator!(neighbors, neighbors_of, Self::NeighborIter<'_>);
     node_bitset_of!(neighbors_of_as_bitset, neighbors_of);
     node_iterator!(neighbors_as_bitset, neighbors_of_as_bitset, BitSet);
 
     fn closed_two_neighborhood_of(&self, u: Node) -> BitSet {
         let mut ns = BitSet::new(self.number_of_nodes());
         ns.set_bit(u);
-        for &v in self.neighbors_of(u) {
+        for v in self.neighbors_of(u) {
             ns.set_bit(v);
-            ns.set_bits(self.neighbors_of(v).iter().copied());
+            ns.set_bits(self.neighbors_of(v));
         }
         ns
     }
@@ -170,15 +166,14 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
         ns.set_bit(u);
         for v in self.closed_two_neighborhood_of(u).iter() {
             ns.set_bit(v);
-            ns.set_bits(self.neighbors_of(v).iter().copied());
+            ns.set_bits(self.neighbors_of(v));
         }
         ns
     }
 
     fn edges_of(&self, u: Node, only_normalized: bool) -> impl Iterator<Item = Edge> + '_ {
         self.neighbors_of(u)
-            .iter()
-            .map(move |&v| Edge(u, v))
+            .map(move |v| Edge(u, v))
             .filter(move |e| !only_normalized || e.is_normalized())
     }
 

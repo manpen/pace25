@@ -314,7 +314,7 @@ fn recurse_impl<G: FullfledgedGraph>(
                     continue;
                 }
                 mergable.set_bit(u);
-                mergable.set_bits(graph.neighbors_of(u).iter().copied());
+                mergable.set_bits(graph.neighbors_of(u));
             }
         }
 
@@ -438,7 +438,7 @@ fn contraction_candidates<G: FullfledgedGraph>(
         two_neighbors.and(&mergeable);
 
         if is_bipartite && graph.degree_of(u) > 1 {
-            for &x in graph.neighbors_of(u) {
+            for x in graph.neighbors_of(u) {
                 if graph.degree_of(x) > 1 {
                     two_neighbors.unset_bit(x);
                 }
@@ -485,7 +485,7 @@ fn contraction_candidates<G: FullfledgedGraph>(
         let distant_nodes = {
             let mut three_neighbors = BitSet::new(graph.number_of_nodes());
             for x in two_neighbors.iter() {
-                three_neighbors.set_bits(graph.neighbors_of(x).iter().copied());
+                three_neighbors.set_bits(graph.neighbors_of(x));
             }
             three_neighbors.and_not(&two_neighbors);
             three_neighbors.and(&mergeable);

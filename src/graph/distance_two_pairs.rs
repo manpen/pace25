@@ -56,16 +56,15 @@ impl<'a, G: AdjacencyList> DistancePairsIterator<'a, G> {
     fn setup_node(&mut self) {
         self.neighbors.unset_all();
 
-        for &v in self.graph.neighbors_of(self.node) {
-            self.neighbors
-                .set_bits(self.graph.neighbors_of(v).iter().copied());
+        for v in self.graph.neighbors_of(self.node) {
+            self.neighbors.set_bits(self.graph.neighbors_of(v));
             self.neighbors.set_bit(v);
         }
 
         if self.distance == Distance::Three {
             let mut dist_three = self.neighbors.clone();
             for x in self.neighbors.iter() {
-                dist_three.set_bits(self.graph.neighbors_of(x).iter().copied());
+                dist_three.set_bits(self.graph.neighbors_of(x));
             }
             self.neighbors = dist_three;
         }

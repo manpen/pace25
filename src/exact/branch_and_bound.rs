@@ -394,7 +394,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
                     continue;
                 }
                 mergable.set_bit(u);
-                mergable.set_bits(self.graph.neighbors_of(u).iter().copied());
+                mergable.set_bits(self.graph.neighbors_of(u));
             }
         }
 
@@ -558,7 +558,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
             two_neighbors.and(&mergeable);
 
             if is_bipartite && self.graph.degree_of(u) > 1 {
-                for &x in self.graph.neighbors_of(u) {
+                for x in self.graph.neighbors_of(u) {
                     if self.graph.degree_of(x) > 2 {
                         two_neighbors.unset_bit(x);
                     }
@@ -616,7 +616,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
                     let three = self.graph.closed_three_neighborhood_of(u);
                     dist_nodes.or(&three);
                     for x in three.iter() {
-                        dist_nodes.set_bits(self.graph.neighbors_of(x).iter().copied());
+                        dist_nodes.set_bits(self.graph.neighbors_of(x));
                     }
                 } else {
                     dist_nodes.set_all();

@@ -403,28 +403,17 @@ impl<
             let mut best_partners = Vec::new();
 
             if random_choice_or_neighboorhood < 0.99 {
-                let neighbors = graph.neighbors_of(first_node);
-
                 let mut set = FxHashSet::default();
+                let degree = graph.degree_of(first_node);
 
                 // Find the best contraction partner
-                for neighbor in neighbors.iter() {
-                    if graph
-                        .neighbors_of(*neighbor)
-                        .len()
-                        .abs_diff(neighbors.len())
-                        <= max_allowed_red_edges as usize
-                    {
-                        set.insert(*neighbor);
+                for neighbor in graph.neighbors_of(first_node) {
+                    if graph.degree_of(neighbor).abs_diff(degree) <= max_allowed_red_edges {
+                        set.insert(neighbor);
                     }
-                    for neighbors_of_neighbors in graph.neighbors_of(*neighbor).iter() {
-                        if graph
-                            .neighbors_of(*neighbor)
-                            .len()
-                            .abs_diff(neighbors.len())
-                            <= max_allowed_red_edges as usize
-                        {
-                            set.insert(*neighbors_of_neighbors);
+                    for neighbors_of_neighbors in graph.neighbors_of(neighbor) {
+                        if graph.degree_of(neighbor).abs_diff(degree) <= max_allowed_red_edges {
+                            set.insert(neighbors_of_neighbors);
                         }
                     }
                 }

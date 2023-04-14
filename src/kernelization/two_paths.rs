@@ -24,8 +24,7 @@ where
                 let mut two_paths: Vec<_> = self
                     .graph
                     .neighbors_of(host)
-                    .iter()
-                    .filter_map(|&v| {
+                    .filter_map(|v| {
                         let w = self.graph.continue_path(host, v)?;
                         (!self.is_protected(w)
                             && self.graph.has_black_edge(host, v)

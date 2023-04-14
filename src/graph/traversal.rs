@@ -158,7 +158,7 @@ impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> Iterator
         if self.stop_at.map_or(false, |stopper| u == stopper) {
             while self.sequencer.pop().is_some() {} // drop all
         } else {
-            for &v in self.graph.neighbors_of(u) {
+            for v in self.graph.neighbors_of(u) {
                 if !self.visited[v] {
                     self.sequencer.push(I::new_with_predecessor(u, v));
                     self.visited.set_bit(v);

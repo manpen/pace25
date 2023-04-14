@@ -111,12 +111,17 @@ pub fn prune_outer_paths<
                 continue;
             }
 
-            let mut leaf = graph.neighbors_of(middle)[0];
-            let mut inner = graph.neighbors_of(middle)[1];
+            let (leaf, inner) = {
+                let mut iter = graph.neighbors_of(middle);
+                let mut a = iter.next().unwrap();
+                let mut b = iter.next().unwrap();
 
-            if graph.degree_of(leaf) != 1 {
-                std::mem::swap(&mut leaf, &mut inner);
-            }
+                if graph.degree_of(a) != 1 {
+                    std::mem::swap(&mut a, &mut b);
+                }
+
+                (a, b)
+            };
 
             if !(graph.degree_of(leaf) == 1 && graph.degree_of(inner) == 2) {
                 continue;
@@ -193,7 +198,7 @@ pub fn prune_leaves_at_red_node<
                 continue;
             }
 
-            let v = graph.neighbors_of(u)[0];
+            let v = graph.neighbors_of(u).next().unwrap();
             if graph.black_degree_of(v) > graph.black_degree_of(u) {
                 continue;
             }
@@ -227,9 +232,7 @@ pub fn prune_leaves<
 
         let mut neighbors = graph
             .neighbors_of(host)
-            .iter()
-            .filter(|&&v| host != v && graph.degree_of(v) == 1)
-            .copied()
+            .filter(|&v| host != v && graph.degree_of(v) == 1)
             .collect_vec();
 
         if neighbors.len() < 2 {
@@ -358,7 +361,7 @@ pub fn prune_red_path<
         path.push(u);
 
         let mut parent = u;
-        let mut front = graph.neighbors_of(u)[0];
+        let mut front = graph.neighbors_of(u).next().unwrap();
 
         loop {
             if graph.degree_of(front) != 2 {
@@ -373,7 +376,7 @@ pub fn prune_red_path<
 
             (parent, front) = (
                 front,
-                graph.neighbors_of(front)[(graph.neighbors_of(front)[0] == parent) as usize],
+                graph.neighbors_of(front).find(|&w| w != parent).unwrap(),
             );
         }
 

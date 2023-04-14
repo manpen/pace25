@@ -16,11 +16,7 @@ where
                 let mut neighbors: Vec<_> = self
                     .graph
                     .neighbors_of(host)
-                    .iter()
-                    .filter(|&&v| {
-                        host != v && self.graph.degree_of(v) == 1 && !self.is_protected(v)
-                    })
-                    .copied()
+                    .filter(|&v| host != v && self.graph.degree_of(v) == 1 && !self.is_protected(v))
                     .collect();
 
                 if neighbors.len() < 2 {

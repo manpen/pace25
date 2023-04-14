@@ -218,8 +218,8 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
             for node in remaining_nodes.clone().iter() {
                 let neighbors = self.graph.neighbors_of(node);
                 let mut bitset = self.graph.neighbors_of_as_bitset(node);
-                for neighbor in neighbors.iter() {
-                    bitset.or(&self.graph.neighbors_of_as_bitset(*neighbor));
+                for neighbor in neighbors {
+                    bitset.or(&self.graph.neighbors_of_as_bitset(neighbor));
                 }
                 bitset.unset_bit(node);
                 // No neighbors?
@@ -650,11 +650,10 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
     pub fn get_node_min_sim(g: &G, node: u32) -> u32 {
         let mut bitset = g.neighbors_of_as_bitset(node);
 
-        let neighbors = g.neighbors_of(node);
         let mut best_tww = std::u32::MAX;
 
-        for n in neighbors {
-            bitset.or(&g.neighbors_of_as_bitset(*n));
+        for n in g.neighbors_of(node) {
+            bitset.or(&g.neighbors_of_as_bitset(n));
         }
 
         bitset.unset_bit(node);
@@ -677,11 +676,10 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
     pub fn get_node_total_sim(g: &G, node: u32) -> u32 {
         let mut bitset = g.neighbors_of_as_bitset(node);
 
-        let neighbors = g.neighbors_of(node);
         let mut min_dist = std::u32::MAX;
 
-        for n in neighbors {
-            bitset.or(&g.neighbors_of_as_bitset(*n));
+        for n in g.neighbors_of(node) {
+            bitset.or(&g.neighbors_of_as_bitset(n));
         }
 
         bitset.unset_bit(node);

@@ -63,8 +63,7 @@ where
             if !self
                 .graph
                 .neighbors_of(node)
-                .iter()
-                .all(|&v| v == parent || !visited.set_bit(v))
+                .all(|v| v == parent || !visited.set_bit(v))
             {
                 return false;
             }

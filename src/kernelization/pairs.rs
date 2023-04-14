@@ -13,7 +13,7 @@ where
                     continue;
                 }
 
-                let neighbor = self.graph.neighbors_of(host)[0];
+                let neighbor = self.graph.neighbors_of(host).next().unwrap();
 
                 if neighbor < host
                     || self.is_protected(neighbor)
