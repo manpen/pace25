@@ -195,25 +195,29 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
 }
 
 pub trait ColoredAdjacencyList: AdjacencyList {
+    type BlackNeighborIter<'a>: Iterator<Item = Node> + 'a
+    where
+        Self: 'a;
+
+    type RedNeighborIter<'a>: Iterator<Item = Node> + 'a
+    where
+        Self: 'a;
+
     /// Returns a slice of black neighbors of a given vertex.
     /// ** Panics if the v >= n **
-    fn black_neighbors_of(&self, u: Node) -> &[Node];
+    fn black_neighbors_of(&self, u: Node) -> Self::BlackNeighborIter<'_>;
     node_bitset_of!(black_neighbors_of_as_bitset, black_neighbors_of);
 
     /// Returns a slice of red neighbors of a given vertex.
     /// ** Panics if the v >= n **
-    fn red_neighbors_of(&self, u: Node) -> &[Node];
+    fn red_neighbors_of(&self, u: Node) -> Self::RedNeighborIter<'_>;
     node_bitset_of!(red_neighbors_of_as_bitset, red_neighbors_of);
 
     /// Returns the number of black neighbors of from `u`
-    fn black_degree_of(&self, u: Node) -> NumNodes {
-        self.black_neighbors_of(u).len() as NumNodes
-    }
+    fn black_degree_of(&self, u: Node) -> NumNodes;
 
     /// Returns the number of red neighbors of from `u`
-    fn red_degree_of(&self, u: Node) -> NumNodes {
-        self.red_neighbors_of(u).len() as NumNodes
-    }
+    fn red_degree_of(&self, u: Node) -> NumNodes;
 
     fn max_red_degree(&self) -> NumNodes {
         self.red_degrees().max().unwrap_or(0)
@@ -230,12 +234,10 @@ pub trait ColoredAdjacencyList: AdjacencyList {
         only_normalized: bool,
     ) -> impl Iterator<Item = ColoredEdge> + '_ {
         self.black_neighbors_of(u)
-            .iter()
-            .map(move |&v| ColoredEdge(u, v, EdgeColor::Black))
+            .map(move |v| ColoredEdge(u, v, EdgeColor::Black))
             .chain(
                 self.red_neighbors_of(u)
-                    .iter()
-                    .map(move |&v| ColoredEdge(u, v, EdgeColor::Red)),
+                    .map(move |v| ColoredEdge(u, v, EdgeColor::Red)),
             )
             .filter(move |e| !only_normalized || e.is_normalized())
     }
@@ -267,8 +269,12 @@ pub trait ColoredAdjacencyList: AdjacencyList {
 
     node_iterator!(black_degrees, black_degree_of, NumNodes);
     node_iterator!(red_degrees, red_degree_of, NumNodes);
-    node_iterator!(black_neighbors, black_neighbors_of, &[Node]);
-    node_iterator!(red_neighbors, red_neighbors_of, &[Node]);
+    node_iterator!(
+        black_neighbors,
+        black_neighbors_of,
+        Self::BlackNeighborIter<'_>
+    );
+    node_iterator!(red_neighbors, red_neighbors_of, Self::RedNeighborIter<'_>);
 }
 
 /// Provides efficient tests whether an edge exists

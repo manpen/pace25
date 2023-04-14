@@ -48,15 +48,13 @@ impl WeisfeilerLehmanScoring {
                 scratch_neighbors.extend(
                     graph
                         .black_neighbors_of(u)
-                        .iter()
-                        .map(|&u| self.scores[u as usize]),
+                        .map(|u| self.scores[u as usize]),
                 );
 
                 scratch_neighbors.extend(
                     graph
                         .red_neighbors_of(u)
-                        .iter()
-                        .map(|&u| murmur64(self.scores[u as usize])),
+                        .map(|u| murmur64(self.scores[u as usize])),
                 );
 
                 scratch_neighbors.sort();

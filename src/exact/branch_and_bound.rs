@@ -536,8 +536,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
 
                 self.graph
                     .black_neighbors_of(u)
-                    .iter()
-                    .map(|&v| self.graph.red_degree_of(v) + 1)
+                    .map(|v| self.graph.red_degree_of(v) + 1)
                     .max()
                     .unwrap_or(0)
             })
@@ -586,13 +585,8 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
                     continue;
                 }
 
-                for &x in self.graph.red_neighbors_of(u) {
-                    red_neighs.unset_bit(x);
-                }
-
-                for &x in self.graph.red_neighbors_of(v) {
-                    red_neighs.unset_bit(x);
-                }
+                red_neighs.unset_bits(self.graph.red_neighbors_of(u));
+                red_neighs.unset_bits(self.graph.red_neighbors_of(v));
 
                 for new_red in red_neighs.iter() {
                     red_card = red_card.max(self.graph.red_degree_of(new_red) + 1);
@@ -629,8 +623,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
             let red_deg_of_black_neighbors = self
                 .graph
                 .black_neighbors_of(u)
-                .iter()
-                .map(|&v| self.graph.red_degree_of(v) + 1)
+                .map(|v| self.graph.red_degree_of(v) + 1)
                 .max()
                 .unwrap_or(0);
 
@@ -648,8 +641,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
                     && self
                         .graph
                         .black_neighbors_of(v)
-                        .iter()
-                        .all(|&w| self.graph.red_degree_of(w) < self.not_above)
+                        .all(|w| self.graph.red_degree_of(w) < self.not_above)
                 {
                     pairs.push((red_degree, (u, v)));
                 }
@@ -665,6 +657,7 @@ mod test {
     use super::*;
     #[allow(unused_imports)]
     use crate::{log::build_pace_logger_for_level, testing::*};
+    #[allow(unused_imports)]
     use log::LevelFilter;
     use paste::paste;
     #[allow(unused_imports)]

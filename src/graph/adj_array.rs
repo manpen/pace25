@@ -48,10 +48,22 @@ impl AdjacencyList for AdjArray {
 }
 
 impl ColoredAdjacencyList for AdjArray {
+    type BlackNeighborIter<'a> = impl Iterator<Item = Node> + 'a
+    where
+        Self: 'a;
+
+    type RedNeighborIter<'a> = impl Iterator<Item = Node> + 'a
+        where
+            Self: 'a;
+
     forward!(black_degree_of, black_degree, NumNodes);
     forward!(red_degree_of, red_degree, NumNodes);
-    forward!(black_neighbors_of, black_neighbors, &[Node]);
-    forward!(red_neighbors_of, red_neighbors, &[Node]);
+    forward!(
+        black_neighbors_of,
+        black_neighbors,
+        Self::BlackNeighborIter<'_>
+    );
+    forward!(red_neighbors_of, red_neighbors, Self::RedNeighborIter<'_>);
 }
 
 impl AdjacencyTest for AdjArray {
@@ -137,30 +149,21 @@ impl GraphEdgeEditing for AdjArray {
     }
 
     fn red_neighbors_after_merge(&self, removed: Node, survivor: Node, only_new: bool) -> BitSet {
-        let mut turned_red = BitSet::new_all_unset_but(
-            self.number_of_nodes(),
-            self.black_neighbors_of(survivor).iter().copied(),
-        );
+        let mut turned_red =
+            BitSet::new_all_unset_but(self.number_of_nodes(), self.black_neighbors_of(survivor));
 
-        for &v in self.black_neighbors_of(removed).iter() {
+        for v in self.black_neighbors_of(removed) {
             if turned_red.set_bit(v) {
                 // flip bit!
                 turned_red.unset_bit(v);
             }
         }
-
-        for v in self.red_neighbors_of(removed) {
-            turned_red.set_bit(*v);
-        }
+        turned_red.set_bits(self.red_neighbors_of(removed));
 
         if only_new {
-            for v in self.red_neighbors_of(survivor) {
-                turned_red.unset_bit(*v);
-            }
+            turned_red.unset_bits(self.red_neighbors_of(survivor));
         } else {
-            for v in self.red_neighbors_of(survivor) {
-                turned_red.set_bit(*v);
-            }
+            turned_red.set_bits(self.red_neighbors_of(survivor));
         }
 
         turned_red.unset_bit(removed);
@@ -179,12 +182,10 @@ impl AdjArray {
     pub fn unordered_colored_edges(&self) -> impl Iterator<Item = ColoredEdge> + '_ {
         self.vertices_range().flat_map(|u| {
             self.black_neighbors_of(u)
-                .iter()
-                .map(move |&v| ColoredEdge(u, v, EdgeColor::Black))
+                .map(move |v| ColoredEdge(u, v, EdgeColor::Black))
                 .chain(
                     self.red_neighbors_of(u)
-                        .iter()
-                        .map(move |&v| ColoredEdge(u, v, EdgeColor::Red)),
+                        .map(move |v| ColoredEdge(u, v, EdgeColor::Red)),
                 )
         })
     }
@@ -228,12 +229,12 @@ impl Neighborhood {
         self.nodes.iter().copied()
     }
 
-    fn black_neighbors(&self) -> &[Node] {
-        &self.nodes[0..self.black_degree() as usize]
+    fn black_neighbors(&self) -> impl Iterator<Item = Node> + '_ {
+        self.nodes[0..self.black_degree() as usize].iter().copied()
     }
 
-    fn red_neighbors(&self) -> &[Node] {
-        &self.nodes[self.black_degree() as usize..]
+    fn red_neighbors(&self) -> impl Iterator<Item = Node> + '_ {
+        self.nodes[self.black_degree() as usize..].iter().copied()
     }
 
     fn edge_type_with(&self, v: Node) -> EdgeKind {
@@ -251,11 +252,11 @@ impl Neighborhood {
     }
 
     fn has_black_neighbor(&self, v: Node) -> bool {
-        self.black_neighbors().iter().any(|&u| u == v)
+        self.black_neighbors().any(|u| u == v)
     }
 
     fn has_red_neighbor(&self, v: Node) -> bool {
-        self.red_neighbors().iter().any(|&u| u == v)
+        self.red_neighbors().any(|u| u == v)
     }
 
     fn try_add_edge(&mut self, v: Node, kind: EdgeColor) -> EdgeKind {
@@ -414,9 +415,7 @@ mod test {
             for u in 0..n {
                 let mut red_black = graph
                     .red_neighbors_of(u)
-                    .iter()
                     .chain(graph.black_neighbors_of(u))
-                    .copied()
                     .collect_vec();
 
                 red_black.sort();

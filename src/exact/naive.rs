@@ -417,8 +417,7 @@ fn contraction_candidates<G: FullfledgedGraph>(
 
             graph
                 .black_neighbors_of(u)
-                .iter()
-                .map(|&v| graph.red_degree_of(v) + 1)
+                .map(|v| graph.red_degree_of(v) + 1)
                 .max()
                 .unwrap_or(0)
         })
@@ -461,13 +460,8 @@ fn contraction_candidates<G: FullfledgedGraph>(
                 continue;
             }
 
-            for &x in graph.red_neighbors_of(u) {
-                red_neighs.unset_bit(x);
-            }
-
-            for &x in graph.red_neighbors_of(v) {
-                red_neighs.unset_bit(x);
-            }
+            red_neighs.unset_bits(graph.red_neighbors_of(u));
+            red_neighs.unset_bits(graph.red_neighbors_of(v));
 
             for new_red in red_neighs.iter() {
                 red_card = red_card.max(graph.red_degree_of(new_red) + 1);
@@ -494,8 +488,7 @@ fn contraction_candidates<G: FullfledgedGraph>(
 
         let red_deg_of_black_neighbors = graph
             .black_neighbors_of(u)
-            .iter()
-            .map(|&v| graph.red_degree_of(v) + 1)
+            .map(|v| graph.red_degree_of(v) + 1)
             .max()
             .unwrap_or(0);
 
@@ -511,8 +504,7 @@ fn contraction_candidates<G: FullfledgedGraph>(
                 && red_degree <= not_above
                 && graph
                     .black_neighbors_of(v)
-                    .iter()
-                    .all(|&w| graph.red_degree_of(w) < not_above)
+                    .all(|w| graph.red_degree_of(w) < not_above)
             {
                 pairs.push((red_degree, (u, v)));
             }

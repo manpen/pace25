@@ -23,8 +23,7 @@ where
             complement.add_edges(neighbors.iter().map(|v| (u, v)), EdgeColor::Black);
             complement.add_edges(
                 self.red_neighbors_of(u)
-                    .iter()
-                    .filter_map(|&v| (u < v).then_some((u, v))),
+                    .filter_map(|v| (u < v).then_some((u, v))),
                 EdgeColor::Red,
             );
         }
