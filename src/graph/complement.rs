@@ -3,21 +3,31 @@ use super::*;
 pub trait Complement {
     /// Produces a copy of the graph where every red edge stays while
     /// black edges become non-edges and vice versa.
-    fn trigraph_complement(&self) -> Self;
+    fn trigraph_complement(&self, ignore_isolated: bool) -> Self;
+
+    /// Returns the size of the complement graph without constructing it
+    fn number_of_edges_in_trigraph_complement(&self, ignore_isolated: bool) -> NumEdges;
 }
 
 impl<G> Complement for G
 where
     G: ColoredAdjacencyList + GraphNew + GraphEdgeEditing,
 {
-    fn trigraph_complement(&self) -> Self {
+    fn trigraph_complement(&self, ignore_isolated: bool) -> Self {
         let mut complement = Self::new(self.number_of_nodes());
         let mut mask = BitSet::new_all_set(self.number_of_nodes());
 
+        if ignore_isolated {
+            mask.unset_bits(self.vertices().filter(|&u| self.degree_of(u) == 0));
+        }
+
         for u in self.vertices() {
+            if !mask.unset_bit(u) {
+                continue;
+            }
+
             let mut neighbors = self.neighbors_of_as_bitset(u);
             neighbors.not();
-            mask.unset_bit(u);
             neighbors.and(&mask);
 
             complement.add_edges(neighbors.iter().map(|v| (u, v)), EdgeColor::Black);
@@ -29,6 +39,24 @@ where
         }
 
         complement
+    }
+
+    fn number_of_edges_in_trigraph_complement(&self, ignore_isolated: bool) -> NumEdges {
+        let num_nodes = if ignore_isolated {
+            self.vertices_with_neighbors().count() as NumEdges
+        } else {
+            self.number_of_nodes() as NumEdges
+        };
+
+        let total_edges = num_nodes * num_nodes.saturating_sub(1) / 2;
+
+        let num_black_edges = self
+            .black_degrees()
+            .map(|d| d as NumEdges)
+            .sum::<NumEdges>()
+            / 2;
+
+        total_edges - num_black_edges
     }
 }
 
@@ -42,32 +70,41 @@ mod test {
     fn complement() {
         let mut rng = Pcg64::seed_from_u64(0x263741);
 
-        for n in 0..50 {
-            let graph = AdjArray::random_colored_gnp(&mut rng, n, 0.5, 0.5);
-            let complement = graph.trigraph_complement();
+        for p in [0.1, 0.5] {
+            for ignore_isolated in [false, true] {
+                for n in 0..50 {
+                    let graph = AdjArray::random_colored_gnp(&mut rng, n, p, 0.5);
+                    let complement = graph.trigraph_complement(ignore_isolated);
 
-            // identical red edges
-            assert_eq!(
-                graph
-                    .ordered_colored_edges(true)
-                    .filter(|&e| e.is_red())
-                    .collect_vec(),
-                complement
-                    .ordered_colored_edges(true)
-                    .filter(|&e| e.is_red())
-                    .collect_vec(),
-            );
+                    assert_eq!(
+                        graph.number_of_edges_in_trigraph_complement(ignore_isolated),
+                        complement.number_of_edges()
+                    );
 
-            // black edges do not exist
-            assert!(graph
-                .colored_edges(true)
-                .filter(|&e| e.is_black())
-                .all(|ColoredEdge(u, v, _)| !complement.has_edge(u, v)));
+                    // identical red edges
+                    assert_eq!(
+                        graph
+                            .ordered_colored_edges(true)
+                            .filter(|&e| e.is_red())
+                            .collect_vec(),
+                        complement
+                            .ordered_colored_edges(true)
+                            .filter(|&e| e.is_red())
+                            .collect_vec(),
+                    );
 
-            assert!(complement
-                .colored_edges(true)
-                .filter(|&e| e.is_black())
-                .all(|ColoredEdge(u, v, _)| !graph.has_edge(u, v)));
+                    // black edges do not exist
+                    assert!(graph
+                        .colored_edges(true)
+                        .filter(|&e| e.is_black())
+                        .all(|ColoredEdge(u, v, _)| !complement.has_edge(u, v)));
+
+                    assert!(complement
+                        .colored_edges(true)
+                        .filter(|&e| e.is_black())
+                        .all(|ColoredEdge(u, v, _)| !graph.has_edge(u, v)));
+                }
+            }
         }
     }
 }

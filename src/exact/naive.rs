@@ -132,12 +132,12 @@ fn recurse<G: FullfledgedGraph>(
     let num_black_edges = graph.number_of_edges() - num_red_edges;
 
     if graph.number_of_nodes() > 8 && all_edges - num_black_edges < num_black_edges {
-        let mut complement = graph.trigraph_complement();
+        let mut complement = graph.trigraph_complement(false);
         assert!(complement.number_of_edges() < graph.number_of_edges());
 
         return recurse(cache, &mut complement, slack, not_above, protected).map(
             |(tww, mut seq)| {
-                seq.add_unmerged_singletons(&graph.trigraph_complement())
+                seq.add_unmerged_singletons(&graph.trigraph_complement(false))
                     .unwrap();
                 (tww, seq)
             },

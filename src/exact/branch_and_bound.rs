@@ -177,28 +177,21 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
         return_none_if!(!self.features.try_complement);
         assert!(self.sequence.is_empty());
 
-        let all_edges = (self.graph.number_of_nodes() as NumEdges)
-            * (self.graph.number_of_nodes() as NumEdges - 1)
-            / 2;
-        let num_red_edges = self
-            .graph
-            .red_degrees()
-            .map(|d| d as NumEdges)
-            .sum::<NumEdges>()
-            / 2;
-        let num_black_edges = self.graph.number_of_edges() - num_red_edges;
+        return_none_if!(self.graph.number_of_nodes() < 8);
+        return_none_if!(
+            self.graph.number_of_edges() < 4 * (self.graph.number_of_nodes() as NumEdges)
+        );
 
-        if self.graph.number_of_nodes() > 8 && all_edges - num_black_edges < num_black_edges {
-            let complement = self.graph.trigraph_complement();
-            assert!(complement.number_of_edges() < self.graph.number_of_edges());
+        let edges_in_complement = self.graph.number_of_edges_in_trigraph_complement(true);
+        return_none_if!(edges_in_complement > self.graph.number_of_edges());
 
-            return Some(self.fork(complement).solve().map(|(tww, mut seq)| {
-                seq.add_unmerged_singletons(&self.graph.trigraph_complement())
-                    .unwrap();
-                (tww, seq)
-            }));
-        }
-        None
+        let complement = self.graph.trigraph_complement(true);
+        assert!(complement.number_of_edges() < self.graph.number_of_edges());
+
+        Some(self.fork(complement.clone()).solve().map(|(tww, mut seq)| {
+            seq.add_unmerged_singletons(&complement).unwrap();
+            (tww, seq)
+        }))
     }
 
     fn try_remove_singletons(&mut self) -> Option<OptSolution> {
