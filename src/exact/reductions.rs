@@ -11,7 +11,6 @@ pub fn initial_pruning<
         + ColoredAdjacencyList
         + ColoredAdjacencyTest
         + GraphEdgeEditing
-        + ColorFilter
         + Debug,
 >(
     graph: &mut G,
@@ -51,7 +50,6 @@ pub fn default_pruning<
         + GraphEdgeOrder
         + ColoredAdjacencyList
         + ColoredAdjacencyTest
-        + ColorFilter
         + GraphEdgeEditing
         + Debug,
 >(

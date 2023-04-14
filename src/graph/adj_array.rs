@@ -166,8 +166,6 @@ impl GraphEdgeEditing for AdjArray {
     }
 }
 
-impl ColorFilter for AdjArray {}
-
 impl AdjArray {
     pub fn unordered_edges(&self) -> impl Iterator<Item = Edge> + '_ {
         self.vertices_range()

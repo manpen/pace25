@@ -3,7 +3,6 @@ pub mod adj_array;
 pub mod bipartite;
 pub mod bitset;
 pub mod bridges;
-pub mod color_filter;
 pub mod complement;
 pub mod connectivity;
 pub mod cut_vertex;
@@ -23,7 +22,6 @@ pub use adj_array::*;
 pub use bipartite::*;
 pub use bitset::*;
 pub use bridges::*;
-pub use color_filter::*;
 pub use complement::*;
 pub use connectivity::*;
 pub use cut_vertex::*;
@@ -366,7 +364,6 @@ pub trait FullfledgedGraph:
     + ColoredAdjacencyList
     + ColoredAdjacencyTest
     + GraphEdgeEditing
-    + ColorFilter
     + std::fmt::Debug
 {
 }
@@ -378,7 +375,6 @@ impl<G> FullfledgedGraph for G where
         + ColoredAdjacencyList
         + ColoredAdjacencyTest
         + GraphEdgeEditing
-        + ColorFilter
         + std::fmt::Debug
 {
 }

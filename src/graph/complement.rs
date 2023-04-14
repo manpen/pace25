@@ -49,20 +49,26 @@ mod test {
 
             // identical red edges
             assert_eq!(
-                graph.red_only().ordered_edges(true).collect_vec(),
-                complement.red_only().ordered_edges(true).collect_vec(),
+                graph
+                    .ordered_colored_edges(true)
+                    .filter(|&e| e.is_red())
+                    .collect_vec(),
+                complement
+                    .ordered_colored_edges(true)
+                    .filter(|&e| e.is_red())
+                    .collect_vec(),
             );
 
             // black edges do not exist
             assert!(graph
-                .black_only()
-                .edges(true)
-                .all(|Edge(u, v)| !complement.has_edge(u, v)));
+                .colored_edges(true)
+                .filter(|&e| e.is_black())
+                .all(|ColoredEdge(u, v, _)| !complement.has_edge(u, v)));
 
             assert!(complement
-                .black_only()
-                .edges(true)
-                .all(|Edge(u, v)| !graph.has_edge(u, v)));
+                .colored_edges(true)
+                .filter(|&e| e.is_black())
+                .all(|ColoredEdge(u, v, _)| !graph.has_edge(u, v)));
         }
     }
 }

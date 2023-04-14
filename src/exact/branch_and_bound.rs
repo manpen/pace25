@@ -20,7 +20,9 @@ pub struct FeatureConfiguration {
     pub use_cache: bool,
     pub mergable_heuristic: bool,
     pub test_bipartite: bool,
+    pub atmost_distance_three: bool,
     pub kernel_rules: KernelRules,
+    pub paranoid: bool,
 }
 
 impl Default for FeatureConfiguration {
@@ -28,12 +30,32 @@ impl Default for FeatureConfiguration {
         Self {
             try_split_ccs: true,
             try_complement: true,
-            try_remove_isolated: true,
+            try_remove_isolated: false,
             red_bridges: false,
             kernelize: true,
             use_cache: true,
-            mergable_heuristic: true,
-            test_bipartite: true,
+            mergable_heuristic: false,
+            test_bipartite: false,
+            paranoid: false,
+            atmost_distance_three: true,
+            kernel_rules: Default::default(),
+        }
+    }
+}
+
+impl FeatureConfiguration {
+    pub fn pessimitic() -> Self {
+        Self {
+            try_split_ccs: false,
+            try_complement: false,
+            try_remove_isolated: false,
+            red_bridges: false,
+            kernelize: false,
+            use_cache: true,
+            mergable_heuristic: false,
+            test_bipartite: false,
+            paranoid: true,
+            atmost_distance_three: false,
             kernel_rules: Default::default(),
         }
     }
@@ -181,7 +203,13 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
 
     fn try_remove_singletons(&mut self) -> Option<OptSolution> {
         return_none_if!(!self.features.try_remove_isolated);
-        return_none_if!(self.graph.degrees().all(|d| d != 0));
+        return_none_if!(
+            self.graph
+                .number_of_nodes_with_neighbors()
+                .next_power_of_two()
+                == self.graph.number_of_nodes().next_power_of_two()
+        );
+
         assert!(self.sequence.is_empty());
 
         let (graph, mapper) = self.graph.remove_disconnected_verts();
@@ -287,9 +315,10 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
         let pairs = self.contraction_candidates(&mergable);
 
         trace!(
-            " mergeable: {:>5} pairs: {:>8}",
+            " mergeable: {:>5} pairs: {:>8} | {pairs:?} {:?}",
             mergable.cardinality(),
-            pairs.len()
+            pairs.len(),
+            self.graph
         );
 
         if self.graph.number_of_edges() == 0 {
@@ -524,7 +553,8 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
                 continue;
             }
 
-            let mut two_neighbors = self.graph.closed_two_neighborhood_of(u);
+            let org_two_neighbors = self.graph.closed_two_neighborhood_of(u);
+            let mut two_neighbors = org_two_neighbors.clone();
             two_neighbors.and(&mergeable);
 
             if is_bipartite && self.graph.degree_of(u) > 1 {
@@ -540,11 +570,12 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
                 let mut red_neighs = self.graph.red_neighbors_after_merge(u, v, false);
                 let mut red_card = red_neighs.cardinality();
 
-                trace!("{u} {v} {red_card} {:?}", red_neighs.iter().collect_vec());
+                //trace!("{u} {v} {red_card} {:?}", red_neighs.iter().collect_vec());
 
                 if red_neighs.cardinality() == 0 {
                     // this should not happend in practice, but is a short-cut if
                     // the kernelization feature is disabled
+                    trace!("Forcefully merging {u} into {v}");
                     self.sequence.merge_node_into(v, u);
                     self.graph.merge_node_into(v, u);
                     assert_eq!(self.graph.red_degree_of(v), 0);
@@ -567,8 +598,8 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
                     red_card = red_card.max(self.graph.red_degree_of(new_red) + 1);
                 }
 
-                if red_neighs.cardinality() <= self.not_above {
-                    pairs.push((red_neighs.cardinality(), (u, v)));
+                if red_card <= self.not_above {
+                    pairs.push((red_card, (u, v)));
                 }
             }
 
@@ -577,17 +608,22 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
             }
 
             let distant_nodes = {
-                let mut three_neighbors = BitSet::new(self.graph.number_of_nodes());
+                let mut dist_nodes = BitSet::new(self.graph.number_of_nodes());
                 if self.features.atmost_distance_three {
-                    for x in two_neighbors.iter() {
-                        three_neighbors.set_bits(self.graph.neighbors_of(x).iter().copied());
+                    //let mut two_neighbors = org_two_neighbors.clone();
+                    //two_neighbors.unset_bits(self.graph.neighbors_of(u).iter().copied());
+
+                    let three = self.graph.closed_three_neighborhood_of(u);
+                    dist_nodes.or(&three);
+                    for x in three.iter() {
+                        dist_nodes.set_bits(self.graph.neighbors_of(x).iter().copied());
                     }
                 } else {
-                    three_neighbors.set_all();
+                    dist_nodes.set_all();
                 }
-                three_neighbors.and_not(&two_neighbors);
-                three_neighbors.and(&mergeable);
-                three_neighbors
+                dist_nodes.and_not(&two_neighbors);
+                dist_nodes.and(&mergeable);
+                dist_nodes
             };
 
             let red_deg_of_black_neighbors = self
@@ -660,16 +696,25 @@ mod test {
 
     #[test]
     fn small_random() {
-        for (filename, graph, presolved_tww) in
-            get_test_graphs_with_tww("instances/small-random/*.gr").step_by(3)
-        {
-            if graph.number_of_nodes() > 15 {
-                continue;
-            }
-            println!(" Test {filename}");
-            let (tww, _seq) = BranchAndBound::new(graph).solve().unwrap();
-            assert_eq!(tww, presolved_tww, "file: {filename}");
-        }
+        //build_pace_logger_for_level(LevelFilter::Trace);
+
+        get_test_graphs_with_tww("instances/small-random/*38d4.gr").for_each(
+            |(filename, graph, presolved_tww)| {
+                let (tww, mut seq) = BranchAndBound::new(graph.clone()).solve().unwrap();
+                seq.add_unmerged_singletons(&graph).unwrap();
+                let verified = seq.compute_twin_width(graph.clone());
+                assert_eq!(
+                    Some(tww),
+                    verified,
+                    "does not match computed tww. file: {filename}"
+                );
+                assert_eq!(
+                    tww, presolved_tww,
+                    "does not match presolved. file: {filename}"
+                );
+                println!("Done with file: {filename}");
+            },
+        );
     }
 
     macro_rules! impl_test_feature {
@@ -687,7 +732,7 @@ mod test {
                         let mut algo = BranchAndBound::new(graph);
                         algo.features.$feature = !algo.features.$feature;
 
-                        println!(" Test {filename}");
+                        //println!(" Test {filename}");
                         let (tww, _seq) = algo.solve().unwrap();
                         assert_eq!(tww, presolved_tww, "file: {filename}");
                     }

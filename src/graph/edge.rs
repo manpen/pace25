@@ -84,6 +84,20 @@ impl ColorQuery for EdgeColorFilter {
     }
 }
 
+impl ColorQuery for ColoredEdge {
+    fn is_red(&self) -> bool {
+        self.2.is_red()
+    }
+
+    fn is_black(&self) -> bool {
+        self.2.is_black()
+    }
+
+    fn is_none(&self) -> bool {
+        false
+    }
+}
+
 impl PartialEq<EdgeKind> for EdgeColor {
     fn eq(&self, other: &EdgeKind) -> bool {
         match *self {

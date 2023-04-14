@@ -97,7 +97,6 @@ impl<
             + ColoredAdjacencyList
             + ColoredAdjacencyTest
             + GraphEdgeEditing
-            + ColorFilter
             + Debug,
     > TwoStageSatSolver<G>
 {
