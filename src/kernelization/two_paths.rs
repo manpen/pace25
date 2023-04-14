@@ -1,4 +1,4 @@
-use log::info;
+use log::{info, trace};
 
 use super::*;
 
@@ -50,7 +50,7 @@ where
             }
 
             if merges_before != self.sequence.len() {
-                println!("Two-Path Merges: {}", self.sequence.len() - merges_before);
+                trace!("Two-Path Merges: {}", self.sequence.len() - merges_before);
             }
 
             merges_before != self.sequence.len()

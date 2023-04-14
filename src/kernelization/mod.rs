@@ -126,6 +126,10 @@ where
         self.rules = rules;
     }
 
+    pub fn set_slack(&mut self, slack: NumNodes) {
+        self.slack = slack;
+    }
+
     pub fn slack(&self) -> NumNodes {
         self.slack
     }
