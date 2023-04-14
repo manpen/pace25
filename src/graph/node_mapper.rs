@@ -389,7 +389,7 @@ impl Getter for RankingForwardMapper {
 }
 
 #[cfg(test)]
-pub mod tests {
+mod test {
     use super::*;
 
     #[test]

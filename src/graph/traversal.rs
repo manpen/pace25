@@ -390,7 +390,7 @@ pub trait Traversal: AdjacencyList + Sized {
 impl<T: AdjacencyList + Sized> Traversal for T {}
 
 #[cfg(test)]
-pub mod tests {
+mod test {
     use super::*;
     use itertools::Itertools;
 
