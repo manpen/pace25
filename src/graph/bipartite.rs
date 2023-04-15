@@ -9,7 +9,7 @@ pub trait BipartiteTest {
     /// let mut graph = AdjArray::new(2);
     /// graph.add_edge(0, 1, EdgeColor::Black);
     ///
-    /// assert!(graph.is_bipartition(&BitSet::new_all_unset_but(2, [0u32])));
+    /// assert!(graph.is_bipartition(&BitSet::new_with_bits_set(2, [0u32])));
     /// assert!(!graph.is_bipartition(&BitSet::new(2)));
     /// ```
     fn is_bipartition(&self, candidate: &BitSet) -> bool;
@@ -53,7 +53,7 @@ where
 {
     fn is_bipartition(&self, candidate: &BitSet) -> bool {
         self.edges(true)
-            .all(|Edge(u, v)| candidate[u] != candidate[v])
+            .all(|Edge(u, v)| candidate.get_bit(u) != candidate.get_bit(v))
     }
 
     fn compute_bipartition(&self) -> Option<BitSet> {
@@ -71,7 +71,7 @@ pub trait BipartiteEdit {
     /// use tww::prelude::*;
     /// let mut graph = AdjArray::new(4);
     /// graph.add_edges([(0, 1), (1, 2), (2, 3)], EdgeColor::Black);
-    /// let partition = BitSet::new_all_unset_but(4, [0u32, 2]);
+    /// let partition = BitSet::new_with_bits_set(4, [0u32, 2]);
     ///
     /// // no change, since it's actually bipartite
     /// graph.remove_edges_within_partition(&partition);
@@ -93,7 +93,7 @@ where
     fn remove_edges_within_bipartition_class(&mut self, bipartition: &BitSet) {
         let to_delete: Vec<_> = self
             .edges(true)
-            .filter(|&Edge(u, v)| bipartition[u] == bipartition[v])
+            .filter(|&Edge(u, v)| bipartition.get_bit(u) == bipartition.get_bit(v))
             .collect();
         self.remove_edges(to_delete);
     }
@@ -111,7 +111,7 @@ fn propose_possibly_illegal_bipartition<G: AdjacencyList>(graph: &G) -> BitSet {
             .by_ref()
             .filter_map(|x| Some((x.item(), x.predecessor()?)))
         {
-            if !bipartition[pred] {
+            if !bipartition.get_bit(pred) {
                 bipartition.set_bit(node);
             }
         }

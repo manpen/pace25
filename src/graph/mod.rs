@@ -1,7 +1,6 @@
 pub mod absolute_twin_width_sat_encoding;
 pub mod adj_array;
 pub mod bipartite;
-pub mod bitset;
 pub mod bridges;
 pub mod complement;
 pub mod connectivity;
@@ -20,7 +19,6 @@ pub mod weisfeiler_lehman;
 
 pub use adj_array::*;
 pub use bipartite::*;
-pub use bitset::*;
 pub use bridges::*;
 pub use complement::*;
 pub use connectivity::*;
@@ -38,10 +36,13 @@ pub use weisfeiler_lehman::*;
 
 use itertools::Itertools;
 use std::{borrow::Borrow, ops::Range};
+use stream_bitset::prelude::*;
 
 pub type Node = u32;
 pub type NumNodes = Node;
 pub type NumEdges = u64;
+pub type BitSet = BitSetImpl<Node>;
+pub type EdgeBitSet = BitSetImpl<NumEdges>;
 
 /// Provides getters pertaining to the size of a graph
 pub trait GraphNodeOrder {
@@ -95,7 +96,7 @@ macro_rules! node_iterator {
 macro_rules! node_bitset_of {
     ($bitset : ident, $slice : ident) => {
         fn $bitset(&self, node: Node) -> BitSet {
-            BitSet::new_all_unset_but::<NumNodes, _, _>(self.number_of_nodes(), self.$slice(node))
+            BitSet::new_with_bits_set(self.number_of_nodes(), self.$slice(node))
         }
     };
 }
@@ -164,7 +165,7 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
     fn closed_three_neighborhood_of(&self, u: Node) -> BitSet {
         let mut ns = BitSet::new(self.number_of_nodes());
         ns.set_bit(u);
-        for v in self.closed_two_neighborhood_of(u).iter() {
+        for v in self.closed_two_neighborhood_of(u).iter_set_bits() {
             ns.set_bit(v);
             ns.set_bits(self.neighbors_of(v));
         }

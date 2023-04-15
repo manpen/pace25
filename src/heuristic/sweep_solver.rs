@@ -215,26 +215,26 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
             }
 
             let mut merged = false;
-            for node in remaining_nodes.clone().iter() {
+            for node in remaining_nodes.clone().iter_set_bits() {
                 let neighbors = self.graph.neighbors_of(node);
                 let mut bitset = self.graph.neighbors_of_as_bitset(node);
                 for neighbor in neighbors {
-                    bitset.or(&self.graph.neighbors_of_as_bitset(neighbor));
+                    bitset |= &self.graph.neighbors_of_as_bitset(neighbor);
                 }
-                bitset.unset_bit(node);
+                bitset.clear_bit(node);
                 // No neighbors?
                 if bitset.cardinality() == 0 {
-                    remaining_nodes.unset_bit(node);
+                    remaining_nodes.clear_bit(node);
                     continue;
                 }
 
-                for neighbors in bitset.iter() {
+                for neighbors in bitset.iter_set_bits() {
                     let new_red_deg = self.graph.red_degree_after_merge(neighbors, node);
                     if new_red_deg <= allowed_tww {
                         merged = true;
                         self.graph.merge_node_into(neighbors, node);
                         tww = tww.max(self.graph.red_degrees().max().unwrap());
-                        remaining_nodes.unset_bit(neighbors);
+                        remaining_nodes.clear_bit(neighbors);
                         contraction_sequence.merge_node_into(neighbors, node);
                         break;
                     }
@@ -259,7 +259,7 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
     ) -> (u32, u32) {
         let mut cloned = graph.clone();
         cloned.merge_node_into(first_move.0, first_move.1);
-        remaining_nodes.unset_bit(first_move.0);
+        remaining_nodes.clear_bit(first_move.0);
         let mut tww = cloned.red_degrees().max().unwrap();
 
         for _ in 0..num_levels {
@@ -277,7 +277,7 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
 
             if let Some((_, (u, v))) = minimum {
                 cloned.merge_node_into(u, v);
-                remaining_nodes.unset_bit(u);
+                remaining_nodes.clear_bit(u);
 
                 tww = tww.max(cloned.red_degrees().max().unwrap());
             } else {
@@ -302,9 +302,11 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
         let mut n_0 = g.neighbors_of_as_bitset(next_move.0);
         let n_1 = g.neighbors_of_as_bitset(next_move.1);
 
-        let offset = if n_0.at(next_move.1) { -2 } else { 0 };
-        n_0.xor(&n_1);
-        n_0.and_not(&n_1);
+        let offset = if n_0.get_bit(next_move.1) { -2 } else { 0 };
+
+        // TODO: The following two lines are a no-op. Why are they here?
+        n_0 ^= &n_1;
+        n_0 &= &n_1;
 
         let red_neighbors_new = g.red_neighbors_after_merge(next_move.0, next_move.1, true);
 
@@ -313,8 +315,8 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
         let delta_deg_b = -2 * (g.degree_of(next_move.0) as i32);
 
         let red_neigh_before = g.red_neighbors_of_as_bitset(next_move.0);
-        for x in red_neighbors_new.iter() {
-            if !red_neigh_before.at(x) {
+        for x in red_neighbors_new.iter_set_bits() {
+            if !red_neigh_before.get_bit(x) {
                 red_neighbors_len = red_neighbors_len.max(g.red_degree_of(x) + 1);
                 if red_neighbors_len > upper_bound - 1 {
                     return (red_neighbors_len, initial_deg);
@@ -337,7 +339,7 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
     ) -> (u32, u32) {
         let mut cloned = graph.clone();
         cloned.merge_node_into(first_move.0, first_move.1);
-        remaining_nodes.unset_bit(first_move.0);
+        remaining_nodes.clear_bit(first_move.0);
         let mut tww = cloned.red_degrees().max().unwrap();
         let mut initial_deg: u32 = cloned.degrees().sum();
         let mut min_sim: Vec<(u32, u32)> = vec![(0, 0); cloned.number_of_nodes() as usize];
@@ -382,7 +384,7 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
 
             if let Some((_, (u, v))) = minimum {
                 cloned.merge_node_into(u, v);
-                remaining_nodes.unset_bit(u);
+                remaining_nodes.clear_bit(u);
 
                 tww = tww.max(cloned.red_degrees().max().unwrap());
                 initial_deg = cloned.degrees().sum();
@@ -502,7 +504,7 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
 
             self.graph.merge_node_into(min_move.0, min_move.1);
             contraction_sequence.merge_node_into(min_move.0, min_move.1);
-            remaining_nodes.unset_bit(min_move.0);
+            remaining_nodes.clear_bit(min_move.0);
             tww = tww.max(self.graph.red_degrees().max().unwrap());
         }
         self.preprocessing_sequence.append(&contraction_sequence);
@@ -579,7 +581,7 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
 
             self.graph.merge_node_into(min_move.0, min_move.1);
             contraction_sequence.merge_node_into(min_move.0, min_move.1);
-            remaining_nodes.unset_bit(min_move.0);
+            remaining_nodes.clear_bit(min_move.0);
             tww = tww.max(self.graph.red_degrees().max().unwrap());
             if let Some(ub) = upper_bound.as_ref()
                 && *ub <= tww {
@@ -625,13 +627,13 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
 
             for (reds, (u, v)) in minimum.into_iter() {
                 if reds <= max_red {
-                    if unvisited_nodes.unset_bit(u) && unvisited_nodes.unset_bit(v) {
+                    if unvisited_nodes.clear_bit(u) && unvisited_nodes.clear_bit(v) {
                         self.graph.merge_node_into(u, v);
                         contraction_sequence.merge_node_into(u, v);
-                        remaining_nodes.unset_bit(u);
+                        remaining_nodes.clear_bit(u);
 
-                        unvisited_nodes.unset_bit(u);
-                        unvisited_nodes.unset_bit(v);
+                        unvisited_nodes.clear_bit(u);
+                        unvisited_nodes.clear_bit(v);
                         tww = tww.max(self.graph.red_degrees().max().unwrap());
                     }
                 } else {
@@ -653,16 +655,16 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
         let mut best_tww = std::u32::MAX;
 
         for n in g.neighbors_of(node) {
-            bitset.or(&g.neighbors_of_as_bitset(n));
+            bitset |= &g.neighbors_of_as_bitset(n);
         }
 
-        bitset.unset_bit(node);
+        bitset.clear_bit(node);
 
         if bitset.cardinality() == 0 {
             return 0;
         }
 
-        for n in bitset.iter() {
+        for n in bitset.iter_set_bits() {
             let mut merge_g = g.clone();
             merge_g.merge_node_into(n, node);
             let tww = merge_g.red_degrees().max().unwrap();
@@ -679,19 +681,19 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
         let mut min_dist = std::u32::MAX;
 
         for n in g.neighbors_of(node) {
-            bitset.or(&g.neighbors_of_as_bitset(n));
+            bitset |= &g.neighbors_of_as_bitset(n);
         }
 
-        bitset.unset_bit(node);
+        bitset.clear_bit(node);
 
         if bitset.cardinality() == 0 {
             return 0;
         }
 
         let base = g.neighbors_of_as_bitset(node);
-        for n in bitset.iter() {
+        for n in bitset.iter_set_bits() {
             let mut nb = g.neighbors_of_as_bitset(n);
-            nb.xor(&base);
+            nb ^= &base;
 
             min_dist = min_dist.min(nb.cardinality());
         }
@@ -757,7 +759,7 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
     ) -> u32 {
         let mut cloned = graph.clone();
         cloned.merge_node_into(first_move.0, first_move.1);
-        remaining_nodes.unset_bit(first_move.0);
+        remaining_nodes.clear_bit(first_move.0);
         let mut objective: u32 = (0..graph.len())
             .map(|x| Self::get_node_total_sim(graph, x as u32))
             .sum();
@@ -787,7 +789,7 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
 
             if let Some((ob, (u, v))) = minimum {
                 cloned.merge_node_into(u, v);
-                remaining_nodes.unset_bit(u);
+                remaining_nodes.clear_bit(u);
                 objective = objective.max(ob);
             } else {
                 if cloned.distance_two_pairs().count() > 0 {
@@ -868,7 +870,7 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
 
             self.graph.merge_node_into(min_move.0, min_move.1);
             contraction_sequence.merge_node_into(min_move.0, min_move.1);
-            remaining_nodes.unset_bit(min_move.0);
+            remaining_nodes.clear_bit(min_move.0);
             tww = tww.max(self.graph.red_degrees().max().unwrap());
         }
 
@@ -942,7 +944,7 @@ impl<G: FullfledgedGraph> SweepingSolver<G> {
 
             self.graph.merge_node_into(min_move.0, min_move.1);
             contraction_sequence.merge_node_into(min_move.0, min_move.1);
-            remaining_nodes.unset_bit(min_move.0);
+            remaining_nodes.clear_bit(min_move.0);
             tww = tww.max(self.graph.red_degrees().max().unwrap());
         }
         self.preprocessing_sequence.append(&contraction_sequence);

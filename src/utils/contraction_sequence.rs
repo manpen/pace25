@@ -85,10 +85,10 @@ impl ContractionSequence {
                 return None;
             }
 
-            let survivor = remaining.get_first_set().unwrap();
+            let survivor = remaining.iter_set_bits().next().unwrap();
             self.seq.extend(
                 remaining
-                    .iter()
+                    .iter_set_bits()
                     .skip(1)
                     .map(|remove| (remove as Node, survivor as Node)),
             );
@@ -105,8 +105,8 @@ impl ContractionSequence {
 
         for &(removed, survivor) in &self.seq {
             assert!(removed < self.num_nodes, "{removed} {}", self.num_nodes);
-            let exists_before_removal = node_exists.unset_bit(removed);
-            let still_exists = node_exists[survivor];
+            let exists_before_removal = node_exists.clear_bit(removed);
+            let still_exists = node_exists.get_bit(survivor);
 
             assert!(still_exists, "{survivor} {:?}", &self.seq);
             assert!(exists_before_removal, "{:?}", &self.seq);

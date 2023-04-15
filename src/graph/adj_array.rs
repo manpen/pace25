@@ -139,7 +139,7 @@ impl GraphEdgeEditing for AdjArray {
 
         let reds = self.red_neighbors_after_merge(removed, survivor, true);
 
-        for red_neigh in reds.iter() {
+        for red_neigh in reds.iter_set_bits() {
             self.try_add_edge(survivor, red_neigh as Node, EdgeColor::Red);
         }
 
@@ -149,25 +149,23 @@ impl GraphEdgeEditing for AdjArray {
     }
 
     fn red_neighbors_after_merge(&self, removed: Node, survivor: Node, only_new: bool) -> BitSet {
-        let mut turned_red =
-            BitSet::new_all_unset_but(self.number_of_nodes(), self.black_neighbors_of(survivor));
+        let mut turned_red = self.black_neighbors_of_as_bitset(survivor);
 
         for v in self.black_neighbors_of(removed) {
             if turned_red.set_bit(v) {
-                // flip bit!
-                turned_red.unset_bit(v);
+                turned_red.clear_bit(v); // flip bit!
             }
         }
         turned_red.set_bits(self.red_neighbors_of(removed));
 
         if only_new {
-            turned_red.unset_bits(self.red_neighbors_of(survivor));
+            turned_red.clear_bits(self.red_neighbors_of(survivor));
         } else {
             turned_red.set_bits(self.red_neighbors_of(survivor));
         }
 
-        turned_red.unset_bit(removed);
-        turned_red.unset_bit(survivor);
+        turned_red.clear_bit(removed);
+        turned_red.clear_bit(survivor);
 
         turned_red
     }

@@ -85,9 +85,9 @@ where
                 self.graph.black_neighbors_of_as_bitset(root)
             };
 
-            children.unset_bit(parent);
+            children.clear_bit(parent);
 
-            for child in children.iter() {
+            for child in children.iter_set_bits() {
                 self.solve_tree(child, false, root);
                 assert_eq!(self.graph.degree_of(child), 1);
 

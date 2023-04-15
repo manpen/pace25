@@ -54,7 +54,7 @@ impl<'a, G: AdjacencyList> DistancePairsIterator<'a, G> {
     }
 
     fn setup_node(&mut self) {
-        self.neighbors.unset_all();
+        self.neighbors.clear_all();
 
         for v in self.graph.neighbors_of(self.node) {
             self.neighbors.set_bits(self.graph.neighbors_of(v));
@@ -63,7 +63,7 @@ impl<'a, G: AdjacencyList> DistancePairsIterator<'a, G> {
 
         if self.distance == Distance::Three {
             let mut dist_three = self.neighbors.clone();
-            for x in self.neighbors.iter() {
+            for x in self.neighbors.iter_set_bits() {
                 dist_three.set_bits(self.graph.neighbors_of(x));
             }
             self.neighbors = dist_three;
@@ -77,7 +77,7 @@ impl<'a, G: AdjacencyList> Iterator for DistancePairsIterator<'a, G> {
     type Item = (Node, Node);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(v) = self.neighbors.get_next_set(self.neighbor_lb) {
+        if let Some(v) = self.neighbors.get_first_set_index_atleast(self.neighbor_lb) {
             self.neighbor_lb = (v + 1) as Node;
             return Some((self.node, v as Node));
         }

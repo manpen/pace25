@@ -64,9 +64,9 @@ impl Cursor for Rc<RefCell<ListEntry>> {
             let mut own_elements = self.as_ref().borrow().elements.clone();
 
             let mut s1 = own_elements.clone();
-            s1.and(neighbors);
+            s1 &= neighbors;
 
-            own_elements.and_not(neighbors);
+            own_elements -= neighbors;
 
             if include_first {
                 (s1, own_elements)
@@ -101,17 +101,17 @@ pub fn find_modules<G: AdjacencyList>(graph: &G) -> Option<Partition> {
 
 pub fn find_modules_impl<G: AdjacencyList>(graph: &G, pivot: Node) -> Partition {
     let mut neighbors = graph.neighbors_of_as_bitset(pivot);
-    neighbors.unset_bit(pivot);
+    neighbors.clear_bit(pivot);
 
     let mut list = ListEntry::new(neighbors.clone(), true, false);
     list.append(ListEntry::new(
-        BitSet::new_all_unset_but(graph.number_of_nodes(), std::iter::once(pivot)),
+        BitSet::new_with_bits_set(graph.number_of_nodes(), std::iter::once(pivot)),
         false,
         true,
     ));
 
-    neighbors.not();
-    neighbors.unset_bit(pivot);
+    neighbors.flip_all();
+    neighbors.clear_bit(pivot);
 
     list.next
         .as_mut()
@@ -131,7 +131,7 @@ pub fn find_modules_impl<G: AdjacencyList>(graph: &G, pivot: Node) -> Partition 
                 let elem = c_entry.as_ref().borrow();
 
                 if elem.can_pivot {
-                    for u in elem.elements.iter() {
+                    for u in elem.elements.iter_set_bits() {
                         let mut o_entry = list.clone();
 
                         let mut passed_other = false;
@@ -148,8 +148,8 @@ pub fn find_modules_impl<G: AdjacencyList>(graph: &G, pivot: Node) -> Partition 
                                 .as_ref()
                                 .borrow()
                                 .elements
-                                .iter()
-                                .any(|v| neighbors[v])
+                                .iter_set_bits()
+                                .any(|v| neighbors.get_bit(v))
                             {
                                 let include_first = passed_center != passed_other;
                                 changed |= o_entry.split(&neighbors, include_first);
@@ -177,7 +177,7 @@ pub fn find_modules_impl<G: AdjacencyList>(graph: &G, pivot: Node) -> Partition 
 
     let mut partition = Partition::new(graph.number_of_nodes());
     loop {
-        partition.add_class(c_entry.as_ref().borrow().elements.iter());
+        partition.add_class(c_entry.as_ref().borrow().elements.iter_set_bits());
 
         if !c_entry.try_move_next() {
             break;

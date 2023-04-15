@@ -60,7 +60,7 @@ pub fn lower_bound_subgraph<G: FullfledgedGraph>(
         let bfs = graph.bfs(seed_node).take(max_nodes as usize);
 
         let marked =
-            BitSet::new_all_unset_but(graph.number_of_nodes(), bfs.filter(|_| rng.gen_bool(0.9)));
+            BitSet::new_with_bits_set(graph.number_of_nodes(), bfs.filter(|_| rng.gen_bool(0.9)));
 
         let subgraph = graph.vertex_induced(&marked).0;
 
@@ -105,7 +105,7 @@ pub fn lower_bound_art_cut<G: FullfledgedGraph>(
 
     for u in graph
         .compute_articulation_points()
-        .iter()
+        .iter_set_bits()
         .choose_multiple(&mut rand::thread_rng(), 3)
     {
         let mut graph = graph.clone();

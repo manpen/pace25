@@ -19,7 +19,7 @@ pub trait InducedSubgraph: Sized {
     where
         Self: GraphNew + GraphEdgeEditing + AdjacencyList + ColoredAdjacencyList,
     {
-        self.vertex_induced(&BitSet::new_all_set_but(
+        self.vertex_induced(&BitSet::new_with_bits_cleared(
             self.number_of_nodes(),
             self.vertices().filter(|&u| self.degree_of(u) == 0),
         ))
@@ -37,7 +37,7 @@ impl<G: GraphNew + GraphEdgeEditing + ColoredAdjacencyList + Sized> InducedSubgr
 
         // compute new node ids
         let mut mapping = M::with_capacity(new_n);
-        for (new, old) in vertices.iter().enumerate() {
+        for (new, old) in vertices.iter_set_bits().enumerate() {
             mapping.map_node_to(old, new as Node);
             assert!(new_n > new as Node);
         }
@@ -68,9 +68,9 @@ impl<G: ColoredAdjacencyList + GraphEdgeEditing + Clone + GraphNew> SubGraph for
     ) -> H {
         let mut sub_graph: H = H::new(self.number_of_nodes());
 
-        sub_graph.add_colored_edges(vertices.iter().flat_map(|u| {
+        sub_graph.add_colored_edges(vertices.iter_set_bits().flat_map(|u| {
             self.colored_edges_of(u, true)
-                .filter(|ColoredEdge(_, v, _)| vertices[*v])
+                .filter(|ColoredEdge(_, v, _)| vertices.get_bit(*v))
         }));
 
         sub_graph

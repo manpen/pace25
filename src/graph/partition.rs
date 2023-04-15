@@ -255,13 +255,13 @@ impl Partition {
 
 impl From<BitSet> for Partition {
     fn from(set: BitSet) -> Self {
-        let mut part = Partition::new(set.len());
+        let mut part = Partition::new(set.number_of_bits());
 
         assert_eq!(part.add_class(std::iter::empty()), 0);
         assert_eq!(part.add_class(std::iter::empty()), 1);
 
-        for i in 0..set.len() {
-            part.move_node(i, set[i] as u32);
+        for i in 0..set.number_of_bits() {
+            part.move_node(i, set.get_bit(i) as u32);
         }
 
         part

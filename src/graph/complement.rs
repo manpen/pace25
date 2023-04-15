@@ -18,19 +18,19 @@ where
         let mut mask = BitSet::new_all_set(self.number_of_nodes());
 
         if ignore_isolated {
-            mask.unset_bits(self.vertices().filter(|&u| self.degree_of(u) == 0));
+            mask.clear_bits(self.vertices().filter(|&u| self.degree_of(u) == 0));
         }
 
         for u in self.vertices() {
-            if !mask.unset_bit(u) {
+            if !mask.clear_bit(u) {
                 continue;
             }
 
             let mut neighbors = self.neighbors_of_as_bitset(u);
-            neighbors.not();
-            neighbors.and(&mask);
+            neighbors.flip_all();
+            neighbors &= &mask;
 
-            complement.add_edges(neighbors.iter().map(|v| (u, v)), EdgeColor::Black);
+            complement.add_edges(neighbors.iter_set_bits().map(|v| (u, v)), EdgeColor::Black);
             complement.add_edges(
                 self.red_neighbors_of(u)
                     .filter_map(|v| (u < v).then_some((u, v))),

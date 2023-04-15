@@ -142,7 +142,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
 
         let edges_on_protected = self
             .protected
-            .iter()
+            .iter_set_bits()
             .map(|u| self.graph.degree_of(u) as NumEdges)
             .sum::<NumEdges>();
 
@@ -206,9 +206,9 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
 
         let (graph, mapper) = self.graph.remove_disconnected_verts();
 
-        let protected = BitSet::new_all_unset_but(
+        let protected = BitSet::new_with_bits_set(
             graph.number_of_nodes(),
-            mapper.get_filtered_new_ids(self.protected.iter()),
+            mapper.get_filtered_new_ids(self.protected.iter_set_bits()),
         );
 
         let mut child = self.fork(graph);
@@ -257,9 +257,9 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
         let mut max_tww = 0;
 
         for (subgraph, mapper) in part.split_into_subgraphs(&self.graph) {
-            let protected = BitSet::new_all_unset_but(
+            let protected = BitSet::new_with_bits_set(
                 subgraph.number_of_nodes(),
-                mapper.get_filtered_new_ids(self.protected.iter()),
+                mapper.get_filtered_new_ids(self.protected.iter_set_bits()),
             );
 
             let mut child = self.fork(subgraph);
@@ -289,7 +289,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
 
         let edges_on_protected = self
             .protected
-            .iter()
+            .iter_set_bits()
             .map(|u| self.graph.degree_of(u) as NumEdges)
             .sum::<NumEdges>();
 
@@ -324,7 +324,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
 
         let mut best_solution: Option<BestSolution> = None;
         'outer: for &(r, (u, v)) in &pairs {
-            if self.protected[u] || self.protected[v] {
+            if self.protected.get_bit(u) || self.protected.get_bit(v) {
                 continue;
             }
 
@@ -339,7 +339,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
                 break;
             }
 
-            if !(mergable[u] && mergable[v]) {
+            if !(mergable.get_bit(u) && mergable.get_bit(v)) {
                 continue;
             }
 
@@ -390,7 +390,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
             }
         }
 
-        mergable.and_not(&self.protected);
+        mergable -= &self.protected;
 
         mergable
     }
@@ -423,8 +423,8 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
                 c.is_red()
                     && self.graph.degree_of(u) > 1
                     && self.graph.degree_of(v) > 1
-                    && !self.protected[u]
-                    && !self.protected[v]
+                    && !self.protected.get_bit(u)
+                    && !self.protected.get_bit(v)
             })
             .collect();
 
@@ -454,7 +454,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
             }
 
             let extract_subgraph = |class_idx, other_node| -> G {
-                let mut nodes = BitSet::new_all_unset_but(
+                let mut nodes = BitSet::new_with_bits_set(
                     self.graph.number_of_nodes(),
                     part.members_of_class(class_idx),
                 );
@@ -479,7 +479,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
             assert!(seq_with_prot
                 .merges()
                 .iter()
-                .all(|&(u, v)| !small_protected[u] && !small_protected[v]));
+                .all(|&(u, v)| !small_protected.get_bit(u) && !small_protected.get_bit(v)));
 
             let mut child = self.fork_with_bounds(
                 small_graph.clone(),
@@ -516,9 +516,18 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
 
     fn contraction_candidates(&mut self, org_mergeable: &BitSet) -> Vec<(u32, (u32, u32))> {
         let mut pairs = Vec::new();
+
         let mut mergeable = org_mergeable.clone();
 
-        let black_neighbors_with_critical_red_degree = BitSet::new_all_unset_but(
+        // remove all nodes with degree zero from consideration
+        mergeable.clear_bits(
+            self.graph
+                .degrees()
+                .enumerate()
+                .filter_map(|(u, deg)| (deg == 0).then_some(u as Node)),
+        );
+
+        let has_black_neighbor_with_critical_degree = BitSet::new_with_bits_set(
             self.graph.number_of_nodes(),
             self.graph
                 .red_degrees()
@@ -529,27 +538,25 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
 
         let is_bipartite = self.features.test_bipartite && self.graph.is_bipartite();
         for u in self.graph.vertices_range() {
-            if !mergeable.unset_bit(u) {
+            if !mergeable.clear_bit(u) {
                 continue;
             }
             let degree_u = self.graph.degree_of(u);
-            if degree_u == 0 {
-                continue;
-            }
+            assert!(degree_u > 0);
 
             let org_two_neighbors = self.graph.closed_two_neighborhood_of(u);
             let mut two_neighbors = org_two_neighbors.clone();
-            two_neighbors.and(&mergeable);
+            two_neighbors &= &mergeable;
 
             if is_bipartite && self.graph.degree_of(u) > 1 {
                 for x in self.graph.neighbors_of(u) {
                     if self.graph.degree_of(x) > 2 {
-                        two_neighbors.unset_bit(x);
+                        two_neighbors.clear_bit(x);
                     }
                 }
             }
 
-            for v in two_neighbors.iter() {
+            for v in two_neighbors.iter_set_bits() {
                 assert!(v > u);
                 let mut red_neighs = self.graph.red_neighbors_after_merge(u, v, false);
                 let mut red_card = red_neighs.cardinality();
@@ -570,10 +577,10 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
                     continue;
                 }
 
-                red_neighs.unset_bits(self.graph.red_neighbors_of(u));
-                red_neighs.unset_bits(self.graph.red_neighbors_of(v));
+                red_neighs.clear_bits(self.graph.red_neighbors_of(u));
+                red_neighs.clear_bits(self.graph.red_neighbors_of(v));
 
-                for new_red in red_neighs.iter() {
+                for new_red in red_neighs.iter_set_bits() {
                     red_card = red_card.max(self.graph.red_degree_of(new_red) + 1);
                 }
 
@@ -582,52 +589,28 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
                 }
             }
 
-            if degree_u > self.not_above {
+            if degree_u >= self.not_above || has_black_neighbor_with_critical_degree.get_bit(u) {
                 continue;
             }
 
             let distant_nodes = {
-                let mut dist_nodes = BitSet::new(self.graph.number_of_nodes());
-                if self.features.atmost_distance_three {
-                    //let mut two_neighbors = org_two_neighbors.clone();
-                    //two_neighbors.unset_bits(self.graph.neighbors_of(u).iter().copied());
-
-                    let three = self.graph.closed_three_neighborhood_of(u);
-                    dist_nodes.or(&three);
-                    for x in three.iter() {
-                        dist_nodes.set_bits(self.graph.neighbors_of(x));
-                    }
+                let mut dist_nodes = if self.features.atmost_distance_three {
+                    self.graph.closed_three_neighborhood_of(u)
                 } else {
-                    dist_nodes.set_all();
-                }
-                dist_nodes.and_not(&two_neighbors);
-                dist_nodes.and(&mergeable);
+                    BitSet::new_all_set(self.graph.number_of_nodes())
+                };
+                dist_nodes -= &org_two_neighbors;
+                dist_nodes -= &has_black_neighbor_with_critical_degree;
+                dist_nodes &= &mergeable;
                 dist_nodes
             };
 
-            let red_deg_of_black_neighbors = self
-                .graph
-                .black_neighbors_of(u)
-                .map(|v| self.graph.red_degree_of(v) + 1)
-                .max()
-                .unwrap_or(0);
-
-            if black_neighbors_with_critical_red_degree[u] {
-                continue;
-            }
-
-            for v in distant_nodes.iter() {
-                assert!(v > u);
+            for v in distant_nodes.iter_set_bits() {
                 let degree_v = self.graph.degree_of(v);
-                let red_degree = red_deg_of_black_neighbors.max(degree_u + degree_v);
-                if degree_v > 0
-                    && red_degree <= self.not_above
-                    && (!is_bipartite || degree_v < 3 || degree_u < 3)
-                    && self
-                        .graph
-                        .black_neighbors_of(v)
-                        .all(|w| self.graph.red_degree_of(w) < self.not_above)
-                {
+                assert!(v > u && degree_v > 0);
+
+                let red_degree = degree_u + degree_v;
+                if red_degree <= self.not_above && (!is_bipartite || degree_v < 3 || degree_u < 3) {
                     pairs.push((red_degree, (u, v)));
                 }
             }
@@ -674,8 +657,6 @@ mod test {
 
     #[test]
     fn small_random() {
-        //build_pace_logger_for_level(LevelFilter::Trace);
-
         get_test_graphs_with_tww("instances/small-random/*38d4.gr").for_each(
             |(filename, graph, presolved_tww)| {
                 let (tww, mut seq) = BranchAndBound::new(graph.clone()).solve().unwrap();

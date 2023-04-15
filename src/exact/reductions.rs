@@ -281,8 +281,8 @@ pub fn prune_twins<
             let mut ru = graph.red_neighbors_of_as_bitset(u);
             let mut rv = graph.red_neighbors_of_as_bitset(v);
 
-            ru.unset_bit(v);
-            rv.unset_bit(u);
+            ru.clear_bit(v);
+            rv.clear_bit(u);
 
             if !ru.is_subset_of(&rv) && !rv.is_subset_of(&ru) {
                 return false;
@@ -295,8 +295,8 @@ pub fn prune_twins<
         let are_twins = neighbors[u as usize] == neighbors[v as usize];
 
         if !was_set_before {
-            neighbors[u as usize].unset_bit(v);
-            neighbors[v as usize].unset_bit(u);
+            neighbors[u as usize].clear_bit(v);
+            neighbors[v as usize].clear_bit(u);
         }
 
         are_twins
@@ -321,13 +321,13 @@ pub fn prune_twins<
             graph.merge_node_into(u, v);
 
             let mut nu = std::mem::take(&mut neighbors[u as usize]);
-            neighbors[v as usize].or(&nu);
+            neighbors[v as usize] |= &nu;
 
-            nu.unset_all();
+            nu.clear_all();
             neighbors[u as usize] = nu;
 
             neighbors.iter_mut().for_each(|n| {
-                n.unset_bit(u);
+                n.clear_bit(u);
             });
         }
     }

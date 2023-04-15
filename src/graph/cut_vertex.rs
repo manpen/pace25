@@ -57,7 +57,7 @@ impl<'a, T: AdjacencyList> ArticulationPointSearch<'a, T> {
         let mut tree_neighbors = 0;
         for v in self.graph.neighbors_of(u) {
             // tree edge
-            if !self.visited[v] {
+            if !self.visited.get_bit(v) {
                 tree_neighbors += 1;
                 self.parent[v as usize] = Some(u);
                 self.compute_recursive(v, depth + 1)?;

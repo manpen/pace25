@@ -106,7 +106,7 @@ fn recurse<G: FullfledgedGraph>(
     );
 
     let edges_on_protected = protected
-        .iter()
+        .iter_set_bits()
         .map(|u| graph.degree_of(u) as NumEdges)
         .sum::<NumEdges>();
 
@@ -117,9 +117,9 @@ fn recurse<G: FullfledgedGraph>(
     if graph.degrees().any(|d| d == 0) {
         let (mut graph, mapper) = graph.remove_disconnected_verts();
 
-        let protected = BitSet::new_all_unset_but(
+        let protected = BitSet::new_with_bits_set(
             graph.number_of_nodes(),
-            mapper.get_filtered_new_ids(protected.iter()),
+            mapper.get_filtered_new_ids(protected.iter_set_bits()),
         );
         let (tww, mut seq) = recurse(cache, &mut graph, slack, not_above, &protected)?;
         seq.apply_mapper(&mapper);
@@ -190,7 +190,7 @@ fn recurse_impl<G: FullfledgedGraph>(
     slack = slack.max(kernel.slack());
 
     let edges_on_protected = protected
-        .iter()
+        .iter_set_bits()
         .map(|u| graph.degree_of(u) as NumEdges)
         .sum::<NumEdges>();
 
@@ -210,8 +210,8 @@ fn recurse_impl<G: FullfledgedGraph>(
                 c.is_red()
                     && graph.degree_of(u) > 1
                     && graph.degree_of(v) > 1
-                    && !protected[u]
-                    && !protected[v]
+                    && !protected.get_bit(u)
+                    && !protected.get_bit(v)
             })
             .collect();
 
@@ -241,7 +241,7 @@ fn recurse_impl<G: FullfledgedGraph>(
             }
 
             let extract_subgraph = |class_idx, other_node| -> G {
-                let mut nodes = BitSet::new_all_unset_but(
+                let mut nodes = BitSet::new_with_bits_set(
                     graph.number_of_nodes(),
                     part.members_of_class(class_idx),
                 );
@@ -270,7 +270,7 @@ fn recurse_impl<G: FullfledgedGraph>(
             assert!(seq_with_prot
                 .merges()
                 .iter()
-                .all(|&(u, v)| !small_protected[u] && !small_protected[v]));
+                .all(|&(u, v)| !small_protected.get_bit(u) && !small_protected.get_bit(v)));
 
             if tww_with_prot > slack
                 && recurse(
@@ -318,7 +318,7 @@ fn recurse_impl<G: FullfledgedGraph>(
             }
         }
 
-        mergable.and_not(protected);
+        mergable -= protected;
 
         mergable
     };
@@ -345,7 +345,7 @@ fn recurse_impl<G: FullfledgedGraph>(
         .map_or(not_above, |(_, tww, _)| *tww - 1);
 
     'outer: for &(r, (u, v)) in &pairs {
-        if protected[u] || protected[v] {
+        if protected.get_bit(u) || protected.get_bit(v) {
             continue;
         }
 
@@ -360,7 +360,7 @@ fn recurse_impl<G: FullfledgedGraph>(
             break;
         }
 
-        if !(mergable[u] && mergable[v]) {
+        if !(mergable.get_bit(u) && mergable.get_bit(v)) {
             continue;
         }
 
@@ -411,7 +411,7 @@ fn contraction_candidates<G: FullfledgedGraph>(
     let red_degs_of_black_neighbors = graph
         .vertices()
         .map(|u| {
-            if !mergeable[u] {
+            if !mergeable.get_bit(u) {
                 return not_above + 1;
             }
 
@@ -425,7 +425,7 @@ fn contraction_candidates<G: FullfledgedGraph>(
 
     let is_bipartite = graph.is_bipartite();
     for u in graph.vertices_range() {
-        if !mergeable.unset_bit(u) {
+        if !mergeable.clear_bit(u) {
             continue;
         }
         let degree_u = graph.degree_of(u);
@@ -434,17 +434,17 @@ fn contraction_candidates<G: FullfledgedGraph>(
         }
 
         let mut two_neighbors = graph.closed_two_neighborhood_of(u);
-        two_neighbors.and(&mergeable);
+        two_neighbors &= &mergeable;
 
         if is_bipartite && graph.degree_of(u) > 1 {
             for x in graph.neighbors_of(u) {
                 if graph.degree_of(x) > 1 {
-                    two_neighbors.unset_bit(x);
+                    two_neighbors.clear_bit(x);
                 }
             }
         }
 
-        for v in two_neighbors.iter() {
+        for v in two_neighbors.iter_set_bits() {
             assert!(v > u);
             let mut red_neighs = graph.red_neighbors_after_merge(u, v, false);
             let mut red_card = red_neighs.cardinality();
@@ -460,10 +460,10 @@ fn contraction_candidates<G: FullfledgedGraph>(
                 continue;
             }
 
-            red_neighs.unset_bits(graph.red_neighbors_of(u));
-            red_neighs.unset_bits(graph.red_neighbors_of(v));
+            red_neighs.clear_bits(graph.red_neighbors_of(u));
+            red_neighs.clear_bits(graph.red_neighbors_of(v));
 
-            for new_red in red_neighs.iter() {
+            for new_red in red_neighs.iter_set_bits() {
                 red_card = red_card.max(graph.red_degree_of(new_red) + 1);
             }
 
@@ -478,11 +478,11 @@ fn contraction_candidates<G: FullfledgedGraph>(
 
         let distant_nodes = {
             let mut three_neighbors = BitSet::new(graph.number_of_nodes());
-            for x in two_neighbors.iter() {
+            for x in two_neighbors.iter_set_bits() {
                 three_neighbors.set_bits(graph.neighbors_of(x));
             }
-            three_neighbors.and_not(&two_neighbors);
-            three_neighbors.and(&mergeable);
+            three_neighbors -= &two_neighbors;
+            three_neighbors &= &mergeable;
             three_neighbors
         };
 
@@ -496,7 +496,7 @@ fn contraction_candidates<G: FullfledgedGraph>(
             continue;
         }
 
-        for v in distant_nodes.iter() {
+        for v in distant_nodes.iter_set_bits() {
             assert!(v > u);
             let degree_v = graph.degree_of(v);
             let red_degree = red_deg_of_black_neighbors.max(degree_u + degree_v);

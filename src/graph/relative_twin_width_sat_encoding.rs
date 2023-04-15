@@ -905,13 +905,13 @@ impl<
         {
             let mut neighbors_i = self.graph.neighbors_of_as_bitset(node_id);
             if self.complement_graph {
-                neighbors_i.not();
-                for x in neighbors_i.clone().iter() {
+                neighbors_i.flip_all();
+                for x in neighbors_i.clone().iter_set_bits() {
                     if self.graph.degree_of(x) < 1 {
-                        neighbors_i.unset_bit(x);
+                        neighbors_i.clear_bit(x);
                     }
                 }
-                neighbors_i.unset_bit(node_id);
+                neighbors_i.clear_bit(node_id);
             }
             for node_j_id in self
                 .graph
@@ -921,19 +921,19 @@ impl<
             {
                 let mut neighbors_j = self.graph.neighbors_of_as_bitset(node_j_id);
                 if self.complement_graph {
-                    neighbors_j.not();
-                    for x in neighbors_j.clone().iter() {
+                    neighbors_j.flip_all();
+                    for x in neighbors_j.clone().iter_set_bits() {
                         if self.graph.degree_of(x) < 1 {
-                            neighbors_j.unset_bit(x);
+                            neighbors_j.clear_bit(x);
                         }
                     }
                 }
-                neighbors_j.unset_bit(node_id);
+                neighbors_j.clear_bit(node_id);
 
-                neighbors_j.xor(&neighbors_i);
-                neighbors_j.unset_bit(node_j_id);
+                neighbors_j ^= &neighbors_i;
+                neighbors_j.clear_bit(node_j_id);
 
-                for k_id in neighbors_j.iter() {
+                for k_id in neighbors_j.iter_set_bits() {
                     formula.push(vec![
                         -self.get_merge(
                             *self.graph_mapping.get(&node_id).unwrap(),

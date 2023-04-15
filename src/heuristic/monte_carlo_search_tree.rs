@@ -394,7 +394,7 @@ impl<
             (rand::thread_rng().gen::<f64>() * (remaining_nodes.cardinality() - 1) as f64) as usize;
 
         // Get a random node
-        if let Some(first_node) = remaining_nodes.iter().nth(chosen_node) {
+        if let Some(first_node) = remaining_nodes.iter_set_bits().nth(chosen_node) {
             let random_choice_or_neighboorhood = rand::thread_rng().gen::<f64>();
 
             let mut best_red_edges = std::u32::MAX;
@@ -439,7 +439,7 @@ impl<
                 }
                 // If we do not have neighbors merge with the best node of all nodes.
                 else {
-                    for partner in remaining_nodes.iter() {
+                    for partner in remaining_nodes.iter_set_bits() {
                         if partner == first_node {
                             continue;
                         }
@@ -460,7 +460,7 @@ impl<
                 }
             } else {
                 // Chance told us to merge with any node to find possibilities where the nodes are not in the neighborhood of each other
-                for partner in remaining_nodes.iter() {
+                for partner in remaining_nodes.iter_set_bits() {
                     if partner == first_node {
                         continue;
                     }
@@ -509,9 +509,9 @@ impl<
         let mut twin_width = 0;
         let mut remaining_nodes = self.contraction_sequence.remaining_nodes().unwrap();
 
-        for x in remaining_nodes.clone().iter() {
+        for x in remaining_nodes.clone().iter_set_bits() {
             if self.graph.degree_of(x) < 1 {
-                remaining_nodes.unset_bit(x);
+                remaining_nodes.clear_bit(x);
             }
         }
 
@@ -533,7 +533,7 @@ impl<
 
             self.contraction_sequence
                 .merge_node_into(choice.1, choice.0);
-            remaining_nodes.unset_bit(choice.1);
+            remaining_nodes.clear_bit(choice.1);
 
             // Abort games which are not better than previous games
             if twin_width >= full_game_tree.best_score() {

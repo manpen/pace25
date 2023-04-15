@@ -135,7 +135,7 @@ where
     }
 
     fn is_protected(&self, node: Node) -> bool {
-        self.protected_nodes[node]
+        self.protected_nodes.get_bit(node)
     }
 }
 

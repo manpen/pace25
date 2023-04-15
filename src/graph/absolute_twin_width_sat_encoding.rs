@@ -255,14 +255,14 @@ impl<
                         continue;
                     }
                     let value = *self.graph_reverse_mapping.get(&(k as u32)).unwrap();
-                    if neighbors.at(value) {
+                    if neighbors.get_bit(value) {
                         formula.push(vec![-self.get_ord(i, j), *var]);
                     } else {
                         formula.push(vec![-self.get_ord(i, j), -*var]);
                     }
                 }
                 let mut vars: Vec<i32> = neighbors
-                    .iter()
+                    .iter_set_bits()
                     .map(|x| self.get_ord(i, *self.graph_mapping.get(&x).unwrap() as usize))
                     .collect();
                 vars.push(-item[j]);

@@ -35,13 +35,13 @@ where
                 assert!(red_before >= self.graph.red_degree_of(v));
 
                 let mut nu = std::mem::take(&mut neighbors[u as usize]);
-                neighbors[v as usize].or(&nu);
+                neighbors[v as usize] |= &nu;
 
-                nu.unset_all();
+                nu.clear_all();
                 neighbors[u as usize] = nu;
 
                 neighbors.iter_mut().for_each(|n| {
-                    n.unset_bit(u);
+                    n.clear_bit(u);
                 });
             }
         }
@@ -70,7 +70,7 @@ where
                 return false;
             }
 
-            lneighbor.and_not(&neighbors[smaller as usize]);
+            lneighbor -= &neighbors[smaller as usize];
 
             lneighbor.is_subset_of(&self.graph.red_neighbors_of_as_bitset(larger))
                 && self
@@ -80,7 +80,7 @@ where
         })();
 
         if !was_set_before {
-            neighbors[smaller as usize].unset_bit(larger);
+            neighbors[smaller as usize].clear_bit(larger);
         }
 
         are_twins

@@ -10,7 +10,7 @@ pub trait TraversalState {
     fn visited(&self) -> &BitSet;
 
     fn did_visit_node(&self, u: Node) -> bool {
-        self.visited().at(u)
+        self.visited().get_bit(u)
     }
 }
 
@@ -159,7 +159,7 @@ impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> Iterator
             while self.sequencer.pop().is_some() {} // drop all
         } else {
             for v in self.graph.neighbors_of(u) {
-                if !self.visited[v] {
+                if !self.visited.get_bit(v) {
                     self.sequencer.push(I::new_with_predecessor(u, v));
                     self.visited.set_bit(v);
                 }
@@ -195,7 +195,8 @@ impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> TraversalSearc
     /// i.e. self.next() returned None
     pub fn try_restart_at_unvisited(&mut self) -> bool {
         assert_eq!(self.sequencer.cardinality(), 0);
-        match self.visited.get_first_unset() {
+        let node = self.visited.iter_cleared_bits().next();
+        match node {
             None => false,
             Some(x) => {
                 self.visited.set_bit(x);
@@ -277,7 +278,7 @@ impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> TraversalSearc
     /// ```
     pub fn is_node_reachable(mut self, u: Node) -> bool {
         assert_eq!(self.sequencer.cardinality(), 1);
-        self.visited.unset_bit(u);
+        self.visited.clear_bit(u);
         self.next();
         self.any(|v| v.item() == u)
     }
