@@ -74,13 +74,13 @@ pub trait BipartiteEdit {
     /// let partition = BitSet::new_with_bits_set(4, [0u32, 2]);
     ///
     /// // no change, since it's actually bipartite
-    /// graph.remove_edges_within_partition(&partition);
+    /// graph.remove_edges_within_bipartition_class(&partition);
     /// assert_eq!(graph.number_of_edges(), 3);
     ///
     /// // add non-bipartite edges
     /// graph.add_edges([(0, 2), (1, 3)], EdgeColor::Black);
     /// assert_eq!(graph.number_of_edges(), 5);
-    /// graph.remove_edges_within_partition(&partition);
+    /// graph.remove_edges_within_bipartition_class(&partition);
     /// assert_eq!(graph.number_of_edges(), 3);
     /// ```
     fn remove_edges_within_bipartition_class(&mut self, bipartition: &BitSet);

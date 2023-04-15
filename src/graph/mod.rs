@@ -9,6 +9,7 @@ pub mod distance_two_pairs;
 pub mod edge;
 pub mod gnp;
 pub mod graph_digest;
+pub mod matrix;
 pub mod modules;
 pub mod node_mapper;
 pub mod partition;
@@ -27,6 +28,7 @@ pub use distance_two_pairs::*;
 pub use edge::*;
 pub use gnp::*;
 pub use graph_digest::*;
+pub use matrix::*;
 pub use modules::Modules;
 pub use node_mapper::*;
 pub use partition::*;
@@ -37,6 +39,7 @@ pub use weisfeiler_lehman::*;
 use itertools::Itertools;
 use std::{borrow::Borrow, ops::Range};
 use stream_bitset::prelude::*;
+mod graph_tests;
 
 pub type Node = u32;
 pub type NumNodes = Node;
@@ -152,6 +155,11 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
     node_bitset_of!(neighbors_of_as_bitset, neighbors_of);
     node_iterator!(neighbors_as_bitset, neighbors_of_as_bitset, BitSet);
 
+    type NeighborsStream<'a>: BitmaskStream + 'a
+    where
+        Self: 'a;
+    fn neighbors_of_as_stream(&self, u: Node) -> Self::NeighborsStream<'_>;
+
     fn closed_two_neighborhood_of(&self, u: Node) -> BitSet {
         let mut ns = BitSet::new(self.number_of_nodes());
         ns.set_bit(u);
@@ -204,15 +212,24 @@ pub trait ColoredAdjacencyList: AdjacencyList {
     where
         Self: 'a;
 
+    type BlackNeighborsStream<'a>: BitmaskStream + 'a
+    where
+        Self: 'a;
+    type RedNeighborsStream<'a>: BitmaskStream + 'a
+    where
+        Self: 'a;
+
     /// Returns a slice of black neighbors of a given vertex.
     /// ** Panics if the v >= n **
     fn black_neighbors_of(&self, u: Node) -> Self::BlackNeighborIter<'_>;
     node_bitset_of!(black_neighbors_of_as_bitset, black_neighbors_of);
+    fn black_neighbors_of_as_stream(&self, u: Node) -> Self::BlackNeighborsStream<'_>;
 
     /// Returns a slice of red neighbors of a given vertex.
     /// ** Panics if the v >= n **
     fn red_neighbors_of(&self, u: Node) -> Self::RedNeighborIter<'_>;
     node_bitset_of!(red_neighbors_of_as_bitset, red_neighbors_of);
+    fn red_neighbors_of_as_stream(&self, u: Node) -> Self::RedNeighborsStream<'_>;
 
     /// Returns the number of black neighbors of from `u`
     fn black_degree_of(&self, u: Node) -> NumNodes;
