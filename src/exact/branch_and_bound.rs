@@ -632,59 +632,13 @@ mod test {
     use rayon::prelude::*;
     use std::{fs::File, io::BufReader};
 
-    type TestGraph = AdjMatrix;
-
-    #[test]
-    fn tiny() {
-        for (i, tww) in [1, 2, 0, 0, 3, 0, 2, 4, 1, 2].into_iter().enumerate() {
-            if i == 4 {
-                continue; // too slow
-            }
-
-            let filename = format!("instances/tiny/tiny{:>03}.gr", i + 1);
-            let reader = File::open(filename.clone())
-                .unwrap_or_else(|_| panic!("Cannot open file {}", &filename));
-            let buf_reader = BufReader::new(reader);
-
-            let pace_reader =
-                PaceReader::try_new(buf_reader).expect("Could not construct PaceReader");
-
-            let mut graph = TestGraph::new(pace_reader.number_of_nodes());
-            graph.add_edges(pace_reader, EdgeColor::Black);
-
-            let (size, _sol) = BranchAndBound::new(graph).solve().unwrap();
-            assert_eq!(size, tww, "file: {filename}");
-        }
-    }
-
-    #[test]
-    fn small_random() {
-        get_test_graphs_with_tww::<TestGraph>("instances/small-random/*38d4.gr").for_each(
-            |(filename, graph, presolved_tww)| {
-                let (tww, mut seq) = BranchAndBound::new(graph.clone()).solve().unwrap();
-                seq.add_unmerged_singletons(&graph).unwrap();
-                let verified = seq.compute_twin_width(graph.clone());
-                assert_eq!(
-                    Some(tww),
-                    verified,
-                    "does not match computed tww. file: {filename}"
-                );
-                assert_eq!(
-                    tww, presolved_tww,
-                    "does not match presolved. file: {filename}"
-                );
-                println!("Done with file: {filename}");
-            },
-        );
-    }
-
     macro_rules! impl_test_feature {
-        ($feature:ident) => {
+        ($graph:ty, $feature:ident) => {
             paste! {
                 #[test]
                 fn [< non_default_setting_for_$feature >]() {
                     for (filename, graph, presolved_tww) in
-                        get_test_graphs_with_tww::<TestGraph>("instances/small-random/*.gr").step_by(3)
+                        get_test_graphs_with_tww::<$graph>("instances/small-random/*.gr").step_by(3)
                     {
                         if graph.number_of_nodes() > 15 {
                             continue;
@@ -702,11 +656,68 @@ mod test {
         };
     }
 
-    impl_test_feature!(try_split_ccs);
-    impl_test_feature!(try_complement);
-    impl_test_feature!(try_remove_isolated);
-    impl_test_feature!(red_bridges);
-    impl_test_feature!(use_cache);
-    impl_test_feature!(mergable_heuristic);
-    impl_test_feature!(test_bipartite);
+    macro_rules! impl_tests_for_graph {
+        ($mod:ident, $graph:ty) => {
+            mod $mod {
+                use super::*;
+
+                type TestGraph = $graph;
+
+                #[test]
+                fn tiny() {
+                    for (i, tww) in [1, 2, 0, 0, 3, 0, 2, 4, 1, 2].into_iter().enumerate() {
+                        if i == 4 {
+                            continue; // too slow
+                        }
+
+                        let filename = format!("instances/tiny/tiny{:>03}.gr", i + 1);
+                        let reader = File::open(filename.clone())
+                            .unwrap_or_else(|_| panic!("Cannot open file {}", &filename));
+                        let buf_reader = BufReader::new(reader);
+
+                        let pace_reader = PaceReader::try_new(buf_reader)
+                            .expect("Could not construct PaceReader");
+
+                        let mut graph = TestGraph::new(pace_reader.number_of_nodes());
+                        graph.add_edges(pace_reader, EdgeColor::Black);
+
+                        let (size, _sol) = BranchAndBound::new(graph).solve().unwrap();
+                        assert_eq!(size, tww, "file: {filename}");
+                    }
+                }
+
+                #[test]
+                fn small_random() {
+                    get_test_graphs_with_tww::<TestGraph>("instances/small-random/*38d4.gr")
+                        .for_each(|(filename, graph, presolved_tww)| {
+                            let (tww, mut seq) =
+                                BranchAndBound::new(graph.clone()).solve().unwrap();
+                            seq.add_unmerged_singletons(&graph).unwrap();
+                            let verified = seq.compute_twin_width(graph.clone());
+                            assert_eq!(
+                                Some(tww),
+                                verified,
+                                "does not match computed tww. file: {filename}"
+                            );
+                            assert_eq!(
+                                tww, presolved_tww,
+                                "does not match presolved. file: {filename}"
+                            );
+                            println!("Done with file: {filename}");
+                        });
+                }
+
+                impl_test_feature!(TestGraph, try_split_ccs);
+                impl_test_feature!(TestGraph, try_complement);
+                impl_test_feature!(TestGraph, try_remove_isolated);
+                impl_test_feature!(TestGraph, red_bridges);
+                impl_test_feature!(TestGraph, use_cache);
+                impl_test_feature!(TestGraph, mergable_heuristic);
+                impl_test_feature!(TestGraph, test_bipartite);
+            }
+        };
+    }
+
+    impl_tests_for_graph!(adj_array, AdjArray);
+    impl_tests_for_graph!(adj_matrix, AdjMatrix);
 }
