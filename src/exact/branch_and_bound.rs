@@ -182,7 +182,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
         );
 
         let edges_in_complement = self.graph.number_of_edges_in_trigraph_complement(true);
-        return_none_if!(edges_in_complement > self.graph.number_of_edges());
+        return_none_if!(edges_in_complement >= self.graph.number_of_edges() * 4 / 5);
 
         let complement = self.graph.trigraph_complement(true);
         assert!(complement.number_of_edges() < self.graph.number_of_edges());
@@ -632,6 +632,8 @@ mod test {
     use rayon::prelude::*;
     use std::{fs::File, io::BufReader};
 
+    type TestGraph = AdjMatrix;
+
     #[test]
     fn tiny() {
         for (i, tww) in [1, 2, 0, 0, 3, 0, 2, 4, 1, 2].into_iter().enumerate() {
@@ -647,7 +649,7 @@ mod test {
             let pace_reader =
                 PaceReader::try_new(buf_reader).expect("Could not construct PaceReader");
 
-            let mut graph = AdjArray::new(pace_reader.number_of_nodes());
+            let mut graph = TestGraph::new(pace_reader.number_of_nodes());
             graph.add_edges(pace_reader, EdgeColor::Black);
 
             let (size, _sol) = BranchAndBound::new(graph).solve().unwrap();
@@ -657,7 +659,7 @@ mod test {
 
     #[test]
     fn small_random() {
-        get_test_graphs_with_tww("instances/small-random/*38d4.gr").for_each(
+        get_test_graphs_with_tww::<TestGraph>("instances/small-random/*38d4.gr").for_each(
             |(filename, graph, presolved_tww)| {
                 let (tww, mut seq) = BranchAndBound::new(graph.clone()).solve().unwrap();
                 seq.add_unmerged_singletons(&graph).unwrap();
@@ -682,7 +684,7 @@ mod test {
                 #[test]
                 fn [< non_default_setting_for_$feature >]() {
                     for (filename, graph, presolved_tww) in
-                        get_test_graphs_with_tww("instances/small-random/*.gr").step_by(3)
+                        get_test_graphs_with_tww::<TestGraph>("instances/small-random/*.gr").step_by(3)
                     {
                         if graph.number_of_nodes() > 15 {
                             continue;

@@ -3,7 +3,9 @@ use rayon::prelude::*;
 use regex::Regex;
 
 #[allow(dead_code)]
-pub fn get_test_graphs_with_tww(pattern: &str) -> impl Iterator<Item = (String, AdjArray, Node)> {
+pub fn get_test_graphs_with_tww<G: GraphPaceReader>(
+    pattern: &str,
+) -> impl Iterator<Item = (String, G, Node)> {
     let files = glob::glob(pattern).expect("Invalid pattern");
     let regex_pattern = Regex::new(r"_tww(\d+)_").expect("Invalid regexp");
 
@@ -11,9 +13,9 @@ pub fn get_test_graphs_with_tww(pattern: &str) -> impl Iterator<Item = (String, 
 }
 
 #[allow(dead_code)]
-pub fn get_test_graphs_with_tww_in_par(
+pub fn get_test_graphs_with_tww_in_par<G: GraphPaceReader + Send + Sync>(
     pattern: &str,
-) -> impl ParallelIterator<Item = (String, AdjArray, Node)> {
+) -> impl ParallelIterator<Item = (String, G, Node)> {
     let files: Vec<_> = glob::glob(pattern).expect("Invalid pattern").collect();
     let regex_pattern = Regex::new(r"_tww(\d+)_").expect("Invalid regexp");
 
@@ -22,10 +24,10 @@ pub fn get_test_graphs_with_tww_in_par(
         .filter_map(move |filename| process_file(filename, &regex_pattern))
 }
 
-fn process_file(
+fn process_file<G: GraphPaceReader>(
     filename: std::result::Result<std::path::PathBuf, glob::GlobError>,
     regex_pattern: &Regex,
-) -> Option<(String, AdjArray, u32)> {
+) -> Option<(String, G, u32)> {
     let filename = filename.ok()?;
     let filename_string = String::from(filename.as_os_str().to_str()?);
 
@@ -35,7 +37,7 @@ fn process_file(
         .parse()
         .ok()?;
 
-    let graph = AdjArray::try_read_pace_file(filename).ok()?;
+    let graph = G::try_read_pace_file(filename).ok()?;
 
     Some((filename_string, graph, tww))
 }

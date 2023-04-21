@@ -145,13 +145,15 @@ mod test {
     use crate::testing::get_test_graphs_with_tww;
     use paste::paste;
 
+    type TestGraph = AdjMatrix;
+
     macro_rules! impl_test_rule {
         ($rule:ident) => {
             paste! {
                 #[test]
                 fn [< rule_$rule >]() {
                     for (filename, graph, presolved_tww) in
-                        get_test_graphs_with_tww("instances/small-random/*.gr").step_by(3)
+                        get_test_graphs_with_tww::<TestGraph>("instances/small-random/*.gr").step_by(3)
                     {
                         if graph.number_of_nodes() > 15 {
                             continue;

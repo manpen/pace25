@@ -1,18 +1,8 @@
 use super::*;
 
-pub trait Complement {
+pub trait Complement: ColoredAdjacencyList + GraphNew + GraphEdgeEditing {
     /// Produces a copy of the graph where every red edge stays while
     /// black edges become non-edges and vice versa.
-    fn trigraph_complement(&self, ignore_isolated: bool) -> Self;
-
-    /// Returns the size of the complement graph without constructing it
-    fn number_of_edges_in_trigraph_complement(&self, ignore_isolated: bool) -> NumEdges;
-}
-
-impl<G> Complement for G
-where
-    G: ColoredAdjacencyList + GraphNew + GraphEdgeEditing,
-{
     fn trigraph_complement(&self, ignore_isolated: bool) -> Self {
         let mut complement = Self::new(self.number_of_nodes());
         let mut mask = BitSet::new_all_set(self.number_of_nodes());
@@ -41,6 +31,7 @@ where
         complement
     }
 
+    /// Returns the size of the complement graph without constructing it
     fn number_of_edges_in_trigraph_complement(&self, ignore_isolated: bool) -> NumEdges {
         let num_nodes = if ignore_isolated {
             self.vertices_with_neighbors().count() as NumEdges
@@ -60,6 +51,34 @@ where
     }
 }
 
+impl Complement for AdjMatrix {
+    fn trigraph_complement(&self, ignore_isolated: bool) -> Self {
+        let mut mask = BitSet::new_all_set(self.number_of_nodes());
+        if ignore_isolated {
+            mask.clear_bits(self.vertices().filter(|&u| self.degree_of(u) == 0));
+        }
+
+        let mut complement = self.clone();
+
+        complement.number_of_edges = 0;
+        for u in mask.iter_set_bits() {
+            let adj = complement.adj_of_mut(u);
+            adj.flip_all();
+            *adj |= &self.red_adj_of(u).bitmask_stream();
+            *adj &= &mask;
+
+            adj.clear_bit(u); // no self loops
+            debug_assert!(self.red_adj_of(u).is_subset_of(&adj));
+            complement.number_of_edges += adj.cardinality() as NumEdges;
+        }
+        complement.number_of_edges /= 2; // sum over degrees is double counting; halve it!
+
+        complement
+    }
+}
+
+impl Complement for AdjArray {}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -67,13 +86,22 @@ mod test {
     use rand_pcg::Pcg64;
 
     #[test]
-    fn complement() {
+    fn complement_adj_array() {
+        complement_for::<AdjArray>();
+    }
+
+    #[test]
+    fn complement_adj_matrix() {
+        complement_for::<AdjMatrix>();
+    }
+
+    fn complement_for<G: Complement + FullfledgedGraph>() {
         let mut rng = Pcg64::seed_from_u64(0x263741);
 
         for p in [0.1, 0.5] {
             for ignore_isolated in [false, true] {
                 for n in 0..50 {
-                    let graph = AdjArray::random_colored_gnp(&mut rng, n, p, 0.5);
+                    let graph = G::random_colored_gnp(&mut rng, n, p, 0.5);
                     let complement = graph.trigraph_complement(ignore_isolated);
 
                     assert_eq!(

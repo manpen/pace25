@@ -3,24 +3,24 @@ use std::ops::Range;
 
 #[derive(Clone)]
 pub struct AdjMatrix {
-    adj: Vec<BitSet>, // TODO: we should use a single allocation for all of them
-    number_of_edges: NumEdges,
+    pub(super) adj: Vec<BitSet>, // TODO: we should use a single allocation for all of them
+    pub(super) number_of_edges: NumEdges,
 }
 
 impl AdjMatrix {
-    fn adj_of(&self, u: Node) -> &BitSet {
+    pub(super) fn adj_of(&self, u: Node) -> &BitSet {
         &self.adj[2 * u as usize]
     }
 
-    fn red_adj_of(&self, u: Node) -> &BitSet {
+    pub(super) fn red_adj_of(&self, u: Node) -> &BitSet {
         &self.adj[1 + 2 * u as usize]
     }
 
-    fn adj_of_mut(&mut self, u: Node) -> &mut BitSet {
+    pub(super) fn adj_of_mut(&mut self, u: Node) -> &mut BitSet {
         &mut self.adj[2 * u as usize]
     }
 
-    fn red_adj_of_mut(&mut self, u: Node) -> &mut BitSet {
+    pub(super) fn red_adj_of_mut(&mut self, u: Node) -> &mut BitSet {
         &mut self.adj[1 + 2 * u as usize]
     }
 }
@@ -29,7 +29,7 @@ impl GraphNodeOrder for AdjMatrix {
     type VertexIter<'a> = impl Iterator<Item = Node> + 'a;
 
     fn number_of_nodes(&self) -> NumNodes {
-        self.adj.len() as NumNodes / 2
+        (self.adj.len() / 2) as NumNodes
     }
 
     fn vertices_range(&self) -> Range<Node> {
@@ -64,6 +64,10 @@ impl AdjacencyList for AdjMatrix {
     fn neighbors_of_as_stream(&self, u: Node) -> Self::NeighborsStream<'_> {
         self.adj_of(u).bitmask_stream()
     }
+
+    fn neighbors_of_as_bitset(&self, node: Node) -> BitSet {
+        self.adj_of(node).clone()
+    }
 }
 
 impl ColoredAdjacencyList for AdjMatrix {
@@ -79,7 +83,7 @@ impl ColoredAdjacencyList for AdjMatrix {
     type RedNeighborsStream<'a> = impl BitmaskStream + 'a  where Self: 'a;
 
     fn black_neighbors_of(&self, u: Node) -> Self::BlackNeighborIter<'_> {
-        (self.adj_of(u).bitmask_stream() - self.red_adj_of(u).bitmask_stream()).iter_set_bits()
+        self.black_neighbors_of_as_stream(u).iter_set_bits()
     }
 
     fn black_neighbors_of_as_bitset(&self, node: Node) -> BitSet {
@@ -192,7 +196,8 @@ impl GraphEdgeEditing for AdjMatrix {
     }
 
     fn remove_edges_at_node(&mut self, u: Node) {
-        let neighbors = std::mem::take(self.adj_of_mut(u));
+        let empty = BitSet::new(self.number_of_nodes());
+        let neighbors = std::mem::replace(self.adj_of_mut(u), empty);
         self.red_adj_of_mut(u).clear_all();
         self.number_of_edges -= neighbors.cardinality() as NumEdges;
 
@@ -207,7 +212,10 @@ impl GraphEdgeEditing for AdjMatrix {
 
         let reds = self.red_neighbors_after_merge(removed, survivor, true);
 
+        self.number_of_edges -= self.degree_of(survivor) as NumEdges;
         *self.adj_of_mut(survivor) |= &reds;
+        self.number_of_edges += self.degree_of(survivor) as NumEdges;
+
         *self.red_adj_of_mut(survivor) |= &reds;
 
         for red_neigh in reds.iter_set_bits() {
@@ -269,6 +277,20 @@ impl AdjMatrix {
         graph.add_edges(edges, EdgeColor::Black);
 
         graph
+    }
+}
+
+impl std::fmt::Debug for AdjMatrix {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use super::super::io::DotWriter;
+        use std::str;
+
+        let mut buf = Vec::new();
+        if self.try_write_dot(&mut buf).is_ok() {
+            f.write_str(str::from_utf8(&buf).unwrap().trim())?;
+        }
+
+        Ok(())
     }
 }
 

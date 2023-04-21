@@ -1,12 +1,11 @@
 use crate::{
     graph::{
-        relative_twin_width_sat_encoding::RelativeTwinWidthSatEncoding, AdjacencyList,
-        ColoredAdjacencyList, ColoredAdjacencyTest, GraphEdgeEditing, GraphEdgeOrder,
+        relative_twin_width_sat_encoding::RelativeTwinWidthSatEncoding, 
+         
     },
     heuristic::monte_carlo_search_tree::timeout_monte_carlo_search_tree_solver_preprocessed,
     prelude::{sweep_solver::heuristic_solve, Connectivity, Getter},
 };
-use std::fmt::Debug;
 
 use super::reductions::{prune_leaves, prune_twins};
 use crate::prelude::*;
@@ -65,18 +64,7 @@ pub struct TwoStageSatSolver<G> {
     time: std::time::Duration,
 }
 
-pub fn print_contraction_sequence<
-    G: Clone
-        + AdjacencyList
-        + GraphEdgeOrder
-        + ColoredAdjacencyList
-        + ColoredAdjacencyTest
-        + Debug
-        + GraphEdgeEditing,
->(
-    graph: &G,
-    seq: &ContractionSequence,
-) {
+pub fn print_contraction_sequence<G: FullfledgedGraph>(graph: &G, seq: &ContractionSequence) {
     let mut cloned = graph.clone();
     for x in seq.merges() {
         cloned.merge_node_into(x.0, x.1);
@@ -90,16 +78,7 @@ pub fn print_contraction_sequence<
     }
 }
 
-impl<
-        G: Clone
-            + AdjacencyList
-            + GraphEdgeOrder
-            + ColoredAdjacencyList
-            + ColoredAdjacencyTest
-            + GraphEdgeEditing
-            + Debug,
-    > TwoStageSatSolver<G>
-{
+impl<G: FullfledgedGraph> TwoStageSatSolver<G> {
     pub fn new(graph: &G, first_stage_timeout: std::time::Duration) -> TwoStageSatSolver<G> {
         let mut preprocessing_sequence = ContractionSequence::new(graph.number_of_nodes());
 

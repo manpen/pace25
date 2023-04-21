@@ -586,7 +586,7 @@ mod test {
     #[ignore = "Known to be broken"]
     fn small_random() {
         for (filename, graph, presolved_tww) in
-            get_test_graphs_with_tww("instances/small-random/*.gr").step_by(3)
+            get_test_graphs_with_tww::<AdjArray>("instances/small-random/*.gr").step_by(3)
         {
             if graph.number_of_nodes() > 15 {
                 continue;
@@ -602,7 +602,7 @@ mod test {
     fn small_random_two_staged() {
         //build_pace_logger_for_level(log::LevelFilter::Trace);
         for (filename, graph, presolved_tww) in
-            get_test_graphs_with_tww("instances/small-random/*.gr").step_by(3)
+            get_test_graphs_with_tww::<AdjArray>("instances/small-random/*.gr").step_by(3)
         {
             if graph.number_of_nodes() > 15 {
                 continue;

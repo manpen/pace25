@@ -3,6 +3,7 @@
 #![feature(return_position_impl_trait_in_trait)]
 #![feature(let_chains)]
 #![feature(linked_list_cursors)]
+#![feature(impl_trait_in_assoc_type)]
 
 pub mod algorithm;
 pub mod exact;

@@ -6,7 +6,23 @@ where
 {
     #[allow(dead_code)]
     pub(super) fn rule_twins(&mut self) -> bool {
-        let mut neighbors: Vec<_> = self.graph.neighbors_as_bitset().collect();
+        let mut neighbors: Vec<BitSet> = self.graph.neighbors_as_bitset().collect();
+
+        debug_assert_eq!(neighbors.len(), self.graph.number_of_nodes() as usize);
+
+        debug_assert!(
+            neighbors
+                .iter()
+                .all(|bs| bs.number_of_bits() == self.graph.number_of_nodes()),
+            "neighbors.len() = {}, graph.number_of_nodes() = {}, bits: {:?}",
+            neighbors.len(),
+            self.graph.number_of_nodes(),
+            neighbors
+                .iter()
+                .map(|bs| bs.number_of_bits())
+                .collect::<Vec<_>>()
+        );
+
         neighbors.iter_mut().enumerate().for_each(|(i, bs)| {
             bs.set_bit(i as Node);
         });
