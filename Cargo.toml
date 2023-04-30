@@ -35,3 +35,11 @@ stream_bitset = { path="stream-bitset" }
 #lto="fat"
 #codegen-units=1
 debug=true
+
+[profile.optil]
+inherits="release"
+lto="fat"
+codegen-units=1
+debug=false
+panic="abort"
+strip=true
