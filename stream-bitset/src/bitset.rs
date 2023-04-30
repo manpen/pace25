@@ -37,6 +37,30 @@ impl<Index: PrimIndex> BitSetImpl<Index> {
     }
 
     /// Creates a new BitSet with a universe size of `number_of_bits` bits
+    /// where the data values come from an callable
+    /// ```
+    /// use stream_bitset::prelude::*;
+    /// let set = BitSet32::new_from_bitmasks(128, || 1);
+    /// assert_eq!(set.cardinality(), 2);
+    /// assert_eq!(set.number_of_bits(), 128);
+    /// ```
+    pub fn new_from_bitmasks<F: FnMut() -> Bitmask>(number_of_bits: Index, mut source: F) -> Self {
+        let number_of_bits = number_of_bits.to_usize().unwrap();
+        let mut res = Self {
+            number_of_bits,
+            cardinality: 0,
+            data: (0..(BITS_IN_MASK - 1 + number_of_bits) / BITS_IN_MASK)
+                .map(|_| source())
+                .collect(),
+            _index: Default::default(),
+        };
+
+        res.mask_last_element();
+        res.recompute_cardinality();
+        res
+    }
+
+    /// Creates a new BitSet with a universe size of `number_of_bits` bits
     /// that are all set.
     /// ```
     /// use stream_bitset::prelude::*;

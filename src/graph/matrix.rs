@@ -72,6 +72,15 @@ impl AdjacencyList for AdjMatrix {
     fn neighbors_of_as_bitset(&self, node: Node) -> BitSet {
         self.adj_of(node).into_bitset()
     }
+
+    fn closed_two_neighborhood_of(&self, u: Node) -> BitSet {
+        let mut res = self.neighbors_of_as_bitset(u);
+        res.set_bit(u);
+
+        res.or_streams(self.neighbors_of(u).map(|v| self.neighbors_of_as_stream(v)));
+
+        res
+    }
 }
 
 impl ColoredAdjacencyList for AdjMatrix {
@@ -231,21 +240,36 @@ impl GraphEdgeEditing for AdjMatrix {
     }
 
     fn red_neighbors_after_merge(&self, removed: Node, survivor: Node, only_new: bool) -> BitSet {
-        let mut turned_red = self.black_neighbors_of_as_bitset(survivor);
+        let slice_ns = self.adj_of(survivor).as_slice();
+        let slice_nr = self.adj_of(removed).as_slice();
+        let slice_rs = self.red_adj_of(survivor).as_slice();
+        let slice_rr = self.red_adj_of(removed).as_slice();
 
-        turned_red ^= &self.black_neighbors_of_as_stream(removed); // flip bits
-        turned_red |= &self.red_neighbors_of_as_stream(removed);
+        let mut i = 0;
 
-        if only_new {
-            turned_red -= &self.red_neighbors_of_as_stream(survivor);
+        let mut res = if only_new {
+            BitSet::new_from_bitmasks(self.number_of_nodes(), || {
+                let ns = unsafe { *slice_ns.get_unchecked(i) };
+                let nr = unsafe { *slice_nr.get_unchecked(i) };
+                let rs = unsafe { *slice_rs.get_unchecked(i) };
+                let rr = unsafe { *slice_rr.get_unchecked(i) };
+                i += 1;
+                (((ns & !rs) ^ (nr & !rr)) | rr) & !rs
+            })
         } else {
-            turned_red |= &self.red_neighbors_of_as_stream(survivor);
-        }
+            BitSet::new_from_bitmasks(self.number_of_nodes(), || {
+                let ns = unsafe { *slice_ns.get_unchecked(i) };
+                let nr = unsafe { *slice_nr.get_unchecked(i) };
+                let rs = unsafe { *slice_rs.get_unchecked(i) };
+                let rr = unsafe { *slice_rr.get_unchecked(i) };
+                i += 1;
+                ((ns & !rs) ^ (nr & !rr)) | rr | rs
+            })
+        };
 
-        turned_red.clear_bit(removed);
-        turned_red.clear_bit(survivor);
-
-        turned_red
+        res.clear_bit(removed);
+        res.clear_bit(survivor);
+        res
     }
 }
 

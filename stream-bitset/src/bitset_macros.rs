@@ -346,7 +346,7 @@ macro_rules! impl_bitset {
             if id >= self.number_of_bits() {
                 return None;
             }
-            
+
             let (mut word_idx, bit_idx) = self.word_bit_index(id);
             let mut first_word = self._as_slice()[word_idx];
             first_word &= !(Bitmask::ith_bit_set(bit_idx) - 1);
@@ -368,6 +368,22 @@ macro_rules! impl_bitset {
             }
 
             None
+        }
+
+        pub fn or_streams<I: Iterator<Item = S>, S: ToBitmaskStream>(&mut self, iter: I) {
+            for other in iter {
+                for (m, StreamElement(o)) in
+                    self._as_mut_slice().iter_mut().zip(other.bitmask_stream())
+                {
+                    *m |= o;
+                }
+            }
+            self.recompute_cardinality();
+        }
+
+        #[inline(always)]
+        pub fn as_slice(&self) -> &[Bitmask] {
+            self._as_slice()
         }
 
         /// Asserts that the provided `id` is in the range of the container.

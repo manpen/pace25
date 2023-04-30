@@ -1,4 +1,4 @@
-use std::{mem, ptr::copy_nonoverlapping};
+use std::{mem, ptr::copy_nonoverlapping, slice::from_raw_parts};
 
 use prelude::BitSetShardImpl;
 
@@ -96,6 +96,11 @@ impl<Index: PrimIndex> BitSetArray<Index> {
 
     pub fn number_of_bits(&self) -> Index {
         Index::from(self.number_of_bits).unwrap()
+    }
+
+    pub unsafe fn raw_data(&self) -> &[u8] {
+        let base = self.data as *const u8;
+        from_raw_parts(base, self.len * std::mem::size_of::<Bitmask>())
     }
 }
 
