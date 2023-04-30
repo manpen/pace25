@@ -36,8 +36,8 @@ impl Default for KernelRules {
             leaves: (true, true),
             pairs: (true, true),
             tree: (false, false),
-            twins: (true, true),
-            two_paths: (true, true),
+            twins: (true, false),
+            two_paths: (false, false),
         }
     }
 }

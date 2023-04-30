@@ -1,4 +1,4 @@
-use log::{info, trace};
+use log::trace;
 
 use super::*;
 
@@ -14,7 +14,7 @@ where
 
         repeat_while!({
             let merges_before = self.sequence.len();
-            info!("rule_two_path {merges_before}");
+            trace!("rule_two_path {merges_before}");
 
             for host in self.graph.vertices_range() {
                 if self.is_protected(host) || self.graph.degree_of(host) < 2 {

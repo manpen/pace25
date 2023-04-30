@@ -8,7 +8,8 @@ use std::{
 
 use glob::glob;
 use itertools::Itertools;
-use tww::prelude::*;
+use log::LevelFilter;
+use tww::{log::build_pace_logger_for_level, prelude::*};
 
 #[allow(unused_imports)]
 use rayon::prelude::*;
@@ -45,7 +46,7 @@ fn load_best_known() -> std::io::Result<HashMap<String, NumNodes>> {
 }
 
 fn main() {
-    //build_pace_logger_for_level(LevelFilter::Trace);
+    build_pace_logger_for_level(LevelFilter::Debug);
 
     let args = std::env::args();
     let files = if args.len() > 1 {
@@ -70,7 +71,10 @@ fn main() {
 
 fn process_graph(file: &PathBuf, best_known: &HashMap<String, u32>) {
     let filename = String::from(file.as_os_str().to_str().unwrap());
-    let org_graph = AdjArray::try_read_pace_file(file).expect("Cannot open PACE file");
+    if filename.contains("kernel") {
+        return;
+    }
+    let org_graph = AdjMatrix::try_read_pace_file(file).expect("Cannot open PACE file");
 
     //trace!("LB1: {}", lower_bound_lb1(&org_graph, 0));
 
@@ -81,9 +85,19 @@ fn process_graph(file: &PathBuf, best_known: &HashMap<String, u32>) {
 
     return;*/
 
+    let (ub, heur_seq) = heuristic_solve(&org_graph);
+
     let start = Instant::now();
-    let (sol_size, sol) = naive::naive_solver(&org_graph);
+
+    let (sol_size, mut sol) = branch_and_bound::BranchAndBound::new_with_bounds(
+        org_graph.clone(),
+        0,
+        ub.saturating_sub(1),
+    )
+    .solve()
+    .unwrap_or((ub, heur_seq));
     let duration = start.elapsed();
+    sol.add_unmerged_singletons(&org_graph).unwrap();
 
     let best_known = best_known.get(&filename);
 
@@ -143,7 +157,8 @@ fn process_graph(file: &PathBuf, best_known: &HashMap<String, u32>) {
 
     return; */
 
-    let lb = lower_bound_lb1(&org_graph, 0);
+    let lb = 0;
+    lower_bound_lb1(&org_graph, 0);
 
     println!(
         "{filename:<50} | {:>6} | {:>8} | {sol_size:>4} ({:>4}) lb: {lb:>4} | {:>6} ms",
