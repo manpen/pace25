@@ -384,6 +384,7 @@ pub trait FullfledgedGraph:
     + ColoredAdjacencyTest
     + GraphEdgeEditing
     + Complement
+    + GraphDigest
     + std::fmt::Debug
 {
 }
@@ -396,6 +397,7 @@ impl<G> FullfledgedGraph for G where
         + ColoredAdjacencyTest
         + GraphEdgeEditing
         + Complement
+        + GraphDigest
         + std::fmt::Debug
 {
 }

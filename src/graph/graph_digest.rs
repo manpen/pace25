@@ -26,7 +26,7 @@ pub trait GraphDigest {
     }
 }
 
-impl<G: ColoredAdjacencyList> GraphDigest for G {
+impl GraphDigest for AdjArray {
     fn binary_digest<D: Digest>(&self) -> digest::Output<D> {
         let mut hasher = D::new();
         let mut buffer = [0u8; 12];
@@ -49,6 +49,14 @@ impl<G: ColoredAdjacencyList> GraphDigest for G {
             hasher.update(buffer);
         }
 
+        hasher.finalize()
+    }
+}
+
+impl GraphDigest for AdjMatrix {
+    fn binary_digest<D: Digest>(&self) -> digest::Output<D> {
+        let mut hasher = D::new();
+        hasher.update(unsafe { self.adj.raw_data() });
         hasher.finalize()
     }
 }
