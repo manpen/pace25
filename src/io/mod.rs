@@ -5,3 +5,6 @@ pub use pace_writer::PaceWriter;
 
 pub mod dot_writer;
 pub use dot_writer::DotWriter;
+
+pub mod edgelist_writer;
+pub use edgelist_writer::EdgelistWriter;
