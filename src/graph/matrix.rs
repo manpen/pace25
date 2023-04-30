@@ -1,27 +1,31 @@
+use stream_bitset::bitset_array::BitSetArray;
+
 use super::*;
 use std::ops::Range;
 
+type NodeSet = BitSetShard32;
+
 #[derive(Clone)]
 pub struct AdjMatrix {
-    pub(super) adj: Vec<BitSet>, // TODO: we should use a single allocation for all of them
+    pub(super) adj: BitSetArray<Node>,
     pub(super) number_of_edges: NumEdges,
 }
 
 impl AdjMatrix {
-    pub(super) fn adj_of(&self, u: Node) -> &BitSet {
-        &self.adj[2 * u as usize]
+    pub(super) fn adj_of(&self, u: Node) -> &NodeSet {
+        self.adj.get_set(2 * u)
     }
 
-    pub(super) fn red_adj_of(&self, u: Node) -> &BitSet {
-        &self.adj[1 + 2 * u as usize]
+    pub(super) fn red_adj_of(&self, u: Node) -> &NodeSet {
+        self.adj.get_set(1 + 2 * u)
     }
 
-    pub(super) fn adj_of_mut(&mut self, u: Node) -> &mut BitSet {
-        &mut self.adj[2 * u as usize]
+    pub(super) fn adj_of_mut(&mut self, u: Node) -> &mut NodeSet {
+        self.adj.get_set_mut(2 * u)
     }
 
-    pub(super) fn red_adj_of_mut(&mut self, u: Node) -> &mut BitSet {
-        &mut self.adj[1 + 2 * u as usize]
+    pub(super) fn red_adj_of_mut(&mut self, u: Node) -> &mut NodeSet {
+        self.adj.get_set_mut(1 + 2 * u)
     }
 }
 
@@ -29,7 +33,7 @@ impl GraphNodeOrder for AdjMatrix {
     type VertexIter<'a> = impl Iterator<Item = Node> + 'a;
 
     fn number_of_nodes(&self) -> NumNodes {
-        (self.adj.len() / 2) as NumNodes
+        self.adj.number_of_sets() / 2
     }
 
     fn vertices_range(&self) -> Range<Node> {
@@ -66,7 +70,7 @@ impl AdjacencyList for AdjMatrix {
     }
 
     fn neighbors_of_as_bitset(&self, node: Node) -> BitSet {
-        self.adj_of(node).clone()
+        self.adj_of(node).into_bitset()
     }
 }
 
@@ -140,9 +144,7 @@ impl ColoredAdjacencyTest for AdjMatrix {
 impl GraphNew for AdjMatrix {
     fn new(number_of_nodes: NumNodes) -> Self {
         Self {
-            adj: (0..2 * number_of_nodes)
-                .map(|_| BitSet::new(number_of_nodes))
-                .collect(),
+            adj: BitSetArray::new(2 * number_of_nodes, number_of_nodes),
             number_of_edges: 0,
         }
     }
@@ -196,8 +198,8 @@ impl GraphEdgeEditing for AdjMatrix {
     }
 
     fn remove_edges_at_node(&mut self, u: Node) {
-        let empty = BitSet::new(self.number_of_nodes());
-        let neighbors = std::mem::replace(self.adj_of_mut(u), empty);
+        let neighbors = self.neighbors_of_as_bitset(u);
+        self.adj_of_mut(u).clear_all();
         self.red_adj_of_mut(u).clear_all();
         self.number_of_edges -= neighbors.cardinality() as NumEdges;
 
