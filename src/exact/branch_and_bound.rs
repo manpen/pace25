@@ -19,7 +19,6 @@ pub struct FeatureConfiguration {
     pub use_cache: bool,
     pub mergable_heuristic: bool,
     pub test_bipartite: bool,
-    pub atmost_distance_three: bool,
     pub kernel_rules: KernelRules,
     pub paranoid: bool,
 }
@@ -35,8 +34,7 @@ impl Default for FeatureConfiguration {
             use_cache: true,
             mergable_heuristic: false,
             test_bipartite: false,
-            paranoid: false,
-            atmost_distance_three: true,
+            paranoid: true,
             kernel_rules: Default::default(),
         }
     }
@@ -54,7 +52,6 @@ impl FeatureConfiguration {
             mergable_heuristic: false,
             test_bipartite: false,
             paranoid: true,
-            atmost_distance_three: false,
             kernel_rules: Default::default(),
         }
     }
@@ -90,7 +87,8 @@ macro_rules! return_none_if {
 impl<G: FullfledgedGraph> BranchAndBound<G> {
     pub fn new(graph: G) -> Self {
         let n = graph.number_of_nodes();
-        Self::new_with_bounds(graph, 0, n)
+        let lb = graph.red_degrees().max().unwrap();
+        Self::new_with_bounds(graph, lb, n - 1)
     }
 
     pub fn new_with_bounds(graph: G, slack: NumNodes, not_above: NumNodes) -> Self {
@@ -515,7 +513,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
     }
 
     fn contraction_candidates(&mut self, org_mergeable: &BitSet) -> Vec<(u32, (u32, u32))> {
-        let mut pairs = Vec::new();
+        let mut pairs = Vec::with_capacity(org_mergeable.cardinality() as usize);
 
         let mut mergeable = org_mergeable.clone();
 
@@ -557,7 +555,10 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
             }
 
             for v in two_neighbors.iter_set_bits() {
-                assert!(v > u);
+                if self.graph.degree_of(u).abs_diff(self.graph.degree_of(v)) > self.not_above {
+                    continue;
+                }
+
                 let mut red_neighs = self.graph.red_neighbors_after_merge(u, v, false);
                 let mut red_card = red_neighs.cardinality();
 
@@ -594,12 +595,8 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
             }
 
             let distant_nodes = {
-                let mut dist_nodes = if self.features.atmost_distance_three {
-                    self.graph.closed_three_neighborhood_of(u)
-                } else {
-                    BitSet::new_all_set(self.graph.number_of_nodes())
-                };
-                dist_nodes -= &org_two_neighbors;
+                let mut dist_nodes = org_two_neighbors;
+                dist_nodes.flip_all();
                 dist_nodes -= &has_black_neighbor_with_critical_degree;
                 dist_nodes &= &mergeable;
                 dist_nodes
@@ -615,7 +612,7 @@ impl<G: FullfledgedGraph> BranchAndBound<G> {
                 }
             }
         }
-        pairs.sort();
+        pairs.sort_unstable();
         pairs
     }
 }
