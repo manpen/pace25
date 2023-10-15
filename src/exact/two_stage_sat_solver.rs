@@ -1,8 +1,5 @@
 use crate::{
-    graph::{
-        relative_twin_width_sat_encoding::RelativeTwinWidthSatEncoding, 
-         
-    },
+    graph::relative_twin_width_sat_encoding::RelativeTwinWidthSatEncoding,
     heuristic::monte_carlo_search_tree::timeout_monte_carlo_search_tree_solver_preprocessed,
     prelude::{sweep_solver::heuristic_solve, Connectivity, Getter},
 };

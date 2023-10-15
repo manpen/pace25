@@ -50,6 +50,14 @@ impl<R: BufRead> PaceReader<R> {
         Ok(pace_reader)
     }
 
+    pub fn try_new_contraction_sequence(reader: R, number_of_nodes: NumNodes) -> Result<Self> {
+        Ok(Self {
+            lines: reader.lines(),
+            number_of_nodes,
+            number_of_edges: number_of_nodes as NumEdges - 1,
+        })
+    }
+
     pub fn number_of_edges(&self) -> NumEdges {
         self.number_of_edges
     }

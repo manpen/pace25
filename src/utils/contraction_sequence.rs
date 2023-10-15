@@ -1,13 +1,20 @@
-use std::io::Write;
+use std::{
+    io::{BufRead, Write},
+    slice::from_raw_parts,
+};
 
+use ::digest::Digest;
 use itertools::Itertools;
 use log::debug;
+use serde::Serialize;
 
-use crate::graph::*;
+use crate::{graph::*, prelude::PaceReader};
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Hash, Serialize)]
 pub struct ContractionSequence {
+    #[serde(skip_serializing)]
     num_nodes: NumNodes,
+
     seq: Vec<(Node, Node)>,
 }
 
@@ -37,7 +44,15 @@ impl ContractionSequence {
         self.seq.push((removed, survivor))
     }
 
-    pub fn compute_twin_width<G>(&self, mut graph: G) -> Option<NumNodes>
+    pub fn compute_twin_width<G>(&self, graph: G) -> Option<NumNodes>
+    where
+        G: GraphEdgeEditing + ColoredAdjacencyList + std::fmt::Debug,
+    {
+        let n = graph.number_of_nodes();
+        self.compute_twin_width_upto(graph, n)
+    }
+
+    pub fn compute_twin_width_upto<G>(&self, mut graph: G, upto: NumNodes) -> Option<NumNodes>
     where
         G: GraphEdgeEditing + ColoredAdjacencyList + std::fmt::Debug,
     {
@@ -48,6 +63,10 @@ impl ContractionSequence {
             graph.merge_node_into(removed, survivor);
             let max_red_deg = graph.red_degrees().max().unwrap();
             twin_width = twin_width.max(max_red_deg);
+
+            if twin_width >= upto {
+                return Some(twin_width);
+            }
         }
 
         assert!(
@@ -174,11 +193,75 @@ impl ContractionSequence {
         Ok(())
     }
 
+    pub fn pace_reader<R: BufRead>(reader: R, number_of_nodes: Node) -> std::io::Result<Self> {
+        let reader = PaceReader::try_new_contraction_sequence(reader, number_of_nodes)?;
+        let mut cs = ContractionSequence::with_capacity(number_of_nodes);
+        for Edge(sur, rem) in reader {
+            cs.merge_node_into(rem, sur);
+        }
+        Ok(cs)
+    }
+
     pub fn len(&self) -> NumNodes {
         self.merges().len() as NumNodes
     }
 
     pub fn is_empty(&self) -> bool {
         self.merges().is_empty()
+    }
+
+    pub fn swap_merges(&mut self, fst: usize, snd: usize) {
+        if fst == snd {
+            return;
+        }
+        if fst > snd {
+            return self.swap_merges(snd, fst);
+        }
+
+        self.seq.swap(fst, snd);
+
+        let (fst_rem, fst_sur) = self.seq[fst];
+        for (rem, sur) in &mut self.seq[fst + 1..=snd] {
+            if *rem == fst_rem {
+                *rem = fst_sur;
+            } else if *sur == fst_rem {
+                *sur = fst_sur;
+            }
+        }
+    }
+
+    pub fn normalize(&mut self) {
+        let mut mapper: Vec<_> = (0..self.num_nodes).collect();
+
+        let search = |mapper: &mut Vec<Node>, mut node: usize| loop {
+            let target = mapper[node] as usize;
+            if target == node {
+                return target as Node;
+            }
+            mapper[node] = mapper[target];
+            node = target;
+        };
+
+        for (rem, sur) in &mut self.seq {
+            *rem = search(&mut mapper, *rem as usize);
+            *sur = search(&mut mapper, *sur as usize);
+
+            if *rem < *sur {
+                std::mem::swap(rem, sur);
+            }
+
+            mapper[*rem as usize] = *sur;
+        }
+    }
+
+    pub fn binary_digest(&self) -> digest::Output<sha2::Sha256> {
+        let mut hasher = sha2::Sha256::new();
+
+        let base = self.seq.as_ptr() as *const u8;
+
+        hasher.update(unsafe {
+            from_raw_parts(base, self.seq.len() * std::mem::size_of::<(Node, Node)>())
+        });
+        hasher.finalize()
     }
 }

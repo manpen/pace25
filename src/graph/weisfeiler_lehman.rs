@@ -45,11 +45,8 @@ impl WeisfeilerLehmanScoring {
 
                 scratch_neighbors.clear();
 
-                scratch_neighbors.extend(
-                    graph
-                        .black_neighbors_of(u)
-                        .map(|u| self.scores[u as usize]),
-                );
+                scratch_neighbors
+                    .extend(graph.black_neighbors_of(u).map(|u| self.scores[u as usize]));
 
                 scratch_neighbors.extend(
                     graph
