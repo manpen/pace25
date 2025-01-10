@@ -20,7 +20,6 @@ where
 {
     fn random_colored_gnp<R: Rng>(rng: &mut R, n: Node, p: f64, prob_black: f64) -> Self
     where
-        R: Rng,
         G: GraphNew + GraphEdgeEditing,
     {
         let mut result = Self::new(n);
@@ -87,7 +86,7 @@ impl<'a, R: Rng> BernoulliSamplingRange<'a, R> {
     }
 }
 
-impl<'a, R: Rng> Iterator for BernoulliSamplingRange<'a, R> {
+impl<R: Rng> Iterator for BernoulliSamplingRange<'_, R> {
     type Item = i64;
     fn next(&mut self) -> Option<Self::Item> {
         self.try_advance();

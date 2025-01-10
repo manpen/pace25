@@ -130,24 +130,24 @@ pub type BFSWithPredecessor<'a, G> =
 pub type DFSWithPredecessor<'a, G> =
     TraversalSearch<'a, G, Vec<PredecessorOfNode>, PredecessorOfNode>;
 
-impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> WithGraphRef<G>
-    for TraversalSearch<'a, G, S, I>
+impl<G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> WithGraphRef<G>
+    for TraversalSearch<'_, G, S, I>
 {
     fn graph(&self) -> &G {
         self.graph
     }
 }
 
-impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> TraversalState
-    for TraversalSearch<'a, G, S, I>
+impl<G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> TraversalState
+    for TraversalSearch<'_, G, S, I>
 {
     fn visited(&self) -> &BitSet {
         &self.visited
     }
 }
 
-impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> Iterator
-    for TraversalSearch<'a, G, S, I>
+impl<G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> Iterator
+    for TraversalSearch<'_, G, S, I>
 {
     type Item = I;
 
@@ -155,7 +155,7 @@ impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> Iterator
         let popped = self.sequencer.pop()?;
         let u = popped.item();
 
-        if self.stop_at.map_or(false, |stopper| u == stopper) {
+        if self.stop_at == Some(u) {
             while self.sequencer.pop().is_some() {} // drop all
         } else {
             for v in self.graph.neighbors_of(u) {

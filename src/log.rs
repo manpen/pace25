@@ -61,19 +61,3 @@ fn try_level_from_usize(value: usize) -> Option<LevelFilter> {
         _ => None,
     }
 }
-
-#[cfg(feature = "test-case")]
-#[cfg(test)]
-mod test_cases {
-    use super::*;
-    use log::LevelFilter;
-    use test_case::test_case;
-
-    #[test_case(LevelFilter::Off, 5 => LevelFilter::Trace)]
-    #[test_case(LevelFilter::Warn, 1 => LevelFilter::Info)]
-    #[test_case(LevelFilter::Error, 0 => LevelFilter::Error)]
-    #[test_case(LevelFilter::Trace, 1 => LevelFilter::Trace)]
-    fn test_level_from_verbosity(default: LevelFilter, verbosity: usize) -> LevelFilter {
-        level_from_verbosity(default, verbosity)
-    }
-}

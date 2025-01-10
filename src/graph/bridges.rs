@@ -50,7 +50,7 @@ where
             time: 0,
             bridges: Vec::new(),
             get_neighbors,
-            _i: PhantomData::default(),
+            _i: PhantomData,
         }
     }
 

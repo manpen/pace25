@@ -68,7 +68,7 @@ impl Complement for AdjMatrix {
             *adj &= &mask;
 
             adj.clear_bit(u); // no self loops
-            debug_assert!(self.red_adj_of(u).is_subset_of(&adj));
+            debug_assert!(self.red_adj_of(u).is_subset_of(adj));
             complement.number_of_edges += adj.cardinality() as NumEdges;
         }
         complement.number_of_edges /= 2; // sum over degrees is double counting; halve it!

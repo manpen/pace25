@@ -18,7 +18,7 @@ where
     fn try_write_pace<W: Write>(&self, mut writer: W) -> Result<(), std::io::Error> {
         writeln!(
             writer,
-            "p tww {} {}",
+            "p ds {} {}",
             self.number_of_nodes(),
             self.number_of_edges()
         )?;
@@ -57,7 +57,7 @@ mod test {
             String::from_utf8(buffer).unwrap()
         };
 
-        assert!(Regex::new(r"p\stww\s4\s2")
+        assert!(Regex::new(r"p\sds\s4\s2")
             .unwrap()
             .is_match(output.as_str()));
         assert!(

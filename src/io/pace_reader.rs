@@ -127,15 +127,15 @@ impl<R: BufRead> PaceReader<R> {
         let mut parts = line.split(' ').filter(|t| !t.is_empty());
 
         raise_error_unless!(
-            parts.next().map_or(false, |t| t.starts_with('p')),
+            parts.next().is_some_and(|t| t.starts_with('p')),
             ErrorKind::InvalidData,
             "Invalid header found; line should start with p"
         );
 
         raise_error_unless!(
-            parts.next().map_or(false, |t| t == "tww"),
+            parts.next() == Some("ds"),
             ErrorKind::InvalidData,
-            "Invalid header found; file type should be \"tww\""
+            "Invalid header found; file type should be \"ds\""
         );
 
         let number_of_nodes = parse_next_value!(parts, "Header>Number of nodes");

@@ -73,7 +73,7 @@ impl<'a, G: AdjacencyList> DistancePairsIterator<'a, G> {
     }
 }
 
-impl<'a, G: AdjacencyList> Iterator for DistancePairsIterator<'a, G> {
+impl<G: AdjacencyList> Iterator for DistancePairsIterator<'_, G> {
     type Item = (Node, Node);
 
     fn next(&mut self) -> Option<Self::Item> {

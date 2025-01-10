@@ -1,4 +1,3 @@
-pub mod absolute_twin_width_sat_encoding;
 pub mod adj_array;
 pub mod bipartite;
 pub mod bridges;
@@ -13,7 +12,6 @@ pub mod matrix;
 pub mod modules;
 pub mod node_mapper;
 pub mod partition;
-pub mod relative_twin_width_sat_encoding;
 pub mod subgraph;
 pub mod traversal;
 pub mod weisfeiler_lehman;

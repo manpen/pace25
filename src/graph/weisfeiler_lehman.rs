@@ -93,7 +93,7 @@ impl GraphDigest for WeisfeilerLehmanScoring {
 
         let slice = unsafe {
             std::slice::from_raw_parts(
-                self.scores.as_ptr().cast() as *const u8,
+                self.scores.as_ptr().cast(),
                 self.scores.len() * std::mem::size_of::<u64>(),
             )
         };
