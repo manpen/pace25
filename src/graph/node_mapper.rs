@@ -22,7 +22,7 @@ pub trait Setter: Sized {
     /// # Example
     ///
     /// ```
-    /// use tww::graph::*;
+    /// use dss::graph::*;
     /// let mapper = NodeMapper::from_rank(&[2, 0, 1]);
     /// assert_eq!(mapper.new_id_of(0), Some(2));
     /// assert_eq!(mapper.new_id_of(1), Some(0));
@@ -47,7 +47,7 @@ pub trait Setter: Sized {
     /// # Example
     ///
     /// ```
-    /// use tww::graph::*;
+    /// use dss::graph::*;
     /// let mapper = NodeMapper::from_sequence(&[(0,2), (2, 1)]);
     /// assert_eq!(mapper.new_id_of(0), Some(2));
     /// assert_eq!(mapper.new_id_of(1), None);
@@ -123,7 +123,7 @@ pub trait Getter {
     /// # Example
     ///
     /// ```
-    /// use tww::graph::*;
+    /// use dss::graph::*;
     /// let input = AdjArray::test_only_from([(0,1), (1,2), (2, 2)]);
     /// let mut map = NodeMapper::with_capacity(3);
     /// // node 0 gets dropped, 1 becomes 3 and 2 becomes 1
@@ -317,7 +317,7 @@ impl RankingForwardMapper {
     ///
     /// # Example
     /// ```
-    /// use tww::graph::*;
+    /// use dss::graph::*;
     /// let mapper = RankingForwardMapper::from_vec(vec![4,0,1]);
     /// assert_eq!(mapper.new_id_of(0), Some(4));
     /// assert_eq!(mapper.new_id_of(1), Some(0));

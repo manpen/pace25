@@ -20,7 +20,7 @@ impl Partition {
     ///
     /// # Example
     /// ```
-    /// use tww::graph::partition::*;
+    /// use dss::graph::partition::*;
     /// let partition = Partition::new(10);
     /// assert_eq!(partition.number_of_unassigned(), 10);
     /// ```
@@ -36,7 +36,7 @@ impl Partition {
     ///
     /// # Example
     /// ```
-    /// use tww::graph::partition::*;
+    /// use dss::graph::partition::*;
     /// let mut partition = Partition::new(10);
     /// let class_id = partition.add_class([2,4]);
     /// assert_eq!(partition.number_of_unassigned(), 8);
@@ -64,7 +64,7 @@ impl Partition {
     ///
     /// # Example
     /// ```
-    /// use tww::graph::partition::*;
+    /// use dss::graph::partition::*;
     /// let mut partition = Partition::new(10);
     /// let class_id = partition.add_class([2,4]);
     /// partition.move_node(1, class_id);
@@ -82,7 +82,7 @@ impl Partition {
     ///
     /// # Example
     /// ```
-    /// use tww::graph::partition::*;
+    /// use dss::graph::partition::*;
     /// let mut partition = Partition::new(10);
     /// let class_id = partition.add_class([2,4]);
     /// assert_eq!(partition.class_of_node(1), None);
@@ -102,7 +102,7 @@ impl Partition {
     ///
     /// # Example
     /// ```
-    /// use tww::graph::partition::*;
+    /// use dss::graph::partition::*;
     /// let mut partition = Partition::new(10);
     /// let c1 = partition.add_class([2,4]);
     /// let c2 = partition.add_class([6,8]);
@@ -127,7 +127,7 @@ impl Partition {
     ///
     /// # Example
     /// ```
-    /// use tww::graph::partition::*;
+    /// use dss::graph::partition::*;
     /// let mut partition = Partition::new(10);
     /// assert_eq!(partition.number_of_unassigned(), 10);
     /// partition.add_class([2,4]);
@@ -141,7 +141,7 @@ impl Partition {
     ///
     /// # Example
     /// ```
-    /// use tww::graph::partition::*;
+    /// use dss::graph::partition::*;
     /// let mut partition = Partition::new(10);
     /// let class_id = partition.add_class([2,4]);
     /// assert_eq!(partition.number_in_class(class_id), 2);
@@ -154,7 +154,7 @@ impl Partition {
     ///
     /// # Example
     /// ```
-    /// use tww::graph::partition::*;
+    /// use dss::graph::partition::*;
     /// let mut partition = Partition::new(10);
     /// assert_eq!(partition.number_of_classes(), 0);
     /// partition.add_class([2,4]);
@@ -172,7 +172,7 @@ impl Partition {
     ///
     /// # Example
     /// ```
-    /// use tww::graph::partition::*;
+    /// use dss::graph::partition::*;
     /// use itertools::Itertools;;
     /// let mut partition = Partition::new(10);
     /// let class_id = partition.add_class([2,5,4]);

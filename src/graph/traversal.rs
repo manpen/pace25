@@ -210,7 +210,7 @@ impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> TraversalSearc
     ///
     /// # Example
     /// ```
-    /// use tww::graph::*;
+    /// use dss::graph::*;
     /// use itertools::Itertools;
     /// let graph = AdjArray::test_only_from([(0, 1), (1, 2), (2, 3)]);
     /// let mut bfs = graph.bfs(0);
@@ -231,7 +231,7 @@ impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> TraversalSearc
     ///
     /// # Example
     /// ```
-    /// use tww::graph::*;
+    /// use dss::graph::*;
     /// let graph = AdjArray::test_only_from([(0,1), (1,2)]); // directed path 0 -> 1 -> 2
     /// let dfs : Vec<_> = graph.dfs(0).exclude_node(1).collect(); // exclude 1
     /// assert_eq!(dfs, vec![0]); // we can only visit 1
@@ -250,7 +250,7 @@ impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> TraversalSearc
     ///
     /// # Example
     /// ```
-    /// use tww::graph::*;
+    /// use dss::graph::*;
     /// let graph = AdjArray::test_only_from([(0,1), (0,2), (1,3), (2,3)]); // directed path 0 -> 1 -> 3 and 0 -> 2 -> 3
     /// let dfs : Vec<_> = graph.dfs(0).exclude_nodes([1,2]).collect(); // exclude 1
     /// assert_eq!(dfs, vec![0]); // we can only visit 1
@@ -270,7 +270,7 @@ impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> TraversalSearc
     ///
     /// # Example
     /// ```
-    /// use tww::graph::*;
+    /// use dss::graph::*;
     /// let graph = AdjArray::test_only_from([(0,1), (2, 3)]);
     /// assert!(graph.dfs(0).is_node_reachable(0));
     /// assert!(graph.dfs(0).is_node_reachable(1));

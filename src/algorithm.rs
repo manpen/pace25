@@ -23,8 +23,8 @@ use std::time::{Duration, Instant};
 ///
 /// # Example
 /// ```
-/// use tww::algorithm::IterativeAlgorithm;
-/// use tww::graph::{AdjacencyList, Node};
+/// use dss::algorithm::IterativeAlgorithm;
+/// use dss::graph::{AdjacencyList, Node};
 /// struct MyAlgorithm<'a, G> {
 ///    graph: &'a G,
 ///    solution: Option<u32>
@@ -90,7 +90,7 @@ pub trait IterativeAlgorithm<Result> {
 /// # Example
 ///
 /// ```ignore
-/// use tww::algorithm::{IterativeAlgorithm, TerminatingIterativeAlgorithm};
+/// use dss::algorithm::{IterativeAlgorithm, TerminatingIterativeAlgorithm};
 ///
 /// struct MyAlgorithm {};
 ///

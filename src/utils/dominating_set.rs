@@ -47,7 +47,7 @@ impl DominatingSet {
     /// # Example
     /// ```
     /// use dss::utils::DominatingSet;
-    /// let domset = DominatingSet::new(5);
+    /// let mut domset = DominatingSet::new(5);
     /// assert!(domset.is_empty());
     /// domset.add_node(0);
     /// assert!(!domset.is_empty());
@@ -91,6 +91,7 @@ impl DominatingSet {
     /// as required by the PACE competition.
     ///
     /// ```
+    /// use dss::utils::DominatingSet;
     /// let mut domset = DominatingSet::new(5);
     /// domset.add_node(2);
     /// domset.add_node(4);

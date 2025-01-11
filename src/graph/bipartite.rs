@@ -5,7 +5,7 @@ pub trait BipartiteTest {
     ///
     /// # Examples
     /// ```
-    /// use tww::prelude::*;
+    /// use dss::prelude::*;
     /// let mut graph = AdjArray::new(2);
     /// graph.add_edge(0, 1, EdgeColor::Black);
     ///
@@ -18,7 +18,7 @@ pub trait BipartiteTest {
     ///
     /// # Examples
     /// ```
-    /// use tww::prelude::*;
+    /// use dss::prelude::*;
     /// let mut graph = AdjArray::new(4); // path graph
     /// graph.add_edges([(0, 1), (1, 2), (2, 3)], EdgeColor::Black);
     ///
@@ -33,7 +33,7 @@ pub trait BipartiteTest {
     /// Tests whether the graph is bipartite.
     ///
     /// # Examples
-    /// use tww::prelude::*;
+    /// use dss::prelude::*;
     /// let mut graph = AdjArray::new(4); // path graph
     /// graph.add_edges([(0, 1), (1, 2), (2, 3)], EdgeColor::Black);
     ///
@@ -68,7 +68,7 @@ pub trait BipartiteEdit {
     /// # Examples
     ///
     /// ```
-    /// use tww::prelude::*;
+    /// use dss::prelude::*;
     /// let mut graph = AdjArray::new(4);
     /// graph.add_edges([(0, 1), (1, 2), (2, 3)], EdgeColor::Black);
     /// let partition = BitSet::new_with_bits_set(4, [0u32, 2]);

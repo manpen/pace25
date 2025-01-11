@@ -182,7 +182,7 @@ mod test {
     #[test]
     fn test_success() {
         const DEMO_FILE: &str =
-            "c TEST\n p  tww 10  9 \n1 2\nc TEST\n2 3\n3 4\n4 5\n5 6\n6 7\n7 8\n8 9\n9 10";
+            "c TEST\n p  ds 10  9 \n1 2\nc TEST\n2 3\n3 4\n4 5\n5 6\n6 7\n7 8\n8 9\n9 10";
         let buf_reader = std::io::BufReader::new(DEMO_FILE.as_bytes());
         let pace_reader = PaceReader::try_new(buf_reader).unwrap();
 
@@ -207,39 +207,8 @@ mod test {
     }
 
     #[test]
-    fn test_read_pace_exact() {
-        let files = glob("instances/exact-public/*.gr")
-            .expect("Failed to glob")
-            .map(|r| r.expect("Failed to access globbed path"))
-            .collect_vec();
-
-        assert!(!files.is_empty());
-
-        for file in files {
-            let reader = File::open(file.clone()).expect("Cannot open file");
-            let buf_reader = BufReader::new(reader);
-
-            let pace_reader =
-                PaceReader::try_new(buf_reader).expect("Could not construct PaceReader");
-
-            let num_nodes = pace_reader.number_of_nodes();
-            let num_edges = pace_reader.number_of_edges();
-
-            let edges = pace_reader.collect_vec();
-
-            assert_eq!(num_edges as usize, edges.len());
-
-            assert!(edges
-                .iter()
-                .all(|&Edge(u, v)| u < num_nodes && v < num_nodes));
-
-            println!("Read {file:?} with n={num_nodes} and m={num_edges}");
-        }
-    }
-
-    #[test]
     fn test_read_pace_exact_data_specific() {
-        let files = glob("instances/exact-public/*.gr")
+        let files = glob("instances/tiny/*.gr")
             .expect("Failed to glob")
             .map(|r| r.expect("Failed to access globbed path"))
             .collect_vec();
