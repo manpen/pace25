@@ -7,3 +7,6 @@ perf.data
 *.solution
 *.vsolution-*
 /*dampf*
+.stride
+stride-logs
+runner
