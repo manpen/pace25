@@ -60,7 +60,7 @@ fn main() -> anyhow::Result<()> {
     let graph = load_graph(&opt.instance)?;
 
     let result = match opt.cmd {
-        Commands::SatSolverEnum(_) => dss::exact::sat_solver::solve(&graph)?,
+        Commands::SatSolverEnum(_) => dss::exact::sat_solver::solve(&graph, None)?,
     };
 
     assert!(result.is_valid(&graph), "Produced DS is not valid");
