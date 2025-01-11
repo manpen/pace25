@@ -39,14 +39,16 @@ impl GraphEdgeOrder for AdjArray {
 }
 
 impl AdjacencyList for AdjArray {
-    type NeighborIter<'a> = impl Iterator<Item = Node> + 'a
+    type NeighborIter<'a>
+        = impl Iterator<Item = Node> + 'a
     where
         Self: 'a;
 
     forward!(degree_of, degree, NumNodes);
     forward!(neighbors_of, neighbors, Self::NeighborIter<'_>);
 
-    type NeighborsStream<'a> = BitsetStream<Node>
+    type NeighborsStream<'a>
+        = BitsetStream<Node>
     where
         Self: 'a;
     fn neighbors_of_as_stream(&self, u: Node) -> Self::NeighborsStream<'_> {
@@ -55,13 +57,15 @@ impl AdjacencyList for AdjArray {
 }
 
 impl ColoredAdjacencyList for AdjArray {
-    type BlackNeighborIter<'a> = impl Iterator<Item = Node> + 'a
+    type BlackNeighborIter<'a>
+        = impl Iterator<Item = Node> + 'a
     where
         Self: 'a;
 
-    type RedNeighborIter<'a> = impl Iterator<Item = Node> + 'a
-        where
-            Self: 'a;
+    type RedNeighborIter<'a>
+        = impl Iterator<Item = Node> + 'a
+    where
+        Self: 'a;
 
     forward!(black_degree_of, black_degree, NumNodes);
     forward!(red_degree_of, red_degree, NumNodes);
@@ -72,11 +76,13 @@ impl ColoredAdjacencyList for AdjArray {
     );
     forward!(red_neighbors_of, red_neighbors, Self::RedNeighborIter<'_>);
 
-    type BlackNeighborsStream<'a> = BitsetStream<Node>
+    type BlackNeighborsStream<'a>
+        = BitsetStream<Node>
     where
         Self: 'a;
 
-    type RedNeighborsStream<'a> = BitsetStream<Node>
+    type RedNeighborsStream<'a>
+        = BitsetStream<Node>
     where
         Self: 'a;
 

@@ -52,7 +52,8 @@ impl GraphEdgeOrder for AdjMatrix {
 }
 
 impl AdjacencyList for AdjMatrix {
-    type NeighborIter<'a> = impl Iterator<Item = Node> + 'a
+    type NeighborIter<'a>
+        = impl Iterator<Item = Node> + 'a
     where
         Self: 'a;
 
@@ -64,7 +65,10 @@ impl AdjacencyList for AdjMatrix {
         self.adj_of(u).cardinality()
     }
 
-    type NeighborsStream<'a> = impl BitmaskStream + 'a  where Self: 'a;
+    type NeighborsStream<'a>
+        = impl BitmaskStream + 'a
+    where
+        Self: 'a;
     fn neighbors_of_as_stream(&self, u: Node) -> Self::NeighborsStream<'_> {
         self.adj_of(u).bitmask_stream()
     }
@@ -84,16 +88,24 @@ impl AdjacencyList for AdjMatrix {
 }
 
 impl ColoredAdjacencyList for AdjMatrix {
-    type BlackNeighborIter<'a> = impl Iterator<Item = Node> + 'a
+    type BlackNeighborIter<'a>
+        = impl Iterator<Item = Node> + 'a
     where
         Self: 'a;
 
-    type RedNeighborIter<'a> = impl Iterator<Item = Node> + 'a
-        where
-            Self: 'a;
+    type RedNeighborIter<'a>
+        = impl Iterator<Item = Node> + 'a
+    where
+        Self: 'a;
 
-    type BlackNeighborsStream<'a> = impl BitmaskStream + 'a  where Self: 'a;
-    type RedNeighborsStream<'a> = impl BitmaskStream + 'a  where Self: 'a;
+    type BlackNeighborsStream<'a>
+        = impl BitmaskStream + 'a
+    where
+        Self: 'a;
+    type RedNeighborsStream<'a>
+        = impl BitmaskStream + 'a
+    where
+        Self: 'a;
 
     fn black_neighbors_of(&self, u: Node) -> Self::BlackNeighborIter<'_> {
         self.black_neighbors_of_as_stream(u).iter_set_bits()

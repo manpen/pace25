@@ -25,7 +25,10 @@ pub trait DistancePairs {
 }
 
 impl<G: AdjacencyList> DistancePairs for G {
-    type PairIterator<'a> = DistancePairsIterator<'a, Self> where Self: 'a;
+    type PairIterator<'a>
+        = DistancePairsIterator<'a, Self>
+    where
+        Self: 'a;
 
     fn distance_two_pairs(&self) -> Self::PairIterator<'_> {
         DistancePairsIterator::new(self, Distance::Two)

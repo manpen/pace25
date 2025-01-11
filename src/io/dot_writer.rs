@@ -4,7 +4,6 @@ use super::super::graph::*;
 
 /// produces a minimalistic DOT representation of the graph
 pub trait DotWriter {
-
     fn try_write_dot<W: Write>(&self, writer: W) -> Result<(), std::io::Error>;
 }
 
