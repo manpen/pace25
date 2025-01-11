@@ -37,6 +37,36 @@ macro_rules! impl_bitset {
             Index::from(self._get_number_of_bits()).unwrap()
         }
 
+        /// Returns true iff all bits are set.
+        /// 
+        /// # Examples
+        /// ```
+        /// use stream_bitset::prelude::*;
+        /// let set = BitSet32::new(2);
+        /// assert!(!set.are_all_set());
+        /// set.set_bit(0);
+        /// assert!(!set.are_all_set());
+        /// set.set_bit(1);
+        /// assert!(set.are_all_set());
+        /// ```
+        pub fn are_all_set(&self) -> bool {
+            self.cardinality() == self.number_of_bits()
+        }
+
+        /// Returns true iff all bits are unset.
+        /// 
+        /// # Examples
+        /// ```
+        /// use stream_bitset::prelude::*;
+        /// let set = BitSet32::new(2);
+        /// assert!(set.are_all_unset());
+        /// set.set_bit(0);
+        /// assert!(!set.are_all_unset());
+        /// ```
+        pub fn are_all_unset(&self) -> bool {
+            self.cardinality().is_zero()
+        }
+
         /// True if the `id`-th bit is set.
         ///
         /// # Examples
