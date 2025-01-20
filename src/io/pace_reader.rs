@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use crate::graph::{Edge, GraphEdgeEditing, GraphNew, NumEdges, NumNodes};
+use crate::graph::{Edge, GraphFromReader, NumEdges, NumNodes};
 
 pub type Result<T> = std::io::Result<T>;
 
@@ -15,13 +15,12 @@ pub trait GraphPaceReader: Sized {
 
 impl<G> GraphPaceReader for G
 where
-    G: GraphNew + GraphEdgeEditing,
+    G: GraphFromReader,
 {
     fn try_read_pace<R: BufRead>(reader: R) -> Result<Self> {
         let pace_reader = PaceReader::try_new(reader)?;
-        let mut graph = Self::new(pace_reader.number_of_nodes());
-        graph.add_edges(pace_reader, crate::graph::EdgeColor::Black);
-        Ok(graph)
+        let n = pace_reader.number_of_nodes();
+        Ok(G::from_edges(n, pace_reader))
     }
 
     fn try_read_pace_file<P: AsRef<Path>>(path: P) -> Result<Self> {

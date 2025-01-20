@@ -110,7 +110,7 @@ impl DominatingSet {
     }
 
     /// Computes the set of nodes covered by the dominating set.
-    pub fn compute_covered(&self, graph: &impl FullfledgedGraph) -> BitSet {
+    pub fn compute_covered(&self, graph: &impl AdjacencyList) -> BitSet {
         let mut covered = BitSet::new(graph.number_of_nodes());
 
         for &u in &self.set {
@@ -122,8 +122,159 @@ impl DominatingSet {
     }
 
     /// Returns true if the dominating set is valid, i.e. it covers all nodes.
-    pub fn is_valid(&self, graph: &impl FullfledgedGraph) -> bool {
+    pub fn is_valid(&self, graph: &impl AdjacencyList) -> bool {
         let covered = self.compute_covered(graph);
         covered.are_all_set()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ExtDominatingSet {
+    solution: Vec<Node>,
+    positions: Vec<NumNodes>,
+    num_fixed: NumNodes,
+}
+
+impl ExtDominatingSet {
+    pub fn new(n: usize) -> Self {
+        Self {
+            solution: Vec::new(),
+            positions: vec![NumNodes::MAX; n],
+            num_fixed: 0,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.solution.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn push(&mut self, u: Node) {
+        assert!(self.positions[u as usize] == NumNodes::MAX);
+        self.solution.push(u);
+        self.positions[u as usize] = (self.len() - 1) as NumNodes;
+    }
+
+    pub fn remove(&mut self, u: Node) {
+        let pos = self.positions[u as usize] as usize;
+        assert!(pos < self.len());
+        if pos < self.num_fixed as usize {
+            self.unfix_node(u);
+            return;
+        }
+
+        self.solution.swap_remove(pos);
+        if pos < self.len() {
+            self.positions[self.solution[pos] as usize] = pos as NumNodes;
+        }
+
+        self.positions[u as usize] = NumNodes::MAX;
+    }
+
+    pub fn fix_node(&mut self, u: Node) {
+        assert!(!self.is_in_domset(u));
+        if self.solution.len() > self.num_fixed as usize {
+            let current_head = self.solution[self.num_fixed as usize];
+
+            self.solution.push(current_head);
+            self.positions[current_head as usize] = (self.len() - 1) as NumNodes;
+
+            self.solution[self.num_fixed as usize] = u;
+            self.positions[u as usize] = self.num_fixed;
+        } else {
+            self.solution.push(u);
+            self.positions[u as usize] = 0;
+        }
+        self.num_fixed += 1;
+    }
+
+    pub fn unfix_node(&mut self, u: Node) {
+        assert!(self.is_fixed_node(u));
+        self.num_fixed -= 1;
+
+        let pos = self.positions[u as usize];
+        if pos != self.num_fixed {
+            let last_fixed = self.solution[self.num_fixed as usize];
+
+            self.solution.swap(pos as usize, self.num_fixed as usize);
+            self.positions[last_fixed as usize] = pos;
+        }
+
+        let pos = self.num_fixed as usize;
+        self.solution.swap_remove(pos);
+        if pos < self.len() {
+            self.positions[self.solution[pos] as usize] = pos as NumNodes;
+        }
+
+        self.positions[u as usize] = NumNodes::MAX;
+    }
+
+    pub fn replace(&mut self, u: Node, v: Node) {
+        assert!(self.is_in_domset(u) && !self.is_in_domset(v));
+
+        self.solution[self.positions[u as usize] as usize] = v;
+        self.positions[v as usize] = self.positions[u as usize];
+        self.positions[u as usize] = NumNodes::MAX;
+    }
+
+    pub fn is_in_domset(&self, u: Node) -> bool {
+        self.positions[u as usize] != NumNodes::MAX
+    }
+
+    pub fn is_fixed_node(&self, u: Node) -> bool {
+        self.positions[u as usize] < self.num_fixed
+    }
+
+    pub fn num_of_fixed_nodes(&self) -> usize {
+        self.num_fixed as usize
+    }
+
+    pub fn all_fixed(&self) -> bool {
+        self.num_fixed as usize == self.len()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Node> {
+        self.solution.iter()
+    }
+
+    pub fn iter_fixed(&self) -> impl Iterator<Item = &Node> {
+        self.solution[..self.num_fixed as usize].iter()
+    }
+
+    pub fn iter_non_fixed(&self) -> impl Iterator<Item = &Node> {
+        self.solution[(self.num_fixed as usize)..].iter()
+    }
+
+    pub fn ith_node(&self, i: usize) -> Node {
+        self.solution[i]
+    }
+
+    /// Computes the set of nodes covered by the dominating set.
+    pub fn compute_covered(&self, graph: &impl AdjacencyList) -> BitSet {
+        let mut covered = BitSet::new(graph.number_of_nodes());
+
+        for &u in &self.solution {
+            covered.set_bits(graph.neighbors_of(u));
+            covered.set_bit(u);
+        }
+
+        covered
+    }
+
+    /// Returns true if the dominating set is valid, i.e. it covers all nodes.
+    pub fn is_valid(&self, graph: &impl AdjacencyList) -> bool {
+        let covered = self.compute_covered(graph);
+        covered.are_all_set()
+    }
+
+    pub fn write<W: Write>(&self, mut writer: W) -> anyhow::Result<()> {
+        writeln!(&mut writer, "{}", self.solution.len())?;
+        for u in &self.solution {
+            writeln!(&mut writer, "{}", u + 1)?;
+        }
+        Ok(())
     }
 }

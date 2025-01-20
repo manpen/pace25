@@ -3,6 +3,7 @@ pub mod bipartite;
 pub mod bridges;
 pub mod complement;
 pub mod connectivity;
+pub mod csr;
 pub mod cut_vertex;
 pub mod distance_two_pairs;
 pub mod edge;
@@ -21,6 +22,7 @@ pub use bipartite::*;
 pub use bridges::*;
 pub use complement::*;
 pub use connectivity::*;
+pub use csr::*;
 pub use cut_vertex::*;
 pub use distance_two_pairs::*;
 pub use edge::*;
@@ -374,6 +376,33 @@ pub trait GraphEdgeEditing: GraphNew {
     fn red_neighbors_after_merge(&self, removed: Node, survivor: Node, only_new: bool) -> BitSet;
 }
 
+pub trait IndexedAdjacencyList: AdjacencyList {
+    fn ith_neighbor(&self, u: Node, i: NumNodes) -> Node;
+
+    fn ith_cross_position(&self, u: Node, i: NumNodes) -> NumNodes;
+
+    fn swap_neighbors(&mut self, u: Node, nb1_pos: NumNodes, nb2_pos: NumNodes);
+}
+
+pub trait GraphFromReader {
+    fn from_edges(n: NumNodes, edges: impl IntoIterator<Item = impl Into<Edge>>) -> Self;
+}
+
+impl<G: GraphNew + GraphEdgeEditing> GraphFromReader for G {
+    fn from_edges(n: NumNodes, edges: impl IntoIterator<Item = impl Into<Edge>>) -> Self {
+        let mut graph = Self::new(n);
+        graph.add_edges(edges, EdgeColor::Black);
+        graph
+    }
+}
+
+pub trait CsrEdgeList {
+    fn get_csr_edges(&self) -> (Vec<Node>, Vec<NumEdges>);
+}
+
+/// A marker trait indicating that *u* is considered a neighbor of *u*
+pub trait SelfLoop {}
+
 pub trait FullfledgedGraph:
     Clone
     + AdjacencyList
@@ -397,5 +426,21 @@ impl<G> FullfledgedGraph for G where
         + Complement
         + GraphDigest
         + std::fmt::Debug
+{
+}
+
+pub trait StaticGraph:
+    Clone + IndexedAdjacencyList + GraphEdgeOrder + AdjacencyTest + GraphFromReader + CsrEdgeList
+{
+}
+
+impl<
+        G: Clone
+            + IndexedAdjacencyList
+            + GraphEdgeOrder
+            + AdjacencyTest
+            + GraphFromReader
+            + CsrEdgeList,
+    > StaticGraph for G
 {
 }
