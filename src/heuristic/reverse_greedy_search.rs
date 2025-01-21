@@ -4,7 +4,7 @@ use rand_distr::Distribution;
 use crate::{
     graph::*,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
-    utils::{merge_tree::MergeTreeVec, sampler::WeightedPow2Sampler, ExtDominatingSet},
+    utils::{merge_tree::MergeTrees, sampler::WeightedPow2Sampler, ExtDominatingSet},
 };
 
 use super::subsets::subset_reduction;
@@ -38,7 +38,7 @@ pub struct GreedyReverseSearch<
     age: Vec<u64>,
     round: u64,
 
-    merge_trees: MergeTreeVec,
+    merge_trees: MergeTrees,
 
     domset_modifications: Vec<DomSetModification>,
 }
@@ -70,7 +70,7 @@ impl<
                 redundant_nodes: Vec::new(),
                 scores: Vec::new(),
                 age: Vec::new(),
-                merge_trees: MergeTreeVec::new(Vec::new(), vec![0]),
+                merge_trees: MergeTrees::new(Vec::new(), vec![0]),
                 round: 1,
                 domset_modifications: Vec::new(),
             };
@@ -135,7 +135,7 @@ impl<
         let mut sampler = WeightedPow2Sampler::new(n);
 
         let mut scores = vec![0; n];
-        let mut merge_trees = MergeTreeVec::new(reduced_edges, reduced_offsets);
+        let mut merge_trees = MergeTrees::new(reduced_edges, reduced_offsets);
 
         // Insert uniquely covered neighbors of dominating nodes into MergeTrees & Sampler
         for u in initial_solution.iter_non_fixed() {

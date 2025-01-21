@@ -2,27 +2,23 @@ use crate::graph::{Node, NumEdges, NumNodes};
 
 #[derive(Debug, Clone)]
 struct MergeEntry {
-    pub data: Vec<Node>,
-    pub value: Node,
+    data: Vec<Node>,
+    value: Node,
 }
 
 #[derive(Debug, Clone)]
 pub struct MergeTree {
     tree_nodes: Vec<Option<MergeEntry>>,
     free_nodes: Vec<Node>,
-}
-
-impl Default for MergeTree {
-    fn default() -> Self {
-        Self::new()
-    }
+    owner: Node,
 }
 
 impl MergeTree {
-    pub fn new() -> Self {
+    pub fn new(owner: Node) -> Self {
         Self {
             tree_nodes: Vec::new(),
             free_nodes: Vec::new(),
+            owner,
         }
     }
 
@@ -94,15 +90,41 @@ impl MergeTree {
 
         while ptr1 < dest.len() && ptr2 < other.len() {
             let item1 = dest[ptr1];
-            let item2 = other[ptr2];
 
-            ptr1 += (item1 <= item2) as usize;
-            ptr2 += (item1 >= item2) as usize;
-            if item1 == item2 {
-                dest[ptrw] = item1;
-                ptrw += 1;
+            match other[ptr2..].binary_search(&item1) {
+                Ok(pos) => {
+                    dest[ptrw] = item1;
+                    ptrw += 1;
+
+                    ptr1 += 1;
+                    ptr2 += pos + 1;
+                }
+                Err(pos) => {
+                    ptr1 += 1;
+                    ptr2 += pos;
+                }
+            }
+
+            if ptr2 >= other.len() {
+                break;
+            }
+
+            let item2 = other[ptr2];
+            match dest[ptr1..].binary_search(&item2) {
+                Ok(pos) => {
+                    dest[ptrw] = item2;
+                    ptrw += 1;
+
+                    ptr1 += pos + 1;
+                    ptr2 += 1;
+                }
+                Err(pos) => {
+                    ptr1 += pos;
+                    ptr2 += 1;
+                }
             }
         }
+
         dest.truncate(ptrw);
     }
 
@@ -251,19 +273,21 @@ impl MergeTree {
 }
 
 #[derive(Debug, Clone)]
-pub struct MergeTreeVec {
+pub struct MergeTrees {
     trees: Vec<MergeTree>,
     edges: Vec<Node>,
+    index: Vec<NumNodes>,
     offsets: Vec<NumEdges>,
     positions: Vec<NumNodes>,
 }
 
-impl MergeTreeVec {
+impl MergeTrees {
     pub fn new(edges: Vec<Node>, offsets: Vec<NumEdges>) -> Self {
         assert!(!offsets.is_empty());
         let n = offsets.len() - 1;
         Self {
-            trees: vec![MergeTree::new(); n],
+            trees: Vec::new(),
+            index: vec![NumNodes::MAX; n],
             edges,
             offsets,
             positions: vec![NumNodes::MAX; n],
@@ -271,20 +295,31 @@ impl MergeTreeVec {
     }
 
     pub fn get_root_nodes(&self, u: Node) -> &[Node] {
-        self.trees[u as usize].get_root_nodes()
+        if self.index[u as usize] == NumNodes::MAX {
+            return &[];
+        }
+        self.trees[self.index[u as usize] as usize].get_root_nodes()
     }
 
     pub fn add_entry(&mut self, u: Node, v: Node) {
+        if self.index[u as usize] == NumNodes::MAX {
+            self.index[u as usize] = self.trees.len() as NumNodes;
+            self.trees.push(MergeTree::new(u));
+        }
+
         let (beg, end) = (
             self.offsets[v as usize] as usize,
             self.offsets[v as usize + 1] as usize,
         );
-        self.positions[v as usize] =
-            self.trees[u as usize].add_entry(v, &self.edges[beg..end]) as NumNodes;
+        self.positions[v as usize] = self.trees[self.index[u as usize] as usize]
+            .add_entry(v, &self.edges[beg..end]) as NumNodes;
     }
 
     pub fn remove_entry(&mut self, u: Node, v: Node) {
-        self.trees[u as usize].remove_entry(
+        if self.index[u as usize] == NumNodes::MAX {
+            return;
+        }
+        self.trees[self.index[u as usize] as usize].remove_entry(
             self.positions[v as usize] as usize,
             &self.edges,
             &self.offsets,
@@ -293,10 +328,22 @@ impl MergeTreeVec {
     }
 
     pub fn clear(&mut self, u: Node) {
-        self.trees[u as usize].clear();
+        if self.index[u as usize] == NumNodes::MAX {
+            return;
+        }
+
+        let pos = self.index[u as usize] as usize;
+        self.trees.swap_remove(pos);
+        self.index[u as usize] = NumNodes::MAX;
+
+        if self.trees.len() > pos {
+            self.index[self.trees[pos].owner as usize] = pos as NumNodes;
+        }
     }
 
     pub fn transfer(&mut self, u: Node, v: Node) {
-        self.trees[v as usize] = self.trees[u as usize].clone();
+        self.index[v as usize] = self.index[u as usize];
+        self.index[u as usize] = NumNodes::MAX;
+        self.trees[self.index[v as usize] as usize].owner = v;
     }
 }
