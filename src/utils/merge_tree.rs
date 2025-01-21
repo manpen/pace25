@@ -1,19 +1,38 @@
 use crate::graph::{Node, NumEdges, NumNodes};
 
+/// A MergeEntry assigns a list of nodes (neighbors) to a specific node.
+/// See MergeTree for more explanation
 #[derive(Debug, Clone)]
 struct MergeEntry {
+    /// Entries
     data: Vec<Node>,
+    /// Node-Representative
     value: Node,
 }
 
+/// MergeTree - Constant time queries for common neighbors
+///
+/// A MergeTree is a binary tree used to store common neighbors of all nodes inserted into the
+/// tree. A parent node holds the common entries of its two child node entries as well as its own
+/// original entries.
+///
+/// A leaf is either empty as no node was yet assigned (=> the parent node only considers entries
+/// of its sibling and its own), or holds a node and all its neighbors as entries.
+///
+/// The root of the tree thus holds all nodes that are incident to all nodes inserted into the
+/// tree.
 #[derive(Debug, Clone)]
 pub struct MergeTree {
+    /// Binary tree compacted into a list
     tree_nodes: Vec<Option<MergeEntry>>,
+    /// Indexes in `tree_nodes` that can be (re-)assigned
     free_nodes: Vec<Node>,
+    /// Owner of the tree (see MergeTrees for explanation)
     owner: Node,
 }
 
 impl MergeTree {
+    /// Creates an empty tree
     pub fn new(owner: Node) -> Self {
         Self {
             tree_nodes: Vec::new(),
@@ -22,11 +41,18 @@ impl MergeTree {
         }
     }
 
+    /// Resets the tree
     pub fn clear(&mut self) {
         self.free_nodes.clear();
         self.tree_nodes.clear();
     }
 
+    /// Helper function to merge two lists of varying length where one list is much shorter than
+    /// the other.
+    ///
+    /// Overwrites the first list.
+    ///
+    /// IMPORTANT: We assume both lists to be sorted.
     fn merge_unbalanced(dest: &mut Vec<Node>, other: &[Node]) {
         let mut ptrw = 0usize;
         let mut ptr1 = 0usize;
@@ -67,6 +93,11 @@ impl MergeTree {
         dest.truncate(ptrw);
     }
 
+    /// Merge two lists into one only containing common elements.
+    ///
+    /// Overwrites the first list.
+    ///
+    /// IMPORTANT: We assume both lists to be sorted.
     fn merge(dest: &mut Vec<Node>, other: &[Node]) {
         let min_len = dest.len().min(other.len());
 
@@ -128,6 +159,7 @@ impl MergeTree {
         dest.truncate(ptrw);
     }
 
+    /// Get all entries of the root node = all common neighbors
     pub fn get_root_nodes(&self) -> &[Node] {
         if self.tree_nodes.is_empty() {
             return &[];
@@ -139,6 +171,9 @@ impl MergeTree {
         }
     }
 
+    /// Add a node and its neighbors to the tree
+    ///
+    /// IMPORTANT: neighbors must be sorted
     pub fn add_entry(&mut self, node: Node, neighbors: &[Node]) -> usize {
         let orig_pos = if let Some(free_node) = self.free_nodes.pop() {
             if let Some(entry) = &mut self.tree_nodes[free_node as usize] {
@@ -190,6 +225,10 @@ impl MergeTree {
         orig_pos
     }
 
+    /// Removes a node at a specific position (see MergeTrees).
+    /// Requires access to all possible neighbor queries (here as a CSR implementation).
+    ///
+    /// IMPORTANT: individual neighbor-lists must be sorted in edges
     pub fn remove_entry(&mut self, mut position: usize, edges: &[Node], offsets: &[NumEdges]) {
         let mut allow_copy = true;
 
@@ -272,16 +311,26 @@ impl MergeTree {
     }
 }
 
+/// A collection of MergeTrees
+///
+/// Keeps track of all current trees for a given graph.
 #[derive(Debug, Clone)]
 pub struct MergeTrees {
+    /// A list of all current trees
     trees: Vec<MergeTree>,
-    edges: Vec<Node>,
+    /// Stores at which position the MergeTree of node u is in trees
     index: Vec<NumNodes>,
-    offsets: Vec<NumEdges>,
+    /// Stores at which position lies inside a MergeTree
+    /// Assumes that every node can be in at most one MergeTree at a time (see GreedyReverseSearch)
     positions: Vec<NumNodes>,
+    /// A compacted CSR edge list
+    edges: Vec<Node>,
+    /// CSR-Offsets into edges
+    offsets: Vec<NumEdges>,
 }
 
 impl MergeTrees {
+    /// Create a new instance from a CSR-edge list
     pub fn new(edges: Vec<Node>, offsets: Vec<NumEdges>) -> Self {
         assert!(!offsets.is_empty());
         let n = offsets.len() - 1;
@@ -294,6 +343,7 @@ impl MergeTrees {
         }
     }
 
+    /// Get the root entries of a specific tree
     pub fn get_root_nodes(&self, u: Node) -> &[Node] {
         if self.index[u as usize] == NumNodes::MAX {
             return &[];
@@ -301,6 +351,7 @@ impl MergeTrees {
         self.trees[self.index[u as usize] as usize].get_root_nodes()
     }
 
+    /// Inserts v into the MergeTree of u
     pub fn add_entry(&mut self, u: Node, v: Node) {
         if self.index[u as usize] == NumNodes::MAX {
             self.index[u as usize] = self.trees.len() as NumNodes;
@@ -315,6 +366,7 @@ impl MergeTrees {
             .add_entry(v, &self.edges[beg..end]) as NumNodes;
     }
 
+    /// Removes v from the MergeTree of u
     pub fn remove_entry(&mut self, u: Node, v: Node) {
         if self.index[u as usize] == NumNodes::MAX {
             return;
@@ -327,6 +379,7 @@ impl MergeTrees {
         self.positions[v as usize] = NumNodes::MAX;
     }
 
+    /// Clears (and deletes) the MergeTree of u
     pub fn clear(&mut self, u: Node) {
         if self.index[u as usize] == NumNodes::MAX {
             return;
@@ -341,6 +394,7 @@ impl MergeTrees {
         }
     }
 
+    /// Transfers ownership of the MergeTree of u to v
     pub fn transfer(&mut self, u: Node, v: Node) {
         self.index[v as usize] = self.index[u as usize];
         self.index[u as usize] = NumNodes::MAX;

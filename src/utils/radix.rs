@@ -4,11 +4,15 @@ use num::{FromPrimitive, ToPrimitive};
 
 use crate::graph::Node;
 
+/// Trait for all possible types that can be used as a key for a RadixHeap
 pub trait RadixKey: Copy + Default + PartialOrd {
+    /// Number of bits of Self
     const NUM_BITS: usize;
 
+    /// Difference to another instance of Self
     fn radix_similarity(&self, other: &Self) -> usize;
 
+    /// Inverted radix_similarity (=> how far away is other from self)
     fn radix_distance(&self, other: &Self) -> usize {
         Self::NUM_BITS - self.radix_similarity(other)
     }
@@ -46,22 +50,39 @@ macro_rules! radix_key_impl_int {
 radix_key_impl_float!(f32, f64);
 radix_key_impl_int!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
 
+/// Marker trait for types that can be used as values in IndexedRadixHeap (=> have to be usable for
+/// indexing)
 pub trait RadixValue: FromPrimitive + ToPrimitive + Default + Copy {}
 impl<T: FromPrimitive + ToPrimitive + Default + Copy> RadixValue for T {}
 
+/// Stores all key-value-pairs of the same similarity
 type Bucket<K, V> = Vec<(K, V)>;
 
+/// # IndexedRadixHeap: A Radix-MinHeap
+///
+/// Allows fast insertions/deletions/queries into elements sorted by associated RadixKey-type.
+/// Elements have to be convertible to a usize smaller than a given value to allow for fast
+/// existence queries.
+///
+/// ### IMPORTANT
+/// NUM_BUCKETS must be equal to K::NUM_BITS + 1
 #[derive(Debug)]
 pub struct IndexedRadixHeap<K: RadixKey, V: RadixValue, const NUM_BUCKETS: usize> {
+    /// Number of elements in the heap
     len: usize,
+    /// Current top element (last element removed)
     top: K,
+    /// All buckets
     buckets: [Bucket<K, V>; NUM_BUCKETS],
+    /// A pointer for each element to where it is in the heap
     pointer: Vec<(u8, V)>,
 }
 
+/// A heap with nodes as keys and values
 pub type NodeHeap = IndexedRadixHeap<Node, Node, 33>;
 
 impl<K: RadixKey, V: RadixValue, const NUM_BUCKETS: usize> IndexedRadixHeap<K, V, NUM_BUCKETS> {
+    /// Creates a new heap with a given top element and a maximum number of elements
     pub fn new(n: usize, top: K) -> Self {
         Self {
             len: 0,
@@ -71,6 +92,7 @@ impl<K: RadixKey, V: RadixValue, const NUM_BUCKETS: usize> IndexedRadixHeap<K, V
         }
     }
 
+    /// Resets the heap
     pub fn reset(&mut self, top: K) {
         self.len = 0;
         self.top = top;
@@ -81,6 +103,7 @@ impl<K: RadixKey, V: RadixValue, const NUM_BUCKETS: usize> IndexedRadixHeap<K, V
         });
     }
 
+    /// Pushes an element on the heap
     pub fn push(&mut self, key: K, value: V) {
         if self.pointer[value.to_usize().unwrap()].0 != u8::MAX {
             return;
@@ -95,6 +118,7 @@ impl<K: RadixKey, V: RadixValue, const NUM_BUCKETS: usize> IndexedRadixHeap<K, V
         self.len += 1;
     }
 
+    /// Removes a specific element from the heap
     pub fn remove(&mut self, value: V) -> Option<K> {
         let value = value.to_usize().unwrap();
         if value >= self.pointer.len() {
@@ -120,6 +144,7 @@ impl<K: RadixKey, V: RadixValue, const NUM_BUCKETS: usize> IndexedRadixHeap<K, V
         Some(res.0)
     }
 
+    /// Updates the heap to find the new smallest element and re-order buckets accordingly
     fn update(&mut self) {
         let (buckets, repush) = match self.buckets.iter().position(|bucket| !bucket.is_empty()) {
             None | Some(0) => return,
@@ -145,6 +170,10 @@ impl<K: RadixKey, V: RadixValue, const NUM_BUCKETS: usize> IndexedRadixHeap<K, V
         });
     }
 
+    /// Pop the smallest element from the heap. If there are multiple, break ties by key in
+    /// tiebreaker.
+    ///
+    /// Returns None if no element is left in the heap
     pub fn pop_with_tiebreaker<T: PartialOrd>(&mut self, tiebreaker: &[T]) -> Option<(K, V)> {
         if self.buckets[0].is_empty() {
             self.update();
@@ -184,6 +213,7 @@ impl<K: RadixKey, V: RadixValue, const NUM_BUCKETS: usize> IndexedRadixHeap<K, V
         }
     }
 
+    /// Pops the smallest element from the heap (no tiebreaker)
     pub fn pop(&mut self) -> Option<(K, V)> {
         let res = self.buckets[0].pop().or_else(|| {
             self.update();
@@ -200,10 +230,12 @@ impl<K: RadixKey, V: RadixValue, const NUM_BUCKETS: usize> IndexedRadixHeap<K, V
         }
     }
 
+    /// Length of the heap
     pub fn len(&self) -> usize {
         self.len
     }
 
+    /// Is the heap empty?
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }

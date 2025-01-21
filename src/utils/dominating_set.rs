@@ -128,14 +128,20 @@ impl DominatingSet {
     }
 }
 
+/// An extended DominatingSet that allows differentiation between fixed and non-fixed nodes in the
+/// set. Supports constant time queries of appearence in set.
 #[derive(Debug, Clone)]
 pub struct ExtDominatingSet {
+    /// List of all nodes in the set, partitioned by fixed/non-fixed
     solution: Vec<Node>,
+    /// Position for each possible node in the set (= NumNodes::MAX if not)
     positions: Vec<NumNodes>,
+    /// Numver of fixed nodes, ie solution[..num_fixed] are fixed nodes, rest not
     num_fixed: NumNodes,
 }
 
 impl ExtDominatingSet {
+    /// Creates a new dominating set
     pub fn new(n: usize) -> Self {
         Self {
             solution: Vec::new(),
@@ -144,23 +150,27 @@ impl ExtDominatingSet {
         }
     }
 
+    /// Size of the set
     pub fn len(&self) -> usize {
         self.solution.len()
     }
 
+    /// Is the set empty (thanks clippy)
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    /// Add a (non-fixed) node to the set
     pub fn push(&mut self, u: Node) {
-        assert!(self.positions[u as usize] == NumNodes::MAX);
+        debug_assert!(self.positions[u as usize] == NumNodes::MAX);
         self.solution.push(u);
         self.positions[u as usize] = (self.len() - 1) as NumNodes;
     }
 
+    /// Remove a node from the set
     pub fn remove(&mut self, u: Node) {
         let pos = self.positions[u as usize] as usize;
-        assert!(pos < self.len());
+        debug_assert!(pos < self.len());
         if pos < self.num_fixed as usize {
             self.unfix_node(u);
             return;
@@ -174,8 +184,9 @@ impl ExtDominatingSet {
         self.positions[u as usize] = NumNodes::MAX;
     }
 
+    /// Add a fixed node to the set
     pub fn fix_node(&mut self, u: Node) {
-        assert!(!self.is_in_domset(u));
+        debug_assert!(!self.is_in_domset(u));
         if self.solution.len() > self.num_fixed as usize {
             let current_head = self.solution[self.num_fixed as usize];
 
@@ -191,6 +202,7 @@ impl ExtDominatingSet {
         self.num_fixed += 1;
     }
 
+    /// Remove a fixed node from the set
     pub fn unfix_node(&mut self, u: Node) {
         assert!(self.is_fixed_node(u));
         self.num_fixed -= 1;
@@ -212,6 +224,7 @@ impl ExtDominatingSet {
         self.positions[u as usize] = NumNodes::MAX;
     }
 
+    /// Replace a node by another
     pub fn replace(&mut self, u: Node, v: Node) {
         assert!(self.is_in_domset(u) && !self.is_in_domset(v));
 
@@ -220,34 +233,42 @@ impl ExtDominatingSet {
         self.positions[u as usize] = NumNodes::MAX;
     }
 
+    /// Is u part of the set?
     pub fn is_in_domset(&self, u: Node) -> bool {
         self.positions[u as usize] != NumNodes::MAX
     }
 
+    /// Is u a fixed node of the set?
     pub fn is_fixed_node(&self, u: Node) -> bool {
         self.positions[u as usize] < self.num_fixed
     }
 
+    /// How many fixed nodes are there?
     pub fn num_of_fixed_nodes(&self) -> usize {
         self.num_fixed as usize
     }
 
+    /// Are all nodes fixed?
     pub fn all_fixed(&self) -> bool {
         self.num_fixed as usize == self.len()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Node> {
-        self.solution.iter()
+    /// Iterator over all nodes in the set
+    pub fn iter(&self) -> impl Iterator<Item = Node> + '_ {
+        self.solution.iter().copied()
     }
 
-    pub fn iter_fixed(&self) -> impl Iterator<Item = &Node> {
-        self.solution[..self.num_fixed as usize].iter()
+    /// Iterator over all fixed nodes in the set
+    pub fn iter_fixed(&self) -> impl Iterator<Item = Node> + '_ {
+        self.solution[..self.num_fixed as usize].iter().copied()
     }
 
-    pub fn iter_non_fixed(&self) -> impl Iterator<Item = &Node> {
-        self.solution[(self.num_fixed as usize)..].iter()
+    /// Iterator over all non-fixed nodes in the set
+    pub fn iter_non_fixed(&self) -> impl Iterator<Item = Node> + '_ {
+        self.solution[(self.num_fixed as usize)..].iter().copied()
     }
 
+    /// Returns the ith node in the set
     pub fn ith_node(&self, i: usize) -> Node {
         self.solution[i]
     }
@@ -270,6 +291,7 @@ impl ExtDominatingSet {
         covered.are_all_set()
     }
 
+    /// Writes the dominating set to a given output
     pub fn write<W: Write>(&self, mut writer: W) -> anyhow::Result<()> {
         writeln!(&mut writer, "{}", self.solution.len())?;
         for u in &self.solution {

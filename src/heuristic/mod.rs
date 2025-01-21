@@ -8,6 +8,18 @@ use crate::{
 pub mod reverse_greedy_search;
 pub mod subsets;
 
+/// # The basic Greedy-Approximation
+///
+/// 1. Fixes
+///     - Singletons
+///     - Nodes that are the only neighbors of some other node
+///     - Nodes part of a triangle where the other two nodes are only incident to the triangle
+/// 2. Greedily adds nodes neighbored to the highest number of uncovered nodes to DomSet until
+///    covered
+/// 3. Remove nodes that now redundant, ie. do not cover any nodes that not other DomSet-Node
+///    covers
+///
+/// Returns the solution
 pub fn greedy_approximation(
     graph: &(impl AdjacencyList + AdjacencyTest + SelfLoop),
 ) -> ExtDominatingSet {
@@ -58,7 +70,7 @@ pub fn greedy_approximation(
     let mut num_covered = vec![0usize; graph.number_of_nodes() as usize];
     let mut total_covered = 0;
     for u in solution.iter() {
-        for v in graph.neighbors_of(*u) {
+        for v in graph.neighbors_of(u) {
             num_covered[v as usize] += 1;
             if num_covered[v as usize] == 1 {
                 total_covered += 1;

@@ -376,15 +376,27 @@ pub trait GraphEdgeEditing: GraphNew {
     fn red_neighbors_after_merge(&self, removed: Node, survivor: Node, only_new: bool) -> BitSet;
 }
 
+/// A trait that allows accessing and modification of neighbors by index
 pub trait IndexedAdjacencyList: AdjacencyList {
+    /// Returns the ith neighbor of a node
+    ///
+    /// Possibly panics if i >= degree_of(u)
     fn ith_neighbor(&self, u: Node, i: NumNodes) -> Node;
 
+    /// If ith_neighbor(u, i) = v, returns j such that ith_neighbor(v, j) = u.
+    ///
+    /// Possibly panics if i >= degree_of(u)
     fn ith_cross_position(&self, u: Node, i: NumNodes) -> NumNodes;
 
+    /// Swaps neighbos at positions nb1_pos and nb2_pos of u
+    ///
+    /// Possibly panics if nb1_pos >= degree_of(u) || nb2_pos >= degree_of(u)
     fn swap_neighbors(&mut self, u: Node, nb1_pos: NumNodes, nb2_pos: NumNodes);
 }
 
+/// A super trait for creating a graph from scratch from a set of edges and a number of nodes
 pub trait GraphFromReader {
+    /// Create a graph from a number of nodes and an iterator over Edges
     fn from_edges(n: NumNodes, edges: impl IntoIterator<Item = impl Into<Edge>>) -> Self;
 }
 
@@ -396,7 +408,10 @@ impl<G: GraphNew + GraphEdgeEditing> GraphFromReader for G {
     }
 }
 
+/// A trait for coverting all edges into a CSR-representation
 pub trait CsrEdgeList {
+    /// Returns a concatenated list of neighborhoods and indices indicating where a new
+    /// neighborhood begins (ie. CSR-representation)
     fn get_csr_edges(&self) -> (Vec<Node>, Vec<NumEdges>);
 }
 
@@ -429,6 +444,8 @@ impl<G> FullfledgedGraph for G where
 {
 }
 
+/// A static graph possibly does not require the ability of edge-modification but instead allows
+/// for edge-reordering
 pub trait StaticGraph:
     Clone + IndexedAdjacencyList + GraphEdgeOrder + AdjacencyTest + GraphFromReader + CsrEdgeList
 {

@@ -9,6 +9,10 @@ use crate::{
 
 use super::subsets::subset_reduction;
 
+/// # GreedyReverseSearch
+///
+/// An iterative algorithm that samples from a set of candidates to replace some other node in the
+/// DomSet. Sampling is biased to nodes that replace more nodes.
 pub struct GreedyReverseSearch<
     'a,
     R: Rng,
@@ -16,30 +20,59 @@ pub struct GreedyReverseSearch<
     const NUM_SAMPLER_BUCKETS: usize = 8,
     const NUM_SAMPLES: usize = 10,
 > {
+    /// A reference to the graph: mutable access is needed as we need to re-order adjacency lists
     graph: &'a mut G,
 
+    /// The current solution
     current_solution: ExtDominatingSet,
+    /// Currently best known solution
     best_solution: ExtDominatingSet,
+    /// Has an optimal solution been found?
     is_optimal: bool,
 
+    /// A sampler for sampling nodes with weights that are powers of 2.
+    ///
+    /// Contains only nodes u with scores[u] > 0.
     sampler: WeightedPow2Sampler<NUM_SAMPLER_BUCKETS>,
+    /// RNG used for sampling
     rng: &'a mut R,
 
+    /// Candidates are nodes for which we have to update datastructures at the end of a round
     candidates: Vec<Node>,
+    /// Is a node currently a candidate?
     in_candidates: BitSet,
+    /// Additional vector for temporarily storing nodes for which we need to update the datastructures
     temp_nodes: Vec<Node>,
 
+    /// Number of incident dominating nodes
     num_covered: Vec<NumNodes>,
+    /// Number of nodes this (dominating) nodes covers uniquely (no other dominating node covers)
     uniquely_covered: Vec<NumNodes>,
 
+    /// Nodes that can possibly be removed from the DomSet
     redundant_nodes: Vec<Node>,
+    /// A score for each node == Number of occurences in roots of MergeTrees
     scores: Vec<NumNodes>,
 
+    /// Last time a node was added/removed from the DomSet
     age: Vec<u64>,
+    /// Current iteration
     round: u64,
 
+    /// Collection of MergeTrees:
+    ///
+    /// Every node u in the DomSet is assigned a MergeTree. Nodes that are uniquely covered by this
+    /// u are then inserted into the MergeTree of u. MergeTree[u] thus stores all nodes in its root
+    /// are incident to *all* uniquely covered nodes of u and can thus replace u in the DomSet.
+    ///
+    /// v in root of MergeTree[u] ==> scores[v] > 0 ==> v in sampler ==> v can be sampled to replace u
+    ///
+    /// Note that we only *really* consider neighbors that are not subset-dominated and thus can appear in any
+    /// optimal DomSet without the possibility of directly replacing them.
     merge_trees: MergeTrees,
 
+    /// Keep track of all applied modifications to current_solution to also apply them to
+    /// best_solution when new best solution is found
     domset_modifications: Vec<DomSetModification>,
 }
 
@@ -51,6 +84,9 @@ impl<
         const NUM_SAMPLES: usize,
     > GreedyReverseSearch<'a, R, G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
 {
+    /// Creates a new instance of the algorithm
+    ///
+    /// Runs the subset-reduction beforehand
     pub fn new(graph: &'a mut G, mut initial_solution: ExtDominatingSet, rng: &'a mut R) -> Self {
         // If only fixed nodes cover the graph, this is optimal.
         // For API-purposes, we create an *empty* instance that holds the optimal solution
@@ -80,6 +116,7 @@ impl<
 
         let n = graph.number_of_nodes() as usize;
 
+        // Run Subset-Reduction
         let (reduced_edges, reduced_offsets) = subset_reduction(graph, &mut initial_solution);
 
         let mut num_covered = vec![0; n];
@@ -87,14 +124,15 @@ impl<
 
         // Reorder adjacency lists such that dominating nodes appear first
         for u in initial_solution.iter() {
-            age[*u as usize] = 1;
-            for i in 0..graph.degree_of(*u) {
-                let v = graph.ith_neighbor(*u, i);
-                graph.swap_neighbors(v, graph.ith_cross_position(*u, i), num_covered[v as usize]);
+            age[u as usize] = 1;
+            for i in 0..graph.degree_of(u) {
+                let v = graph.ith_neighbor(u, i);
+                graph.swap_neighbors(v, graph.ith_cross_position(u, i), num_covered[v as usize]);
                 num_covered[v as usize] += 1;
             }
         }
 
+        // Count number of uniquely covered neighbors
         let mut uniquely_covered: Vec<NumNodes> = graph
             .vertices()
             .map(|u| {
@@ -132,21 +170,21 @@ impl<
             }
         }
 
+        // Instantiate sampler and merge trees with reduced neighbor-set
         let mut sampler = WeightedPow2Sampler::new(n);
-
         let mut scores = vec![0; n];
         let mut merge_trees = MergeTrees::new(reduced_edges, reduced_offsets);
 
         // Insert uniquely covered neighbors of dominating nodes into MergeTrees & Sampler
         for u in initial_solution.iter_non_fixed() {
-            for v in graph.neighbors_of(*u) {
+            for v in graph.neighbors_of(u) {
                 if num_covered[v as usize] <= 1 {
-                    merge_trees.add_entry(*u, v);
+                    merge_trees.add_entry(u, v);
                 }
             }
 
-            for v in merge_trees.get_root_nodes(*u) {
-                if u != v {
+            for v in merge_trees.get_root_nodes(u) {
+                if u != *v {
                     scores[*v as usize] += 1;
                     sampler.update_entry(*v, scores[*v as usize] as usize - 1);
                 }
@@ -177,6 +215,10 @@ impl<
         }
     }
 
+    /// Sample a node from the sampler
+    ///
+    /// Returns *None* if the sampler is empty, ie there is no way to replace any node in the
+    /// current DomSet.
     fn draw_node(&mut self) -> Option<Node> {
         if self.sampler.is_empty() {
             return None;
@@ -196,7 +238,14 @@ impl<
         Some(best_node)
     }
 
+    /// Run one iteration of the algorithm:
+    ///
+    /// 1. Sample a node from sampler
+    /// 2. Insert the node into the DomSet
+    /// 3. Remove all now redundant nodes of the DomSet
+    /// 4. Update MergeTrees/Scores/Sampler accordingly
     pub fn step(&mut self) {
+        // Sample node: if no node can be sampled, current solution is optimal
         let proposed_node = if let Some(node) = self.draw_node() {
             node
         } else {
@@ -215,6 +264,10 @@ impl<
         self.domset_modifications
             .push(DomSetModification::Add(proposed_node));
 
+        // Update adjacency lists as well as num_covered/uniquely_covered
+        //
+        // If a previously uniquely covered node is now not longer uniquely covered,
+        // add it to candidates as we must later update its MergeTree-Appearance
         for i in 0..self.graph.degree_of(proposed_node) {
             let neighbor = self.graph.ith_neighbor(proposed_node, i);
             self.graph.swap_neighbors(
@@ -238,6 +291,7 @@ impl<
             }
         }
 
+        // Prefer nodes that have been unchanged for longer
         self.redundant_nodes.sort_by_key(|u| self.age[*u as usize]);
 
         // Remove redundant nodes from DomSet
@@ -249,6 +303,8 @@ impl<
             self.redundant_nodes.clear();
         }
 
+        // Update MergeTrees/Sampler for all remaining Candidates = nodes that have to be
+        // added/removed/updated in MergeTrees/Sampler
         for candidate in self.candidates.drain(..) {
             if !self.in_candidates.get_bit(candidate) {
                 continue;
@@ -260,6 +316,7 @@ impl<
                 continue;
             }
 
+            // Remove entries of MergeTree[dominating_node] from sampler
             for node in self.merge_trees.get_root_nodes(dominating_node) {
                 if *node != dominating_node && self.scores[*node as usize] != 0 {
                     self.scores[*node as usize] -= 1;
@@ -270,12 +327,14 @@ impl<
                 }
             }
 
+            // Update MergeTree[dominating_node]: this correctly resolves entries in MergeTree[dominating_node]
             if self.num_covered[candidate as usize] == 1 {
                 self.merge_trees.add_entry(dominating_node, candidate);
             } else {
                 self.merge_trees.remove_entry(dominating_node, candidate);
             }
 
+            // Add all entries of MergeTree[dominating_node] to sampler (insert later)
             for node in self.merge_trees.get_root_nodes(dominating_node) {
                 if *node != dominating_node {
                     self.scores[*node as usize] += 1;
@@ -285,15 +344,21 @@ impl<
                 }
             }
 
+            // Add all nodes for which an update occured to the sampler again
             for node in self.temp_nodes.drain(..) {
                 self.sampler
                     .add_entry(node, self.scores[node as usize] as usize - 1);
             }
         }
 
+        // Update the best known solution if needed
         self.update_best_solution();
     }
 
+    /// Removes a redundant node from the DomSet after inserting proposed_node
+    ///
+    /// MARKER marks whether this is the first redundant node that is considered (see comments in
+    /// code).
     fn remove_redundant_node<const MARKER: bool>(&mut self, red_node: Node, proposed_node: Node) {
         if self.uniquely_covered[red_node as usize] > 0 {
             return;
@@ -318,9 +383,12 @@ impl<
                 let dominating_node = self.graph.ith_neighbor(neighbor, 0);
                 self.uniquely_covered[dominating_node as usize] += 1;
 
-                // If neighbor was a previous candidate, remove it in the first iteration as it was
-                // possible only covered by the first red_node. If not, later red_nodes will
-                // correct this and re-push neighbor into candidates.
+                // Normally, we would have to leave neighbor in Candidates as we removed red_node
+                // and need to add neighbor to MergeTree[proposed_node] later.
+                // However, since we later copy/transfer MergeTree[red_node] to MergeTree[proposed_node]
+                // in this iteration, we already have updated MergeTree[proposed_node] correctly
+                // and do not need to consider it later again (except when a later red_node changes
+                // this again).
                 let prev_bit = self.in_candidates.get_bit(neighbor);
                 self.in_candidates
                     .assign_bit(neighbor, !(MARKER && prev_bit));
@@ -331,12 +399,13 @@ impl<
         }
 
         // Copy MergeTree in the first iteration as it should be a superset of the intended one for
-        // proposed_node. this will later be updated and corrected.
+        // proposed_node. This will later be further updated and corrected.
         if MARKER {
             self.merge_trees.transfer(red_node, proposed_node);
             self.scores[red_node as usize] = 1;
             self.sampler.add_entry(red_node, 0);
         } else {
+            // Update sampler
             for node in self.merge_trees.get_root_nodes(red_node) {
                 if *node != red_node && *node != proposed_node {
                     self.scores[*node as usize] -= 1;
@@ -348,11 +417,11 @@ impl<
                 }
             }
             self.scores[red_node as usize] = 0;
+            self.merge_trees.clear(red_node);
         }
-
-        self.merge_trees.clear(red_node);
     }
 
+    /// Updates the best_solution to current_solution if better
     fn update_best_solution(&mut self) {
         if self.current_solution.len() < self.best_solution.len() {
             if self.domset_modifications.len() > self.graph.number_of_nodes() as usize / 64 {
@@ -370,6 +439,7 @@ impl<
     }
 }
 
+/// Helper enum to keep track of DomSet-Changes
 enum DomSetModification {
     Add(Node),
     Remove(Node),

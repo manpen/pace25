@@ -17,7 +17,7 @@ pub fn subset_reduction(
     let mut non_perm_degree: Vec<NumNodes> = (0..n).map(|u| graph.degree_of(u)).collect();
     let mut is_perm_covered = BitSet::new(n);
     for u in sol.iter_fixed() {
-        for v in graph.neighbors_of(*u) {
+        for v in graph.neighbors_of(u) {
             if !is_perm_covered.get_bit(v) {
                 is_perm_covered.set_bit(v);
                 for w in graph.neighbors_of(v) {
