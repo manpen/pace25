@@ -116,6 +116,7 @@ impl DominatingSet {
             self.positions[u as usize] = self.num_fixed;
         } else {
             self.positions[u as usize] = self.len() as NumNodes;
+            self.solution.push(u);
         }
         self.num_fixed += 1;
     }

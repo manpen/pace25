@@ -35,6 +35,7 @@ impl<const NUM_BUCKETS: usize> WeightedPow2Sampler<NUM_BUCKETS> {
 
         self.pointer.0[node as usize] = bucket as u8;
         self.pointer.1[node as usize] = self.buckets[bucket].len() as NumNodes;
+        self.buckets[bucket].push(node);
 
         self.total_weight += 1 << bucket;
     }
