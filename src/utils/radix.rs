@@ -9,13 +9,8 @@ pub trait RadixKey: Copy + Default + PartialOrd {
     /// Number of bits of Self
     const NUM_BITS: usize;
 
-    /// Difference to another instance of Self
+    /// Similarity to another instance of Self
     fn radix_similarity(&self, other: &Self) -> usize;
-
-    /// Inverted radix_similarity (=> how far away is other from self)
-    fn radix_distance(&self, other: &Self) -> usize {
-        Self::NUM_BITS - self.radix_similarity(other)
-    }
 }
 
 macro_rules! radix_key_impl_float {
@@ -38,7 +33,6 @@ macro_rules! radix_key_impl_int {
             impl RadixKey for $t {
                 const NUM_BITS: usize = (std::mem::size_of::<$t>() * 8);
 
-                #[inline]
                 fn radix_similarity(&self, other: &Self) -> usize {
                     (self ^ other).leading_zeros() as usize
                 }
@@ -50,13 +44,23 @@ macro_rules! radix_key_impl_int {
 radix_key_impl_float!(f32, f64);
 radix_key_impl_int!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
 
-/// Marker trait for types that can be used as values in IndexedRadixHeap (=> have to be usable for
-/// indexing)
+/// Inverted radix similarity (=> how far away is other from self)
+///
+/// Not part of trait to not expose to user
+fn radix_distance<K: RadixKey>(lhs: &K, rhs: &K) -> usize {
+    let dist = K::NUM_BITS - lhs.radix_similarity(rhs);
+    debug_assert!(dist <= K::NUM_BITS);
+    dist
+}
+
+/// Marker trait for types that can be used as values in IndexedRadixHeap (=> have to be convertible to usize)
 pub trait RadixValue: FromPrimitive + ToPrimitive + Default + Copy {}
 impl<T: FromPrimitive + ToPrimitive + Default + Copy> RadixValue for T {}
 
 /// Stores all key-value-pairs of the same similarity
 type Bucket<K, V> = Vec<(K, V)>;
+
+const NOT_IN_HEAP: usize = usize::MAX;
 
 /// # IndexedRadixHeap: A Radix-MinHeap
 ///
@@ -65,7 +69,7 @@ type Bucket<K, V> = Vec<(K, V)>;
 /// existence queries.
 ///
 /// ### IMPORTANT
-/// NUM_BUCKETS must be equal to K::NUM_BITS + 1
+/// NUM_BUCKETS must be equal to K::NUM_BITS + 1! This will be checked when creating the heap.
 #[derive(Debug)]
 pub struct IndexedRadixHeap<K: RadixKey, V: RadixValue, const NUM_BUCKETS: usize> {
     /// Number of elements in the heap
@@ -75,7 +79,7 @@ pub struct IndexedRadixHeap<K: RadixKey, V: RadixValue, const NUM_BUCKETS: usize
     /// All buckets
     buckets: [Bucket<K, V>; NUM_BUCKETS],
     /// A pointer for each element to where it is in the heap
-    pointer: Vec<(u8, V)>,
+    pointer: Vec<(usize, usize)>,
 }
 
 /// A heap with nodes as keys and values
@@ -84,68 +88,94 @@ pub type NodeHeap = IndexedRadixHeap<Node, Node, 33>;
 impl<K: RadixKey, V: RadixValue, const NUM_BUCKETS: usize> IndexedRadixHeap<K, V, NUM_BUCKETS> {
     /// Creates a new heap with a given top element and a maximum number of elements
     pub fn new(n: usize, top: K) -> Self {
+        // Only accept heaps with enough buckets
+        assert!(NUM_BUCKETS > K::NUM_BITS);
         Self {
             len: 0,
             top,
             buckets: array_init::array_init(|_| Vec::new()),
-            pointer: vec![(u8::MAX, V::default()); n],
+            pointer: vec![(NOT_IN_HEAP, NOT_IN_HEAP); n],
         }
     }
 
-    /// Resets the heap
+    /// Removes all elements from the heap and sets the top value to `top`
     pub fn reset(&mut self, top: K) {
         self.len = 0;
         self.top = top;
         self.buckets.iter_mut().for_each(|b| {
             b.drain(..).for_each(|(_, v)| {
-                self.pointer[v.to_usize().unwrap()].0 = u8::MAX;
+                self.pointer[v.to_usize().unwrap()].0 = NOT_IN_HEAP;
             })
         });
     }
 
-    /// Pushes an element on the heap
-    pub fn push(&mut self, key: K, value: V) {
-        if self.pointer[value.to_usize().unwrap()].0 != u8::MAX {
-            return;
+    /// Tries to push a (key, value)-pair on the heap. Returns *true* if successfull and *false* if not
+    pub fn try_push(&mut self, key: K, value: V) -> bool {
+        if self.pointer[value.to_usize().unwrap()].0 != NOT_IN_HEAP {
+            return false;
         }
 
-        let bucket = key.radix_distance(&self.top);
+        self.push(key, value);
+
+        true
+    }
+
+    /// Force pushes a (key, value)-pair on the heap. The caller is responsible for ensuring bounds
+    /// and that value is not already on the heap.
+    pub fn push(&mut self, key: K, value: V) {
+        debug_assert!(self.pointer[value.to_usize().unwrap()].0 != NOT_IN_HEAP);
+
+        let bucket = radix_distance(&key, &self.top);
+        self.pointer[value.to_usize().unwrap()] = (bucket, self.buckets[bucket].len());
         self.buckets[bucket].push((key, value));
-        self.pointer[value.to_usize().unwrap()] = (
-            bucket as u8,
-            V::from_usize(self.buckets[bucket].len() - 1).unwrap(),
-        );
         self.len += 1;
     }
 
-    /// Removes a specific element from the heap
-    pub fn remove(&mut self, value: V) -> Option<K> {
-        let value = value.to_usize().unwrap();
-        if value >= self.pointer.len() {
+    /// Tries to remove a (key, value)-pair identified by the value from the heap.
+    /// Returns *None* if no entry was found.
+    pub fn try_remove(&mut self, value: V) -> Option<K> {
+        let val = value.to_usize().unwrap();
+
+        if val >= self.pointer.len() {
             return None;
         }
+
+        let (bucket, position) = self.pointer[val];
+        if bucket == NOT_IN_HEAP {
+            return None;
+        }
+
+        Some(self._remove_inner(val, bucket, position))
+    }
+
+    /// Force removes a (key, value)-pair identified by the value from the heap.
+    /// Panics if no value was found.
+    pub fn remove(&mut self, value: V) -> K {
+        let value = value.to_usize().unwrap();
+        debug_assert!(value < self.pointer.len());
 
         let (bucket, position) = self.pointer[value];
-        if bucket == u8::MAX {
-            return None;
-        }
+        debug_assert_ne!(bucket, NOT_IN_HEAP);
 
-        let bucket = bucket as usize;
-        let pos_usize = position.to_usize().unwrap();
+        self._remove_inner(value, bucket, position)
+    }
 
-        let res = self.buckets[bucket].swap_remove(pos_usize);
-        if self.buckets[bucket].len() > pos_usize {
-            self.pointer[self.buckets[bucket][pos_usize].1.to_usize().unwrap()].1 = position;
+    /// Private function to remove an element from a specific position in a bucket and update the
+    /// pointer. Returns the element. Panics if no entry was found.
+    fn _remove_inner(&mut self, value: usize, bucket: usize, position: usize) -> K {
+        let res = self.buckets[bucket].swap_remove(position);
+        if self.buckets[bucket].len() > position {
+            self.pointer[self.buckets[bucket][position].1.to_usize().unwrap()].1 = position;
         }
         self.len -= 1;
 
-        self.pointer[value].0 = u8::MAX;
+        self.pointer[value].0 = NOT_IN_HEAP;
 
-        Some(res.0)
+        res.0
     }
 
     /// Updates the heap to find the new smallest element and re-order buckets accordingly
-    fn update(&mut self) {
+    fn update_buckets(&mut self) {
         let (buckets, repush) = match self.buckets.iter().position(|bucket| !bucket.is_empty()) {
             None | Some(0) => return,
             Some(index) => {
@@ -161,81 +191,66 @@ impl<K: RadixKey, V: RadixValue, const NUM_BUCKETS: usize> IndexedRadixHeap<K, V
             .0;
 
         repush.drain(..).for_each(|(key, value)| {
-            let bucket = key.radix_distance(&self.top);
+            let bucket = radix_distance(&key, &self.top);
+            self.pointer[value.to_usize().unwrap()] = (bucket, buckets[bucket].len());
             buckets[bucket].push((key, value));
-            self.pointer[value.to_usize().unwrap()] = (
-                bucket as u8,
-                V::from_usize(buckets[bucket].len() - 1).unwrap(),
-            );
         });
     }
 
     /// Pop the smallest element from the heap. If there are multiple, break ties by key in
     /// tiebreaker.
     ///
-    /// Returns None if no element is left in the heap
+    /// Returns *None* if no element is left on the heap
     pub fn pop_with_tiebreaker<T: PartialOrd>(&mut self, tiebreaker: &[T]) -> Option<(K, V)> {
         if self.buckets[0].is_empty() {
-            self.update();
+            self.update_buckets();
         }
 
-        let min_elem = self.buckets[0]
-            .iter()
-            .enumerate()
-            .min_by(|(_, (k1, v1)), (_, (k2, v2))| {
-                if k1 < k2
-                    || (k1 == k2
-                        && tiebreaker[v1.to_usize().unwrap()] < tiebreaker[v2.to_usize().unwrap()])
-                {
-                    Ordering::Less
-                } else {
-                    Ordering::Greater
-                }
-            });
+        let (pos, (key, val)) =
+            self.buckets[0]
+                .iter()
+                .enumerate()
+                .min_by(|(_, (_, v1)), (_, (_, v2))| {
+                    tiebreaker[v1.to_usize().unwrap()]
+                        .partial_cmp(&tiebreaker[v2.to_usize().unwrap()])
+                        .unwrap_or(Ordering::Equal)
+                })?;
 
-        if let Some((pos, (key, val))) = min_elem {
-            let key = *key;
-            let val = *val;
+        let key = *key;
+        let val = *val;
 
-            self.top = key;
-            self.buckets[0].swap_remove(pos);
-            if self.buckets[0].len() > pos {
-                self.pointer[self.buckets[0][pos].1.to_usize().unwrap()].1 =
-                    V::from_usize(pos).unwrap();
-            }
-
-            self.len -= 1;
-            self.pointer[val.to_usize().unwrap()].0 = u8::MAX;
-
-            Some((key, val))
-        } else {
-            None
+        self.top = key;
+        self.buckets[0].swap_remove(pos);
+        if self.buckets[0].len() > pos {
+            self.pointer[self.buckets[0][pos].1.to_usize().unwrap()].1 = pos;
         }
+
+        self.len -= 1;
+        self.pointer[val.to_usize().unwrap()].0 = NOT_IN_HEAP;
+
+        Some((key, val))
     }
 
-    /// Pops the smallest element from the heap (no tiebreaker)
+    /// Pops the smallest element from the heap (no tiebreaker).
+    /// Returns *None* if no element is left on the heap.
     pub fn pop(&mut self) -> Option<(K, V)> {
-        let res = self.buckets[0].pop().or_else(|| {
-            self.update();
+        let (key, val) = self.buckets[0].pop().or_else(|| {
+            self.update_buckets();
             self.buckets[0].pop()
-        });
+        })?;
 
-        if let Some((key, val)) = res {
-            self.len -= 1;
-            self.pointer[val.to_usize().unwrap()].0 = u8::MAX;
+        self.len -= 1;
+        self.pointer[val.to_usize().unwrap()].0 = NOT_IN_HEAP;
 
-            Some((key, val))
-        } else {
-            None
-        }
+        Some((key, val))
     }
 
-    /// Length of the heap
+    /// Returns the number of elements on the heap.
     pub fn len(&self) -> usize {
         self.len
     }
 
-    /// Is the heap empty?
+    /// Returns *true* if there are no elements on the heap.
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
@@ -272,8 +287,8 @@ mod tests {
         heap.push(1, 3);
 
         heap.pop();
-        assert_eq!(heap.remove(2), Some(3));
+        assert_eq!(heap.remove(2), 3);
         assert_eq!(heap.len(), 1);
-        assert_eq!(heap.remove(8), None);
+        assert_eq!(heap.try_remove(8), None);
     }
 }
