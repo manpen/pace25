@@ -123,7 +123,7 @@ impl<K: RadixKey, V: RadixValue, const NUM_BUCKETS: usize> IndexedRadixHeap<K, V
     /// Force pushes a (key, value)-pair on the heap. The caller is responsible for ensuring bounds
     /// and that value is not already on the heap.
     pub fn push(&mut self, key: K, value: V) {
-        debug_assert!(self.pointer[value.to_usize().unwrap()].0 != NOT_IN_HEAP);
+        debug_assert!(self.pointer[value.to_usize().unwrap()].0 == NOT_IN_HEAP);
 
         let bucket = radix_distance(&key, &self.top);
         self.pointer[value.to_usize().unwrap()] = (bucket, self.buckets[bucket].len());
