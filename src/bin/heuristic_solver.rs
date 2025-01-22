@@ -13,7 +13,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut graph = CsrGraph::try_read_pace(std::io::stdin().lock()).unwrap();
 
-    let mut rng = Pcg64Mcg::from_seed([3; 16]);
+    let mut rng = Pcg64Mcg::seed_from_u64(123u64);
     let domset = greedy_approximation(&graph);
 
     let mut search = GreedyReverseSearch::<_, _, 8, 10>::new(&mut graph, domset, &mut rng);
