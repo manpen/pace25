@@ -1,6 +1,5 @@
 use super::*;
 use std::fmt;
-use std::ops::Range;
 
 #[derive(Clone)]
 pub struct AdjArray {

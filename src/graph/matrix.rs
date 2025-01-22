@@ -1,7 +1,6 @@
 use stream_bitset::bitset_array::BitSetArray;
 
 use super::*;
-use std::ops::Range;
 
 type NodeSet = BitSetShard32;
 

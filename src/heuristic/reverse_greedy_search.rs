@@ -4,7 +4,7 @@ use rand_distr::Distribution;
 use crate::{
     graph::*,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
-    utils::{merge_tree::MergeTrees, sampler::WeightedPow2Sampler, ExtDominatingSet},
+    utils::{merge_tree::MergeTrees, sampler::WeightedPow2Sampler, DominatingSet},
 };
 
 use super::subsets::subset_reduction;
@@ -24,9 +24,9 @@ pub struct GreedyReverseSearch<
     graph: &'a mut G,
 
     /// The current solution
-    current_solution: ExtDominatingSet,
+    current_solution: DominatingSet,
     /// Currently best known solution
-    best_solution: ExtDominatingSet,
+    best_solution: DominatingSet,
     /// Has an optimal solution been found?
     is_optimal: bool,
 
@@ -87,7 +87,7 @@ impl<
     /// Creates a new instance of the algorithm
     ///
     /// Runs the subset-reduction beforehand
-    pub fn new(graph: &'a mut G, mut initial_solution: ExtDominatingSet, rng: &'a mut R) -> Self {
+    pub fn new(graph: &'a mut G, mut initial_solution: DominatingSet, rng: &'a mut R) -> Self {
         // If only fixed nodes cover the graph, this is optimal.
         // For API-purposes, we create an *empty* instance that holds the optimal solution
         if initial_solution.all_fixed() {
@@ -151,7 +151,7 @@ impl<
         for i in (0..initial_solution.len()).rev() {
             let u = initial_solution.ith_node(i);
             if uniquely_covered[u as usize] == 0 {
-                initial_solution.remove(u);
+                initial_solution.remove_node(u);
                 age[u as usize] = 0;
 
                 for j in (0..graph.degree_of(u)).rev() {
@@ -256,7 +256,7 @@ impl<
         self.round += 1;
 
         // Add node to DomSet
-        self.current_solution.push(proposed_node);
+        self.current_solution.add_node(proposed_node);
         self.scores[proposed_node as usize] = 0;
         self.age[proposed_node as usize] = self.round;
         self.sampler.remove_entry(proposed_node);
@@ -364,7 +364,7 @@ impl<
             return;
         }
 
-        self.current_solution.remove(red_node);
+        self.current_solution.remove_node(red_node);
         self.age[red_node as usize] = self.round;
 
         self.domset_modifications
@@ -430,8 +430,8 @@ impl<
             } else {
                 for modification in self.domset_modifications.drain(..) {
                     match modification {
-                        DomSetModification::Add(node) => self.best_solution.push(node),
-                        DomSetModification::Remove(node) => self.best_solution.remove(node),
+                        DomSetModification::Add(node) => self.best_solution.add_node(node),
+                        DomSetModification::Remove(node) => self.best_solution.remove_node(node),
                     }
                 }
             }
@@ -450,7 +450,7 @@ impl<
         G: StaticGraph + SelfLoop,
         const NUM_SAMPLER_BUCKETS: usize,
         const NUM_SAMPLES: usize,
-    > IterativeAlgorithm<ExtDominatingSet>
+    > IterativeAlgorithm<DominatingSet>
     for GreedyReverseSearch<'_, R, G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
 {
     fn execute_step(&mut self) {
@@ -461,7 +461,7 @@ impl<
         self.is_optimal
     }
 
-    fn best_known_solution(&mut self) -> Option<ExtDominatingSet> {
+    fn best_known_solution(&mut self) -> Option<DominatingSet> {
         Some(self.best_solution.clone())
     }
 }
@@ -471,7 +471,7 @@ impl<
         G: StaticGraph + SelfLoop,
         const NUM_SAMPLER_BUCKETS: usize,
         const NUM_SAMPLES: usize,
-    > TerminatingIterativeAlgorithm<ExtDominatingSet>
+    > TerminatingIterativeAlgorithm<DominatingSet>
     for GreedyReverseSearch<'_, R, G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
 {
 }

@@ -1,5 +1,4 @@
 use super::*;
-use itertools::Itertools;
 
 pub type PartitionClass = Node;
 

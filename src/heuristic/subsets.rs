@@ -1,4 +1,4 @@
-use crate::{graph::*, utils::ExtDominatingSet};
+use crate::{graph::*, utils::DominatingSet};
 
 /// # Subset-Rule
 /// A node is subset-dominated by another node, if its neighborhood is a subset of the others neighborhood.
@@ -8,7 +8,7 @@ use crate::{graph::*, utils::ExtDominatingSet};
 /// Returns a reduced edge lists and offsets that does not contain dominated nodes
 pub fn subset_reduction(
     graph: &(impl AdjacencyList + CsrEdgeList + SelfLoop),
-    sol: &mut ExtDominatingSet,
+    sol: &mut DominatingSet,
 ) -> (Vec<Node>, Vec<NumEdges>) {
     let n = graph.number_of_nodes();
     let mut is_subset_dominated = BitSet::new(n);

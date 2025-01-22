@@ -2,7 +2,7 @@ use itertools::Itertools;
 
 use crate::{
     graph::*,
-    utils::{dominating_set::ExtDominatingSet, radix::NodeHeap},
+    utils::{dominating_set::DominatingSet, radix::NodeHeap},
 };
 
 pub mod reverse_greedy_search;
@@ -22,8 +22,8 @@ pub mod subsets;
 /// Returns the solution
 pub fn greedy_approximation(
     graph: &(impl AdjacencyList + AdjacencyTest + SelfLoop),
-) -> ExtDominatingSet {
-    let mut solution = ExtDominatingSet::new(graph.number_of_nodes() as usize);
+) -> DominatingSet {
+    let mut solution = DominatingSet::new(graph.number_of_nodes());
 
     // Computed fixed nodes (ie. nodes that are guaranteed to be in an optimal solution)
     for u in graph.vertices() {
@@ -106,7 +106,7 @@ pub fn greedy_approximation(
 
     while total_covered < graph.number_of_nodes() {
         let (_, node) = heap.pop_with_tiebreaker(&degrees).unwrap();
-        solution.push(node);
+        solution.add_node(node);
 
         for u in graph.neighbors_of(node) {
             num_covered[u as usize] += 1;
@@ -133,7 +133,7 @@ pub fn greedy_approximation(
             for u in graph.neighbors_of(node) {
                 num_covered[u as usize] -= 1;
             }
-            solution.remove(node);
+            solution.remove_node(node);
             continue;
         }
 
