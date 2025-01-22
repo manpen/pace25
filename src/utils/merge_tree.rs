@@ -1,4 +1,7 @@
-use crate::graph::{Node, NumEdges, NumNodes};
+use crate::{
+    graph::{Node, NumNodes},
+    prelude::NeighborsSlice,
+};
 
 /// A MergeEntry assigns a list of nodes (neighbors) to a specific node.
 /// See MergeTree for more explanation
@@ -229,7 +232,11 @@ impl MergeTree {
     /// Requires access to all possible neighbor queries (here as a CSR implementation).
     ///
     /// IMPORTANT: individual neighbor-lists must be sorted in edges
-    pub fn remove_entry(&mut self, mut position: usize, edges: &[Node], offsets: &[NumEdges]) {
+    pub fn remove_entry<Neighbors: NeighborsSlice>(
+        &mut self,
+        mut position: usize,
+        neighborhoods: &Neighbors,
+    ) {
         let mut allow_copy = true;
 
         if position + 1 < self.tree_nodes.len() {
@@ -297,12 +304,13 @@ impl MergeTree {
             }
 
             if parent.value != Node::MAX {
-                let neighbors = &edges[offsets[parent.value as usize] as usize
-                    ..offsets[parent.value as usize + 1] as usize];
                 if allow_copy {
-                    parent.data = neighbors.to_vec();
+                    parent.data = neighborhoods.neighbors_slice(parent.value).to_vec();
                 } else {
-                    Self::merge(&mut parent.data, neighbors);
+                    Self::merge(
+                        &mut parent.data,
+                        neighborhoods.neighbors_slice(parent.value),
+                    );
                 }
             } else if allow_copy {
                 self.tree_nodes[position] = None;
@@ -315,7 +323,7 @@ impl MergeTree {
 ///
 /// Keeps track of all current trees for a given graph.
 #[derive(Debug, Clone)]
-pub struct MergeTrees {
+pub struct MergeTrees<Neighbors: NeighborsSlice> {
     /// A list of all current trees
     trees: Vec<MergeTree>,
     /// Stores at which position the MergeTree of node u is in trees
@@ -323,23 +331,26 @@ pub struct MergeTrees {
     /// Stores at which position lies inside a MergeTree
     /// Assumes that every node can be in at most one MergeTree at a time (see GreedyReverseSearch)
     positions: Vec<NumNodes>,
-    /// A compacted CSR edge list
-    edges: Vec<Node>,
-    /// CSR-Offsets into edges
-    offsets: Vec<NumEdges>,
+    /// Access to neighborhoods as slices
+    neighborhoods: Neighbors,
 }
 
-impl MergeTrees {
+impl<Neighbors: NeighborsSlice> MergeTrees<Neighbors> {
     /// Create a new instance from a CSR-edge list
-    pub fn new(edges: Vec<Node>, offsets: Vec<NumEdges>) -> Self {
-        assert!(!offsets.is_empty());
-        let n = offsets.len() - 1;
+    pub fn new(mut neighborhoods: Neighbors, is_sorted: bool) -> Self {
+        debug_assert!(!neighborhoods.is_empty());
+        if !is_sorted {
+            for u in neighborhoods.vertices_range() {
+                neighborhoods.neighbors_slice_mut(u).sort_unstable();
+            }
+        }
+
+        let n = neighborhoods.number_of_nodes() as usize;
         Self {
             trees: Vec::new(),
             index: vec![NumNodes::MAX; n],
-            edges,
-            offsets,
             positions: vec![NumNodes::MAX; n],
+            neighborhoods,
         }
     }
 
@@ -358,12 +369,9 @@ impl MergeTrees {
             self.trees.push(MergeTree::new(u));
         }
 
-        let (beg, end) = (
-            self.offsets[v as usize] as usize,
-            self.offsets[v as usize + 1] as usize,
-        );
         self.positions[v as usize] = self.trees[self.index[u as usize] as usize]
-            .add_entry(v, &self.edges[beg..end]) as NumNodes;
+            .add_entry(v, self.neighborhoods.neighbors_slice(v))
+            as NumNodes;
     }
 
     /// Removes v from the MergeTree of u
@@ -371,11 +379,8 @@ impl MergeTrees {
         if self.index[u as usize] == NumNodes::MAX {
             return;
         }
-        self.trees[self.index[u as usize] as usize].remove_entry(
-            self.positions[v as usize] as usize,
-            &self.edges,
-            &self.offsets,
-        );
+        self.trees[self.index[u as usize] as usize]
+            .remove_entry(self.positions[v as usize] as usize, &self.neighborhoods);
         self.positions[v as usize] = NumNodes::MAX;
     }
 

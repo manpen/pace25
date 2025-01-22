@@ -60,6 +60,17 @@ impl GraphEdgeOrder for CsrGraph {
     }
 }
 
+impl NeighborsSlice for CsrGraph {
+    fn neighbors_slice(&self, u: Node) -> &[Node] {
+        &self.edges[self.offset_range(u)]
+    }
+
+    fn neighbors_slice_mut(&mut self, u: Node) -> &mut [Node] {
+        let range = self.offset_range(u);
+        &mut self.edges[range]
+    }
+}
+
 impl AdjacencyList for CsrGraph {
     type NeighborIter<'a>
         = impl Iterator<Item = Node> + 'a
@@ -193,10 +204,135 @@ impl GraphFromReader for CsrGraph {
     }
 }
 
-impl CsrEdgeList for CsrGraph {
-    fn get_csr_edges(&self) -> (Vec<Node>, Vec<NumEdges>) {
-        (self.edges.clone(), self.offsets.clone())
+impl SelfLoop for CsrGraph {}
+
+#[derive(Debug, Clone)]
+pub struct CsrEdgesOnly {
+    edges: Vec<Node>,
+    offsets: Vec<NumEdges>,
+}
+
+impl Default for CsrEdgesOnly {
+    fn default() -> Self {
+        Self::empty()
     }
 }
 
-impl SelfLoop for CsrGraph {}
+impl CsrEdgesOnly {
+    pub fn empty() -> Self {
+        Self {
+            edges: Vec::new(),
+            offsets: Vec::new(),
+        }
+    }
+
+    #[inline(always)]
+    fn offset_range(&self, u: Node) -> Range<usize> {
+        (self.offsets[u as usize] as usize)..(self.offsets[(u + 1) as usize] as usize)
+    }
+}
+
+impl GraphNodeOrder for CsrEdgesOnly {
+    type VertexIter<'a> = impl Iterator<Item = Node> + 'a;
+
+    fn number_of_nodes(&self) -> NumNodes {
+        (self.offsets.len() - 1) as NumNodes
+    }
+
+    fn vertices_range(&self) -> Range<Node> {
+        0..self.number_of_nodes()
+    }
+
+    fn vertices(&self) -> Self::VertexIter<'_> {
+        self.vertices_range()
+    }
+}
+
+impl GraphEdgeOrder for CsrEdgesOnly {
+    fn number_of_edges(&self) -> NumEdges {
+        self.edges.len() as NumEdges - self.number_of_nodes() as NumEdges
+    }
+}
+
+impl NeighborsSlice for CsrEdgesOnly {
+    fn neighbors_slice(&self, u: Node) -> &[Node] {
+        &self.edges[self.offset_range(u)]
+    }
+
+    fn neighbors_slice_mut(&mut self, u: Node) -> &mut [Node] {
+        let range = self.offset_range(u);
+        &mut self.edges[range]
+    }
+}
+
+impl AdjacencyList for CsrEdgesOnly {
+    type NeighborIter<'a>
+        = impl Iterator<Item = Node> + 'a
+    where
+        Self: 'a;
+
+    fn neighbors_of(&self, u: Node) -> Self::NeighborIter<'_> {
+        self.edges[self.offset_range(u)].iter().copied()
+    }
+
+    fn degree_of(&self, u: Node) -> NumNodes {
+        (self.offsets[(u + 1) as usize] - self.offsets[u as usize]) as NumNodes
+    }
+
+    type NeighborsStream<'a>
+        = BitsetStream<Node>
+    where
+        Self: 'a;
+
+    fn neighbors_of_as_stream(&self, u: Node) -> Self::NeighborsStream<'_> {
+        self.neighbors_of_as_bitset(u).into_bitmask_stream()
+    }
+}
+
+impl AdjacencyTest for CsrEdgesOnly {
+    fn has_edge(&self, u: Node, v: Node) -> bool {
+        self.edges[self.offset_range(u)].contains(&v)
+    }
+}
+
+impl ToSliceRepresentation for CsrGraph {
+    type SliceRepresentation = CsrEdgesOnly;
+
+    fn to_slice_representation(&self) -> Self::SliceRepresentation {
+        CsrEdgesOnly {
+            edges: self.edges.clone(),
+            offsets: self.offsets.clone(),
+        }
+    }
+}
+
+impl ToSliceRepresentation for CsrEdgesOnly {
+    type SliceRepresentation = Self;
+
+    fn to_slice_representation(&self) -> Self::SliceRepresentation {
+        self.clone()
+    }
+}
+
+impl SelfLoop for CsrEdgesOnly {}
+
+impl ReduceGraphNodes for CsrEdgesOnly {
+    fn filter_out_nodes(&mut self, nodes_to_remove: &BitSet) {
+        let mut write_ptr = 0usize;
+        let mut read_ptr = 0usize;
+
+        for u in 0..self.number_of_nodes() {
+            self.offsets[u as usize] = write_ptr as NumEdges;
+            while read_ptr < self.offsets[(u + 1) as usize] as usize {
+                if !nodes_to_remove.get_bit(self.edges[read_ptr]) {
+                    self.edges[write_ptr] = self.edges[read_ptr];
+                    write_ptr += 1;
+                }
+                read_ptr += 1;
+            }
+        }
+        let n = self.number_of_nodes() as usize;
+        self.offsets[n] = write_ptr as NumEdges;
+        self.edges.truncate(write_ptr);
+    }
+}

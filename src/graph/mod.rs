@@ -408,11 +408,31 @@ impl<G: GraphNew + GraphEdgeEditing> GraphFromReader for G {
     }
 }
 
-/// A trait for coverting all edges into a CSR-representation
-pub trait CsrEdgeList {
-    /// Returns a concatenated list of neighborhoods and indices indicating where a new
-    /// neighborhood begins (ie. CSR-representation)
-    fn get_csr_edges(&self) -> (Vec<Node>, Vec<NumEdges>);
+/// Trait for slice access of neighborhood.
+///
+/// Useful for algorithms/datastructures that rely on slice methods and thus need lower level
+/// access to the neighborhood.
+pub trait NeighborsSlice: AdjacencyList {
+    /// Returns a slice over all neighbors of u.
+    fn neighbors_slice(&self, u: Node) -> &[Node];
+
+    /// Returns a mutable slive over all neighbors of u.
+    fn neighbors_slice_mut(&mut self, u: Node) -> &mut [Node];
+}
+
+/// Conversion trait for extracting a NeighborSlice representation of a graph.
+pub trait ToSliceRepresentation: AdjacencyList {
+    /// Resulting NeighborsSlice representation
+    type SliceRepresentation: NeighborsSlice;
+
+    /// Extracts a NeighborsSlice representation from self.
+    fn to_slice_representation(&self) -> Self::SliceRepresentation;
+}
+
+/// Trait for removing a set of nodes
+pub trait ReduceGraphNodes {
+    /// Filter out nodes from the graph.
+    fn filter_out_nodes(&mut self, nodes_to_remove: &BitSet);
 }
 
 /// A marker trait indicating that *u* is considered a neighbor of *u*
@@ -447,7 +467,12 @@ impl<G> FullfledgedGraph for G where
 /// A static graph possibly does not require the ability of edge-modification but instead allows
 /// for edge-reordering
 pub trait StaticGraph:
-    Clone + IndexedAdjacencyList + GraphEdgeOrder + AdjacencyTest + GraphFromReader + CsrEdgeList
+    Clone
+    + IndexedAdjacencyList
+    + GraphEdgeOrder
+    + AdjacencyTest
+    + GraphFromReader
+    + ToSliceRepresentation
 {
 }
 
@@ -457,7 +482,7 @@ impl<
             + GraphEdgeOrder
             + AdjacencyTest
             + GraphFromReader
-            + CsrEdgeList,
+            + ToSliceRepresentation,
     > StaticGraph for G
 {
 }

@@ -114,7 +114,7 @@ pub fn greedy_approximation(
                 total_covered += 1;
                 for v in graph.neighbors_of(u) {
                     if v != node {
-                        let current_score = heap.remove(v).unwrap();
+                        let current_score = heap.remove(v);
                         heap.push(current_score + 1, v);
                     }
                 }

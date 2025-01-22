@@ -7,9 +7,9 @@ use crate::{graph::*, utils::DominatingSet};
 ///
 /// Returns a reduced edge lists and offsets that does not contain dominated nodes
 pub fn subset_reduction(
-    graph: &(impl AdjacencyList + CsrEdgeList + SelfLoop),
+    graph: &mut (impl NeighborsSlice + SelfLoop),
     sol: &mut DominatingSet,
-) -> (Vec<Node>, Vec<NumEdges>) {
+) -> BitSet {
     let n = graph.number_of_nodes();
     let mut is_subset_dominated = BitSet::new(n);
 
@@ -27,18 +27,15 @@ pub fn subset_reduction(
         }
     }
 
-    let (mut copied_edges, mut copied_offsets) = graph.get_csr_edges();
-
     macro_rules! neighbors {
         ($node:expr) => {
-            copied_edges[(copied_offsets[$node as usize] as usize)
-                ..(copied_offsets[$node as usize + 1] as usize)]
+            graph.neighbors_slice($node)
         };
     }
 
     // Sort adjacency lists to allow binary searching later on
     for u in 0..n {
-        neighbors!(u).sort_unstable();
+        graph.neighbors_slice_mut(u).sort_unstable();
     }
 
     let mut candidates = Vec::new();
@@ -55,7 +52,7 @@ pub fn subset_reduction(
             .filter(|v| !is_perm_covered.get_bit(*v))
             .min_by_key(|v| non_perm_degree[*v as usize]);
         if let Some(node) = min_neighbor {
-            for v in &neighbors!(node) {
+            for v in neighbors!(node) {
                 if *v == u {
                     continue;
                 }
@@ -68,7 +65,7 @@ pub fn subset_reduction(
         }
 
         // Only consider candidates that are adjacent to all non-permanently covered neighbors of u
-        for v in &neighbors!(u) {
+        for v in neighbors!(u) {
             if is_perm_covered.get_bit(*v) {
                 continue;
             }
@@ -114,24 +111,5 @@ pub fn subset_reduction(
         offsets.clear();
     }
 
-    // Create a copy of the edge list that only contains nodes that are not subset-dominated
-    let mut write_ptr = 0;
-    let mut read_ptr = 0;
-    for i in 0..(n as usize) {
-        copied_offsets[i] = write_ptr as NumEdges;
-        let offset = copied_offsets[i + 1];
-
-        while read_ptr < offset as usize {
-            if !is_subset_dominated.get_bit(copied_edges[read_ptr]) {
-                copied_edges[write_ptr] = copied_edges[read_ptr];
-                write_ptr += 1;
-            }
-
-            read_ptr += 1;
-        }
-    }
-    copied_edges.truncate(write_ptr);
-    copied_offsets[n as usize] = write_ptr as NumEdges;
-
-    (copied_edges, copied_offsets)
+    is_subset_dominated
 }

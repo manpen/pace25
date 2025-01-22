@@ -15,11 +15,15 @@ use super::subsets::subset_reduction;
 /// DomSet. Sampling is biased to nodes that replace more nodes.
 pub struct GreedyReverseSearch<
     'a,
-    R: Rng,
-    G: StaticGraph + SelfLoop,
+    R,
+    G,
     const NUM_SAMPLER_BUCKETS: usize = 8,
     const NUM_SAMPLES: usize = 10,
-> {
+> where
+    R: Rng,
+    G: StaticGraph + SelfLoop,
+    <G as ToSliceRepresentation>::SliceRepresentation: ReduceGraphNodes + SelfLoop + Default,
+{
     /// A reference to the graph: mutable access is needed as we need to re-order adjacency lists
     graph: &'a mut G,
 
@@ -69,20 +73,19 @@ pub struct GreedyReverseSearch<
     ///
     /// Note that we only *really* consider neighbors that are not subset-dominated and thus can appear in any
     /// optimal DomSet without the possibility of directly replacing them.
-    merge_trees: MergeTrees,
+    merge_trees: MergeTrees<<G as ToSliceRepresentation>::SliceRepresentation>,
 
     /// Keep track of all applied modifications to current_solution to also apply them to
     /// best_solution when new best solution is found
     domset_modifications: Vec<DomSetModification>,
 }
 
-impl<
-        'a,
-        R: Rng,
-        G: StaticGraph + SelfLoop,
-        const NUM_SAMPLER_BUCKETS: usize,
-        const NUM_SAMPLES: usize,
-    > GreedyReverseSearch<'a, R, G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
+impl<'a, R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
+    GreedyReverseSearch<'a, R, G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
+where
+    R: Rng,
+    G: StaticGraph + SelfLoop,
+    <G as ToSliceRepresentation>::SliceRepresentation: ReduceGraphNodes + SelfLoop + Default,
 {
     /// Creates a new instance of the algorithm
     ///
@@ -106,7 +109,10 @@ impl<
                 redundant_nodes: Vec::new(),
                 scores: Vec::new(),
                 age: Vec::new(),
-                merge_trees: MergeTrees::new(Vec::new(), vec![0]),
+                merge_trees: MergeTrees::new(
+                    <G as ToSliceRepresentation>::SliceRepresentation::default(),
+                    true,
+                ),
                 round: 1,
                 domset_modifications: Vec::new(),
             };
@@ -116,8 +122,10 @@ impl<
 
         let n = graph.number_of_nodes() as usize;
 
-        // Run Subset-Reduction
-        let (reduced_edges, reduced_offsets) = subset_reduction(graph, &mut initial_solution);
+        // Run Subset-Reduction and create reduced edge set
+        let mut neighborhoods = graph.to_slice_representation();
+        let non_optimal_nodes = subset_reduction(&mut neighborhoods, &mut initial_solution);
+        neighborhoods.filter_out_nodes(&non_optimal_nodes);
 
         let mut num_covered = vec![0; n];
         let mut age = vec![0; n];
@@ -173,7 +181,7 @@ impl<
         // Instantiate sampler and merge trees with reduced neighbor-set
         let mut sampler = WeightedPow2Sampler::new(n);
         let mut scores = vec![0; n];
-        let mut merge_trees = MergeTrees::new(reduced_edges, reduced_offsets);
+        let mut merge_trees = MergeTrees::new(neighborhoods, true);
 
         // Insert uniquely covered neighbors of dominating nodes into MergeTrees & Sampler
         for u in initial_solution.iter_non_fixed() {
@@ -445,13 +453,13 @@ enum DomSetModification {
     Remove(Node),
 }
 
-impl<
-        R: Rng,
-        G: StaticGraph + SelfLoop,
-        const NUM_SAMPLER_BUCKETS: usize,
-        const NUM_SAMPLES: usize,
-    > IterativeAlgorithm<DominatingSet>
+impl<R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
+    IterativeAlgorithm<DominatingSet>
     for GreedyReverseSearch<'_, R, G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
+where
+    R: Rng,
+    G: StaticGraph + SelfLoop,
+    <G as ToSliceRepresentation>::SliceRepresentation: ReduceGraphNodes + SelfLoop + Default,
 {
     fn execute_step(&mut self) {
         self.step();
@@ -466,12 +474,12 @@ impl<
     }
 }
 
-impl<
-        R: Rng,
-        G: StaticGraph + SelfLoop,
-        const NUM_SAMPLER_BUCKETS: usize,
-        const NUM_SAMPLES: usize,
-    > TerminatingIterativeAlgorithm<DominatingSet>
+impl<R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
+    TerminatingIterativeAlgorithm<DominatingSet>
     for GreedyReverseSearch<'_, R, G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
+where
+    R: Rng,
+    G: StaticGraph + SelfLoop,
+    <G as ToSliceRepresentation>::SliceRepresentation: ReduceGraphNodes + SelfLoop + Default,
 {
 }
