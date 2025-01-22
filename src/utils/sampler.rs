@@ -75,6 +75,10 @@ impl<const NUM_BUCKETS: usize> WeightedPow2Sampler<NUM_BUCKETS> {
 }
 
 /// Sample a node according to the given weights from the sampler
+///
+/// As we use this sampler in an algorithm where we expect the vast majority of elements to be in
+/// buckets[0] (and buckets[1]), we iterate bottom-up and not top-down, despite bigger weights in
+/// higher buckets.
 impl<const NUM_BUCKETS: usize> Distribution<Node> for WeightedPow2Sampler<NUM_BUCKETS> {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Node {
         let mut rval = rng.gen_range(0..self.total_weight);
