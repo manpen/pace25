@@ -222,7 +222,8 @@ impl CsrEdgesOnly {
     pub fn empty() -> Self {
         Self {
             edges: Vec::new(),
-            offsets: Vec::new(),
+            // We need at least one entry to prevent `self.number_of_nodes()` from overflowing
+            offsets: vec![0],
         }
     }
 

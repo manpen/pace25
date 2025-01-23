@@ -37,7 +37,7 @@ pub use traversal::*;
 pub use weisfeiler_lehman::*;
 
 use itertools::Itertools;
-use std::{borrow::Borrow, ops::Range};
+use std::{borrow::Borrow, cmp::Ordering, ops::Range};
 use stream_bitset::prelude::*;
 mod graph_tests;
 
@@ -433,6 +433,140 @@ pub trait ToSliceRepresentation: AdjacencyList {
 pub trait ReduceGraphNodes {
     /// Filter out nodes from the graph.
     fn filter_out_nodes(&mut self, nodes_to_remove: &BitSet);
+}
+
+/// Trait for sorting-related methods on neighborhoods (=> port of std-slice-sorting)
+pub trait SortedNeighborhoods: NeighborsSlice {
+    fn are_neighbors_sorted(&self, u: Node) -> bool;
+
+    fn are_neighbors_sorted_by<F: FnMut(&Node, &Node) -> bool>(&self, u: Node, compare: F) -> bool;
+
+    fn are_neighbors_sorted_by_key<K: PartialOrd, F: FnMut(&Node) -> K>(
+        &self,
+        u: Node,
+        f: F,
+    ) -> bool;
+
+    fn are_all_sorted(&self) -> bool {
+        self.vertices().all(|u| self.are_neighbors_sorted(u))
+    }
+
+    fn are_all_neighbors_sorted_by<F: Clone + FnMut(&Node, &Node) -> bool>(
+        &self,
+        compare: F,
+    ) -> bool {
+        self.vertices()
+            .all(|u| self.are_neighbors_sorted_by(u, compare.clone()))
+    }
+
+    fn are_all_neighbors_sorted_by_key<K: PartialOrd, F: Clone + FnMut(&Node) -> K>(
+        &self,
+        f: F,
+    ) -> bool {
+        self.vertices()
+            .all(|u| self.are_neighbors_sorted_by_key(u, f.clone()))
+    }
+
+    fn sort_neighbors(&mut self, u: Node);
+
+    fn sort_neighbors_by<F: FnMut(&Node, &Node) -> Ordering>(&mut self, u: Node, compare: F);
+
+    fn sort_neighbors_by_key<K: Ord, F: FnMut(&Node) -> K>(&mut self, u: Node, f: F);
+
+    fn sort_neighbors_unstable(&mut self, u: Node);
+
+    fn sort_neighbors_unstable_by<F: FnMut(&Node, &Node) -> Ordering>(
+        &mut self,
+        u: Node,
+        compare: F,
+    );
+
+    fn sort_neighbors_unstable_by_key<K: Ord, F: FnMut(&Node) -> K>(&mut self, u: Node, f: F);
+
+    fn sort_all_neighbors(&mut self) {
+        for u in self.vertices_range() {
+            self.sort_neighbors(u);
+        }
+    }
+
+    fn sort_all_neighbors_by<F: Clone + FnMut(&Node, &Node) -> Ordering>(&mut self, compare: F) {
+        for u in self.vertices_range() {
+            self.sort_neighbors_by(u, compare.clone());
+        }
+    }
+
+    fn sort_all_neighbors_by_key<K: Ord, F: Clone + FnMut(&Node) -> K>(&mut self, f: F) {
+        for u in self.vertices_range() {
+            self.sort_neighbors_by_key(u, f.clone())
+        }
+    }
+
+    fn sort_all_neighbors_unstable(&mut self) {
+        for u in self.vertices_range() {
+            self.sort_neighbors_unstable(u);
+        }
+    }
+
+    fn sort_all_neighbors_unstable_by<F: Clone + FnMut(&Node, &Node) -> Ordering>(
+        &mut self,
+        compare: F,
+    ) {
+        for u in self.vertices_range() {
+            self.sort_neighbors_unstable_by(u, compare.clone());
+        }
+    }
+
+    fn sort_all_neighbors_unstable_by_key<K: Ord, F: Clone + FnMut(&Node) -> K>(&mut self, f: F) {
+        for u in self.vertices_range() {
+            self.sort_neighbors_unstable_by_key(u, f.clone());
+        }
+    }
+}
+
+impl<G: NeighborsSlice> SortedNeighborhoods for G {
+    fn are_neighbors_sorted(&self, u: Node) -> bool {
+        self.neighbors_slice(u).is_sorted()
+    }
+
+    fn are_neighbors_sorted_by<F: FnMut(&Node, &Node) -> bool>(&self, u: Node, compare: F) -> bool {
+        self.neighbors_slice(u).is_sorted_by(compare)
+    }
+
+    fn are_neighbors_sorted_by_key<K: PartialOrd, F: FnMut(&Node) -> K>(
+        &self,
+        u: Node,
+        f: F,
+    ) -> bool {
+        self.neighbors_slice(u).is_sorted_by_key(f)
+    }
+
+    fn sort_neighbors(&mut self, u: Node) {
+        self.neighbors_slice_mut(u).sort();
+    }
+
+    fn sort_neighbors_by<F: FnMut(&Node, &Node) -> Ordering>(&mut self, u: Node, compare: F) {
+        self.neighbors_slice_mut(u).sort_by(compare);
+    }
+
+    fn sort_neighbors_by_key<K: Ord, F: FnMut(&Node) -> K>(&mut self, u: Node, f: F) {
+        self.neighbors_slice_mut(u).sort_by_key(f);
+    }
+
+    fn sort_neighbors_unstable(&mut self, u: Node) {
+        self.neighbors_slice_mut(u).sort_unstable();
+    }
+
+    fn sort_neighbors_unstable_by<F: FnMut(&Node, &Node) -> Ordering>(
+        &mut self,
+        u: Node,
+        compare: F,
+    ) {
+        self.neighbors_slice_mut(u).sort_unstable_by(compare);
+    }
+
+    fn sort_neighbors_unstable_by_key<K: Ord, F: FnMut(&Node) -> K>(&mut self, u: Node, f: F) {
+        self.neighbors_slice_mut(u).sort_unstable_by_key(f);
+    }
 }
 
 /// A marker trait indicating that *u* is considered a neighbor of *u*
