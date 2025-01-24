@@ -431,10 +431,67 @@ impl<Neighbors: NeighborsSlice> IntersectionForest<Neighbors> {
     /// Transfers ownership of an IntersectionTree to another node
     /// Panics if u as now IntersectionTree
     pub fn transfer(&mut self, u: Node, v: Node) {
-        debug_assert!(self.index[u as usize] != NOT_EXISTING);
+        debug_assert!(self.owns_tree(u) && !self.owns_tree(v));
 
         self.index[v as usize] = self.index[u as usize];
         self.index[u as usize] = NOT_EXISTING;
         self.trees[self.index[v as usize] as usize].owner = v;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::seq::SliceRandom;
+
+    use crate::{graph::CsrGraph, io::GraphPaceReader};
+
+    use super::*;
+
+    #[test]
+    fn test_intersections() {
+        let rng = &mut rand::thread_rng();
+        for n in [100, 200, 500] {
+            for _ in 0..100 {
+                let mut base: Vec<Node> = (0..n).collect();
+
+                base.shuffle(rng);
+                let mut list1a = base[..((n as usize) / 2)].to_vec();
+                list1a.sort_unstable();
+                let mut list1b = list1a.clone();
+
+                base.shuffle(rng);
+                let mut list2 = base[..((n as usize) / 2)].to_vec();
+                list2.sort_unstable();
+
+                IntersectionTree::intersect_balanced(&mut list1a, &list2);
+                IntersectionTree::intersect_unbalanced(&mut list1b, &list2);
+
+                assert_eq!(list1a, list1b);
+            }
+        }
+    }
+
+    #[test]
+    fn test_forest() {
+        let reader = "p ds 6 8\n1 2\n1 3\n2 4\n2 5\n3 4\n3 6\n4 6\n5 6".as_bytes();
+        let graph = CsrGraph::try_read_pace(reader).unwrap();
+
+        let mut forest = IntersectionForest::new(graph);
+        forest.add_entry(2, 3);
+        assert_eq!(forest.get_root_nodes(2), &[1, 2, 3, 5]);
+        forest.add_entry(2, 5);
+        assert_eq!(forest.get_root_nodes(2), &[2, 3, 5]);
+        forest.add_entry(2, 0);
+        assert_eq!(forest.get_root_nodes(2), &[2]);
+        forest.remove_entry(2, 5);
+        assert_eq!(forest.get_root_nodes(2), &[1, 2]);
+
+        assert!(!forest.owns_tree(1) && forest.owns_tree(2));
+        forest.transfer(2, 1);
+        assert!(forest.owns_tree(1) && !forest.owns_tree(2));
+        forest.add_entry(1, 4);
+        assert_eq!(forest.get_root_nodes(1), &[1]);
+        forest.remove_entry(1, 0);
+        assert_eq!(forest.get_root_nodes(1), &[1, 5]);
     }
 }

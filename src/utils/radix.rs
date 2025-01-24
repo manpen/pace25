@@ -270,6 +270,7 @@ mod tests {
         heap.push(1, 4);
         heap.push(6, 5);
 
+        assert!(!heap.try_push(3, 0));
         assert_eq!(heap.len(), 6);
 
         assert_eq!(heap.pop(), Some((1, 4)));
