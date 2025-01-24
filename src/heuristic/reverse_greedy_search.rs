@@ -4,7 +4,7 @@ use rand_distr::Distribution;
 use crate::{
     graph::*,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
-    utils::{insertion_tree::InsertionForest, sampler::WeightedPow2Sampler, DominatingSet},
+    utils::{intersection_tree::IntersectionForest, sampler::WeightedPow2Sampler, DominatingSet},
 };
 
 use super::subsets::subset_reduction;
@@ -73,7 +73,7 @@ pub struct GreedyReverseSearch<
     ///
     /// Note that we only *really* consider neighbors that are not subset-dominated and thus can appear in any
     /// optimal DomSet without the possibility of directly replacing them.
-    merge_trees: InsertionForest<<G as ToSliceRepresentation>::SliceRepresentation>,
+    merge_trees: IntersectionForest<<G as ToSliceRepresentation>::SliceRepresentation>,
 
     /// Keep track of all applied modifications to current_solution to also apply them to
     /// best_solution when new best solution is found
@@ -109,7 +109,7 @@ where
                 redundant_nodes: Vec::new(),
                 scores: Vec::new(),
                 age: Vec::new(),
-                merge_trees: InsertionForest::new(
+                merge_trees: IntersectionForest::new(
                     <G as ToSliceRepresentation>::SliceRepresentation::default(),
                 ),
                 round: 1,
@@ -180,7 +180,7 @@ where
         // Instantiate sampler and merge trees with reduced neighbor-set
         let mut sampler = WeightedPow2Sampler::new(n);
         let mut scores = vec![0; n];
-        let mut merge_trees = InsertionForest::new_sorted(neighborhoods);
+        let mut merge_trees = IntersectionForest::new_sorted(neighborhoods);
 
         // Insert uniquely covered neighbors of dominating nodes into MergeTrees & Sampler
         for u in initial_solution.iter_non_fixed() {

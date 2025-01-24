@@ -3,10 +3,10 @@ use crate::{
     prelude::{NeighborsSlice, SortedNeighborhoods},
 };
 
-/// An InsertionEntry assigns a list of nodes (neighbors) to a specific node.
+/// An IntersectionEntry assigns a list of nodes (neighbors) to a specific node.
 /// See InsertionTree for more explanation
 #[derive(Debug, Clone)]
-struct InsertionEntry {
+struct IntersectionEntry {
     /// Entries
     data: Vec<Node>,
     /// Node-Representative
@@ -15,11 +15,11 @@ struct InsertionEntry {
 
 const NOT_SET: Node = Node::MAX;
 
-/// InsertionTree - Constant time queries for common neighbors
+/// IntersectionTree - Constant time queries for common neighbors
 ///
-/// An InsertionTree is a binary tree used to store common neighbors of all nodes inserted into the
+/// An IntersectionTree is a binary tree used to store common neighbors of all nodes inserted into the
 /// tree. A parent node stores the common entries of its two child node entries as well as its own
-/// original entries, ie. the intersection of all three InsertionEntries.
+/// original entries, ie. the intersection of all three IntersectionEntries.
 ///
 /// A leaf is either empty as no node was yet assigned or stores a node and all its neighbors as entries.
 ///
@@ -29,18 +29,18 @@ const NOT_SET: Node = Node::MAX;
 /// The tree is constructed in a way that
 /// (I4) is either a leaf or has two children.
 ///
-/// See InsertionForest for more important invariants (I1 - I3).
+/// See IntersectionForest for more important invariants (I1 - I3).
 #[derive(Debug, Clone)]
-struct InsertionTree {
+struct IntersectionTree {
     /// Binary tree compacted into a list
-    tree_nodes: Vec<Option<InsertionEntry>>,
+    tree_nodes: Vec<Option<IntersectionEntry>>,
     /// Indexes in `tree_nodes` that can be (re-)assigned
     free_nodes: Vec<Node>,
     /// Owner of the tree (see InsertionTrees for explanation)
     owner: Node,
 }
 
-impl InsertionTree {
+impl IntersectionTree {
     /// Creates an empty tree for a new owner
     pub fn new(owner: Node) -> Self {
         Self {
@@ -180,7 +180,7 @@ impl InsertionTree {
                 entry.value = node;
                 Self::intersect(&mut entry.data, neighbors);
             } else {
-                let entry = InsertionEntry {
+                let entry = IntersectionEntry {
                     data: neighbors.to_vec(),
                     value: node,
                 };
@@ -188,7 +188,7 @@ impl InsertionTree {
             }
             free_node as usize
         } else {
-            let entry = InsertionEntry {
+            let entry = IntersectionEntry {
                 data: neighbors.to_vec(),
                 value: node,
             };
@@ -214,7 +214,7 @@ impl InsertionTree {
             if let Some(parent_entry) = parent {
                 Self::intersect(&mut parent_entry.data, &child.data);
             } else {
-                let entry = InsertionEntry {
+                let entry = IntersectionEntry {
                     data: child.data.to_vec(),
                     value: NOT_SET,
                 };
@@ -322,30 +322,30 @@ impl InsertionTree {
     }
 }
 
-/// InsertionForest - Efficient queries into common neighborhoods
+/// IntersectionForest - Efficient queries into common neighborhoods
 ///
 /// This data structure is responsible for storing and querying common neighbors of a select subset of nodes
-/// in multiple instances. That is, every node u can get an InsertionTree assigned to itself in which neighbors
+/// in multiple instances. That is, every node u can get an IntersectionTree assigned to itself in which neighbors
 /// of u can be inserted. Then, one can query the list of all nodes that are incident to all nodes
-/// inserted into the InsertionTree of u.
+/// inserted into the IntersectionTree of u.
 ///
-/// It works using the InsertionTree datastructure: a binary tree that computes intersections of
+/// It works using the IntersectionTree datastructure: a binary tree that computes intersections of
 /// neighborhoods bottom-up to yield an intersection of all neighborhoods in its root.
 ///
 /// See the GreedyReverseSearch heuristic for a more in-depth example.
 ///
 /// The datastructure relies on a series of invariants:
-/// (I1) Every node can be inserted in at most one InsertionTree at a time
-/// (I2) The owner of an InsertionTree must be a neighbor to all nodes inserted into it
+/// (I1) Every node can be inserted in at most one IntersectionTree at a time (or can be an owner of a tree but not both)
+/// (I2) The owner of an IntersectionTree must be a neighbor to all nodes inserted into it
 /// (I3) Neighborhoods are sorted to allow for faster intersection-computation.
 ///
 #[derive(Debug, Clone)]
-pub struct InsertionForest<Neighbors: NeighborsSlice> {
-    /// A list of all current InsertionTrees
-    trees: Vec<InsertionTree>,
-    /// Stores at which position the InsertionTreeTree of node u is in `self.trees`
+pub struct IntersectionForest<Neighbors: NeighborsSlice> {
+    /// A list of all current IntersectionTrees
+    trees: Vec<IntersectionTree>,
+    /// Stores at which position the IntersectionTree of node u is in `self.trees`
     index: Vec<NumNodes>,
-    /// Stores at which position lies inside a InsertionTreeTree
+    /// Stores at which position lies inside a IntersectionTree
     /// (I1) Every node can be in at least one tree
     positions: Vec<NumNodes>,
     /// Access to neighborhoods as slices
@@ -355,7 +355,7 @@ pub struct InsertionForest<Neighbors: NeighborsSlice> {
 
 const NOT_EXISTING: NumNodes = NumNodes::MAX;
 
-impl<Neighbors: NeighborsSlice> InsertionForest<Neighbors> {
+impl<Neighbors: NeighborsSlice> IntersectionForest<Neighbors> {
     /// Create a new instance from neighborhoods
     /// (I3) Neighborhoods will be sorted
     pub fn new(mut neighborhoods: Neighbors) -> Self {
@@ -377,20 +377,25 @@ impl<Neighbors: NeighborsSlice> InsertionForest<Neighbors> {
     }
 
     /// Get the root entries of a specific tree
-    /// Panics if u has no InsertionTree assigned to it
+    /// Panics if u has no IntersectionTree assigned to it
     pub fn get_root_nodes(&self, u: Node) -> &[Node] {
         debug_assert!(self.index[u as usize] < self.trees.len() as NumNodes);
         self.trees[self.index[u as usize] as usize].get_root_nodes()
     }
 
-    /// Inserts v into the InsertionTree of u
-    /// (I1) v is in no other InsertionTree at the time
+    /// Returns *true* if u is the owner of some IntersectionTree
+    pub fn owns_tree(&self, u: Node) -> bool {
+        self.index[u as usize] != NOT_EXISTING
+    }
+
+    /// Inserts v into the IntersectionTree of u
+    /// (I1) v is in no other IntersectionTree at the time
     pub fn add_entry(&mut self, u: Node, v: Node) {
         debug_assert!(self.positions[v as usize] == NOT_EXISTING);
 
         if self.index[u as usize] == NOT_EXISTING {
             self.index[u as usize] = self.trees.len() as NumNodes;
-            self.trees.push(InsertionTree::new(u));
+            self.trees.push(IntersectionTree::new(u));
         }
 
         self.positions[v as usize] = self.trees[self.index[u as usize] as usize]
@@ -398,10 +403,10 @@ impl<Neighbors: NeighborsSlice> InsertionForest<Neighbors> {
             as NumNodes;
     }
 
-    /// Removes v from the InsertionTree of u.
+    /// Removes v from the IntersectionTree of u.
     /// (I1) The caller is responsible or ensuring that u and v are correct.
     ///
-    /// Panics if u has no InsertionTree  
+    /// Panics if u has no IntersectionTree  
     pub fn remove_entry(&mut self, u: Node, v: Node) {
         debug_assert!(self.index[u as usize] != NOT_EXISTING);
         self.trees[self.index[u as usize] as usize]
@@ -409,8 +414,8 @@ impl<Neighbors: NeighborsSlice> InsertionForest<Neighbors> {
         self.positions[v as usize] = NOT_EXISTING;
     }
 
-    /// Clears (and deletes) the InsertionTree of u.
-    /// Panics if u has no InsertionTree
+    /// Clears (and deletes) the IntersectionTree of u.
+    /// Panics if u has no IntersectionTree
     pub fn clear(&mut self, u: Node) {
         debug_assert!(self.index[u as usize] != NOT_EXISTING);
 
@@ -423,8 +428,8 @@ impl<Neighbors: NeighborsSlice> InsertionForest<Neighbors> {
         }
     }
 
-    /// Transfers ownership of an InsertionTree to another node
-    /// Panics if u as now InsertionTree
+    /// Transfers ownership of an IntersectionTree to another node
+    /// Panics if u as now IntersectionTree
     pub fn transfer(&mut self, u: Node, v: Node) {
         debug_assert!(self.index[u as usize] != NOT_EXISTING);
 
