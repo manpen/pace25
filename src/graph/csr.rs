@@ -1,3 +1,5 @@
+use crate::impl_static_graph_tests;
+
 use super::*;
 
 #[derive(Debug, Clone)]
@@ -205,6 +207,8 @@ impl GraphFromReader for CsrGraph {
 }
 
 impl SelfLoop for CsrGraph {}
+
+impl_static_graph_tests!(CsrGraph);
 
 #[derive(Debug, Clone)]
 pub struct CsrEdgesOnly {

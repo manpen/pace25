@@ -234,7 +234,7 @@ impl IntersectionTree {
         mut position: usize,
         neighborhoods: &Neighbors,
     ) {
-        debug_assert!(neighborhoods.are_all_sorted());
+        debug_assert!(neighborhoods.are_all_neighbors_sorted());
         debug_assert!(position < self.tree_nodes.len());
 
         let mut allow_copy = true;
@@ -365,7 +365,7 @@ impl<Neighbors: NeighborsSlice> IntersectionForest<Neighbors> {
 
     /// Create a new instance from neighborhoods that are already sorted.
     pub fn new_sorted(neighborhoods: Neighbors) -> Self {
-        debug_assert!(neighborhoods.are_all_sorted());
+        debug_assert!(neighborhoods.are_all_neighbors_sorted());
 
         let n = neighborhoods.number_of_nodes() as usize;
         Self {

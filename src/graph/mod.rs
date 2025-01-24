@@ -447,7 +447,7 @@ pub trait SortedNeighborhoods: NeighborsSlice {
         f: F,
     ) -> bool;
 
-    fn are_all_sorted(&self) -> bool {
+    fn are_all_neighbors_sorted(&self) -> bool {
         self.vertices().all(|u| self.are_neighbors_sorted(u))
     }
 

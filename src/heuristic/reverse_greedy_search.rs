@@ -6,7 +6,7 @@ use rand_distr::Distribution;
 use crate::{
     graph::*,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
-    utils::{intersection_tree::IntersectionForest, sampler::WeightedPow2Sampler, DominatingSet},
+    utils::{intersection_forest::IntersectionForest, sampler::WeightedPow2Sampler, DominatingSet},
 };
 
 use super::subsets::subset_reduction;
