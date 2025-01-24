@@ -4,7 +4,7 @@ use crate::{
 };
 
 /// An IntersectionEntry assigns a list of nodes (neighbors) to a specific node.
-/// See InsertionTree for more explanation
+/// See IntersectionTree for more explanation
 #[derive(Debug, Clone)]
 struct IntersectionEntry {
     /// Entries
@@ -36,7 +36,7 @@ struct IntersectionTree {
     tree_nodes: Vec<Option<IntersectionEntry>>,
     /// Indexes in `tree_nodes` that can be (re-)assigned
     free_nodes: Vec<Node>,
-    /// Owner of the tree (see InsertionTrees for explanation)
+    /// Owner of the tree (see IntersectionTree for explanation)
     owner: Node,
 }
 
