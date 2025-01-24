@@ -214,7 +214,10 @@ where
             for &v in intersection_forest.get_root_nodes(u) {
                 if u != v {
                     scores[v as usize] += 1;
-                    sampler.update_entry(v, scores[v as usize] as usize - 1);
+                    if sampler.is_in_sampler(v) {
+                        sampler.remove_entry(v);
+                    }
+                    sampler.add_entry(v, scores[v as usize] as usize - 1);
                 }
             }
         }
