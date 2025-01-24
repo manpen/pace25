@@ -1,3 +1,5 @@
+use std::cmp::Reverse;
+
 use rand::Rng;
 use rand_distr::Distribution;
 
@@ -91,6 +93,8 @@ where
     ///
     /// Runs the subset-reduction beforehand
     pub fn new(graph: &'a mut G, mut initial_solution: DominatingSet, rng: &'a mut R) -> Self {
+        assert!(initial_solution.is_valid(graph));
+
         // If only fixed nodes cover the graph, this is optimal.
         // For API-purposes, we create an *empty* instance that holds the optimal solution
         if initial_solution.all_fixed() {
@@ -117,8 +121,6 @@ where
             };
         }
 
-        assert!(initial_solution.is_valid(graph));
-
         let n = graph.number_of_nodes() as usize;
 
         // Run Subset-Reduction and create reduced edge set
@@ -140,39 +142,30 @@ where
         }
 
         // Count number of uniquely covered neighbors
-        let mut uniquely_covered: Vec<NumNodes> = graph
-            .vertices()
-            .map(|u| {
-                if !initial_solution.is_in_domset(u) {
-                    return 0;
-                }
-
-                graph
-                    .neighbors_of(u)
-                    .map(|v| (num_covered[v as usize] <= 1) as NumNodes)
-                    .sum()
-            })
-            .collect();
+        let mut uniquely_covered: Vec<NumNodes> = vec![0; graph.len()];
+        graph.vertices().for_each(|u| {
+            if num_covered[u as usize] == 1 {
+                uniquely_covered[graph.ith_neighbor(u, 0) as usize] += 1;
+            }
+        });
 
         // Remove redundant nodes from the DomSet and update datastructures
         for i in (0..initial_solution.len()).rev() {
             let u = initial_solution.ith_node(i);
-            if uniquely_covered[u as usize] == 0 {
-                initial_solution.remove_node(u);
-                age[u as usize] = 0;
+            if uniquely_covered[u as usize] != 0 {
+                continue;
+            }
 
-                for j in (0..graph.degree_of(u)).rev() {
-                    let v = graph.ith_neighbor(u, j);
-                    num_covered[v as usize] -= 1;
-                    graph.swap_neighbors(
-                        v,
-                        graph.ith_cross_position(u, j),
-                        num_covered[v as usize],
-                    );
+            initial_solution.remove_node(u);
+            age[u as usize] = 0;
 
-                    if num_covered[v as usize] == 1 {
-                        uniquely_covered[graph.ith_neighbor(v, 0) as usize] += 1;
-                    }
+            for j in (0..graph.degree_of(u)).rev() {
+                let v = graph.ith_neighbor(u, j);
+                num_covered[v as usize] -= 1;
+                graph.swap_neighbors(v, graph.ith_cross_position(u, j), num_covered[v as usize]);
+
+                if num_covered[v as usize] == 1 {
+                    uniquely_covered[graph.ith_neighbor(v, 0) as usize] += 1;
                 }
             }
         }
@@ -190,10 +183,10 @@ where
                 }
             }
 
-            for v in merge_trees.get_root_nodes(u) {
-                if u != *v {
-                    scores[*v as usize] += 1;
-                    sampler.update_entry(*v, scores[*v as usize] as usize - 1);
+            for &v in merge_trees.get_root_nodes(u) {
+                if u != v {
+                    scores[v as usize] += 1;
+                    sampler.update_entry(v, scores[v as usize] as usize - 1);
                 }
             }
         }
@@ -231,18 +224,17 @@ where
             return None;
         }
 
-        let mut best_node = 0;
-        (0..NUM_SAMPLES).for_each(|_| {
-            let node = self.sampler.sample(&mut self.rng);
-            if self.scores[node as usize] > self.scores[best_node as usize]
-                || (self.scores[node as usize] == self.scores[best_node as usize]
-                    && self.age[node as usize] < self.age[best_node as usize])
-            {
-                best_node = node;
-            }
-        });
-
-        Some(best_node)
+        (0..NUM_SAMPLES)
+            .map(|_| {
+                let node = self.sampler.sample(&mut self.rng);
+                (
+                    self.scores[node as usize],
+                    Reverse(self.age[node as usize]),
+                    node,
+                )
+            })
+            .max()
+            .map(|(_, _, x)| x)
     }
 
     /// Run one iteration of the algorithm:
@@ -287,9 +279,8 @@ where
             if self.num_covered[neighbor as usize] == 2 {
                 let former_unique_covering_node = self.graph.ith_neighbor(neighbor, 0);
                 self.uniquely_covered[former_unique_covering_node as usize] -= 1;
-                if !self.in_candidates.get_bit(neighbor) {
+                if !self.in_candidates.set_bit(neighbor) {
                     self.candidates.push(neighbor);
-                    self.in_candidates.set_bit(neighbor);
                 }
 
                 if self.uniquely_covered[former_unique_covering_node as usize] == 0 {
@@ -313,10 +304,9 @@ where
         // Update MergeTrees/Sampler for all remaining Candidates = nodes that have to be
         // added/removed/updated in MergeTrees/Sampler
         for candidate in self.candidates.drain(..) {
-            if !self.in_candidates.get_bit(candidate) {
+            if !self.in_candidates.clear_bit(candidate) {
                 continue;
             }
-            self.in_candidates.clear_bit(candidate);
 
             let dominating_node = self.graph.ith_neighbor(candidate, 0);
             if self.current_solution.is_fixed_node(dominating_node) {
@@ -324,12 +314,12 @@ where
             }
 
             // Remove entries of MergeTree[dominating_node] from sampler
-            for node in self.merge_trees.get_root_nodes(dominating_node) {
-                if *node != dominating_node && self.scores[*node as usize] != 0 {
-                    self.scores[*node as usize] -= 1;
-                    self.sampler.remove_entry(*node);
-                    if self.scores[*node as usize] > 0 {
-                        self.temp_nodes.push(*node);
+            for &node in self.merge_trees.get_root_nodes(dominating_node) {
+                if node != dominating_node && self.scores[node as usize] != 0 {
+                    self.scores[node as usize] -= 1;
+                    self.sampler.remove_entry(node);
+                    if self.scores[node as usize] > 0 {
+                        self.temp_nodes.push(node);
                     }
                 }
             }
@@ -342,11 +332,11 @@ where
             }
 
             // Add all entries of MergeTree[dominating_node] to sampler (insert later)
-            for node in self.merge_trees.get_root_nodes(dominating_node) {
-                if *node != dominating_node {
-                    self.scores[*node as usize] += 1;
-                    if self.scores[*node as usize] == 1 {
-                        self.temp_nodes.push(*node);
+            for &node in self.merge_trees.get_root_nodes(dominating_node) {
+                if node != dominating_node {
+                    self.scores[node as usize] += 1;
+                    if self.scores[node as usize] == 1 {
+                        self.temp_nodes.push(node);
                     }
                 }
             }
@@ -396,9 +386,12 @@ where
                 // in this iteration, we already have updated MergeTree[proposed_node] correctly
                 // and do not need to consider it later again (except when a later red_node changes
                 // this again).
-                let prev_bit = self.in_candidates.get_bit(neighbor);
-                self.in_candidates
-                    .assign_bit(neighbor, !(MARKER && prev_bit));
+                let prev_bit = if MARKER {
+                    self.in_candidates.flip_bit(neighbor)
+                } else {
+                    self.in_candidates.set_bit(neighbor)
+                };
+
                 if !prev_bit {
                     self.candidates.push(neighbor);
                 }
@@ -413,13 +406,13 @@ where
             self.sampler.add_entry(red_node, 0);
         } else {
             // Update sampler
-            for node in self.merge_trees.get_root_nodes(red_node) {
-                if *node != red_node && *node != proposed_node {
-                    self.scores[*node as usize] -= 1;
-                    self.sampler.remove_entry(*node);
-                    if self.scores[*node as usize] > 0 {
+            for &node in self.merge_trees.get_root_nodes(red_node) {
+                if node != red_node && node != proposed_node {
+                    self.scores[node as usize] -= 1;
+                    self.sampler.remove_entry(node);
+                    if self.scores[node as usize] > 0 {
                         self.sampler
-                            .add_entry(*node, self.scores[*node as usize] as usize - 1);
+                            .add_entry(node, self.scores[node as usize] as usize - 1);
                     }
                 }
             }
@@ -430,16 +423,18 @@ where
 
     /// Updates the best_solution to current_solution if better
     fn update_best_solution(&mut self) {
-        if self.current_solution.len() < self.best_solution.len() {
-            if self.domset_modifications.len() > self.graph.number_of_nodes() as usize / 64 {
-                self.best_solution = self.current_solution.clone();
-                self.domset_modifications.clear();
-            } else {
-                for modification in self.domset_modifications.drain(..) {
-                    match modification {
-                        DomSetModification::Add(node) => self.best_solution.add_node(node),
-                        DomSetModification::Remove(node) => self.best_solution.remove_node(node),
-                    }
+        if self.current_solution.len() >= self.best_solution.len() {
+            return;
+        }
+
+        if self.domset_modifications.len() > self.graph.number_of_nodes() as usize / 64 {
+            self.best_solution = self.current_solution.clone();
+            self.domset_modifications.clear();
+        } else {
+            for modification in self.domset_modifications.drain(..) {
+                match modification {
+                    DomSetModification::Add(node) => self.best_solution.add_node(node),
+                    DomSetModification::Remove(node) => self.best_solution.remove_node(node),
                 }
             }
         }
