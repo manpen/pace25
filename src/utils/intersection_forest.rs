@@ -63,35 +63,25 @@ impl IntersectionTree {
         if dest.len() < other.len() {
             for ptr1 in 0..dest.len() {
                 let item = dest[ptr1];
-                match other[ptrr..].binary_search_by(|x| x.cmp(&item)) {
-                    Ok(idx) => {
-                        dest[ptrw] = item;
-                        ptrw += 1;
-                        ptrr += idx;
-                    }
-                    Err(idx) => {
-                        ptrr += idx;
-                        if idx == other.len() {
-                            break;
-                        }
-                    }
-                };
+                let result = other[ptrr..].binary_search_by(|x| x.cmp(&item));
+                dest[ptrw] = item;
+                ptrw += result.is_ok() as usize;
+                ptrr += result.unwrap_or_else(|x| x);
+
+                if ptrr == other.len() {
+                    break;
+                }
             }
         } else {
             for item in other {
-                match dest[ptrr..].binary_search_by(|x| x.cmp(item)) {
-                    Ok(idx) => {
-                        dest[ptrw] = *item;
-                        ptrw += 1;
-                        ptrr += idx;
-                    }
-                    Err(idx) => {
-                        ptrr += idx;
-                        if idx == dest.len() {
-                            break;
-                        }
-                    }
-                };
+                let result = dest[ptrr..].binary_search_by(|x| x.cmp(item));
+                dest[ptrw] = *item;
+                ptrw += result.is_ok() as usize;
+                ptrr += result.unwrap_or_else(|x| x);
+
+                if ptrr == dest.len() {
+                    break;
+                }
             }
         }
 
@@ -116,10 +106,9 @@ impl IntersectionTree {
             // Avoid branching
             ptr1 += (item1 <= item2) as usize;
             ptr2 += (item1 >= item2) as usize;
-            if item1 == item2 {
-                dest[ptrw] = item1;
-                ptrw += 1;
-            }
+
+            dest[ptrw] = item1;
+            ptrw += (item1 == item2) as usize;
         }
 
         dest.truncate(ptrw);
@@ -168,6 +157,7 @@ impl IntersectionTree {
     /// Inserts a node into the tree and propagates potential changes in the intersections.
     /// Returns the position of `node` in `self.tree_nodes`.
     ///
+    /// (I2) `self.owner` is in `neighbors`
     /// (I3) `neighbors` is sorted.
     /// (I4) Length of the tree must be odd such that every node has a sibling (except the root).
     pub fn add_entry(&mut self, node: Node, neighbors: &[Node]) -> usize {
@@ -346,7 +336,7 @@ pub struct IntersectionForest<Neighbors: NeighborsSlice> {
     /// Stores at which position the IntersectionTree of node u is in `self.trees`
     index: Vec<NumNodes>,
     /// Stores at which position lies inside a IntersectionTree
-    /// (I1) Every node can be in at least one tree
+    /// (I1) Every node can be in at most one tree
     positions: Vec<NumNodes>,
     /// Access to neighborhoods as slices
     /// (I3) All slices are sorted
