@@ -18,8 +18,7 @@ pub fn subset_reduction(
     let mut is_perm_covered = BitSet::new(n);
     for u in sol.iter_fixed() {
         for v in graph.neighbors_of(u) {
-            if !is_perm_covered.get_bit(v) {
-                is_perm_covered.set_bit(v);
+            if !is_perm_covered.set_bit(v) {
                 for w in graph.neighbors_of(v) {
                     non_perm_degree[w as usize] -= 1;
                 }
@@ -34,9 +33,7 @@ pub fn subset_reduction(
     }
 
     // Sort adjacency lists to allow binary searching later on
-    for u in 0..n {
-        graph.neighbors_slice_mut(u).sort_unstable();
-    }
+    graph.sort_all_neighbors_unstable();
 
     let mut candidates = Vec::new();
     let mut offsets = Vec::new();
@@ -47,17 +44,17 @@ pub fn subset_reduction(
 
         // If every neighbor (including u) is permanently covered, skip this node
         // Otherwise pick node with maximum number of non-permanently covered neighbors
-        let min_neighbor = graph
+        if let Some(node) = graph
             .neighbors_of(u)
             .filter(|v| !is_perm_covered.get_bit(*v))
-            .min_by_key(|v| non_perm_degree[*v as usize]);
-        if let Some(node) = min_neighbor {
-            for v in neighbors!(node) {
-                if *v == u {
+            .min_by_key(|v| non_perm_degree[*v as usize])
+        {
+            for &v in neighbors!(node) {
+                if v == u {
                     continue;
                 }
 
-                candidates.push(*v);
+                candidates.push(v);
                 offsets.push(0);
             }
         } else {
@@ -65,14 +62,14 @@ pub fn subset_reduction(
         }
 
         // Only consider candidates that are adjacent to all non-permanently covered neighbors of u
-        for v in neighbors!(u) {
-            if is_perm_covered.get_bit(*v) {
+        for &v in neighbors!(u) {
+            if is_perm_covered.get_bit(v) {
                 continue;
             }
 
             for i in (0..candidates.len()).rev() {
                 let candidate = candidates[i];
-                if let Ok(index) = neighbors!(candidate)[offsets[i]..].binary_search(v) {
+                if let Ok(index) = neighbors!(candidate)[offsets[i]..].binary_search(&v) {
                     // Since edge-lists are sorted, v is increasing and we can use offsets[i] to
                     // allow for faster binary searches in later iterations
                     offsets[i] += index;

@@ -5,11 +5,10 @@ use rand_distr::Distribution;
 
 use crate::{
     graph::*,
+    kernelization::subset_reduction,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
     utils::{intersection_forest::IntersectionForest, sampler::WeightedPow2Sampler, DominatingSet},
 };
-
-use super::subsets::subset_reduction;
 
 /// # GreedyReverseSearch
 ///
