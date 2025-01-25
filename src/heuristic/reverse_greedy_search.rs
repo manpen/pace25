@@ -202,7 +202,7 @@ where
         let mut scores = vec![0; n];
         let mut intersection_forest = IntersectionForest::new_sorted(neighborhoods);
 
-        // Insert uniquely covered neighbors of dominating nodes into MergeTrees & Sampler
+        // Insert uniquely covered neighbors of dominating nodes into IntersectionTrees & Sampler
         for u in initial_solution.iter_non_fixed() {
             for v in graph.neighbors_of(u) {
                 if num_covered[v as usize] <= 1 {
@@ -250,7 +250,7 @@ where
     /// 1. Sample a node from sampler
     /// 2. Insert the node into the DomSet
     /// 3. Remove all now redundant nodes of the DomSet
-    /// 4. Update MergeTrees/Scores/Sampler accordingly
+    /// 4. Update IntersectionTrees/Scores/Sampler accordingly
     pub fn step(&mut self) {
         // Sample node: if no node can be sampled, current solution is optimal
         let proposed_node = if let Some(node) = self.draw_node() {
