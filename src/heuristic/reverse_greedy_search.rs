@@ -205,7 +205,8 @@ where
         // Insert uniquely covered neighbors of dominating nodes into IntersectionTrees & Sampler
         for u in initial_solution.iter_non_fixed() {
             for v in graph.neighbors_of(u) {
-                if num_covered[v as usize] <= 1 {
+                debug_assert!(num_covered[v as usize] > 0);
+                if num_covered[v as usize] == 1 {
                     intersection_forest.add_entry(u, v);
                 }
             }
@@ -241,7 +242,7 @@ where
             age,
             intersection_forest,
             round: 1,
-            domset_modifications: Vec::new(),
+            domset_modifications: Vec::with_capacity(1 + n / 64),
         }
     }
 
@@ -320,7 +321,9 @@ where
         // (I4) Node must be part of Sampler
         self.sampler.remove_entry(u);
 
-        self.domset_modifications.push(DomSetModification::Add(u));
+        let _ = self
+            .domset_modifications
+            .push_within_capacity(DomSetModification::Add(u));
 
         // (I1)Update adjacency lists as well as (I2) num_covered/uniquely_covered
         //
@@ -362,8 +365,9 @@ where
         self.current_solution.remove_node(old_node);
         self.age[old_node as usize] = self.round;
 
-        self.domset_modifications
-            .push(DomSetModification::Remove(old_node));
+        let _ = self
+            .domset_modifications
+            .push_within_capacity(DomSetModification::Remove(old_node));
 
         // (I1) Re-order neighbors
         for i in (0..self.graph.degree_of(old_node)).rev() {
