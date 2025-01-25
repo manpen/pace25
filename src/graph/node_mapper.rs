@@ -1,6 +1,5 @@
 use super::*;
 use fxhash::FxHashMap;
-use itertools::Itertools;
 use std::cmp::Ordering;
 use std::fmt;
 

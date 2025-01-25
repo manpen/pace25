@@ -5,8 +5,6 @@ use std::{
     slice::{from_raw_parts, from_raw_parts_mut},
 };
 
-use crate::bitmask_stream::{BitmaskSliceStream, BitmaskStream, StreamElement, ToBitmaskStream};
-
 use super::{prelude::*, *};
 
 pub type BitSetShard32 = BitSetShardImpl<u32>;

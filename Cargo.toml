@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-signal-handling = []
+signal-handling = ["ctrlc"]
 
 [dependencies]
 glob="0.3"
@@ -28,6 +28,8 @@ fasthash = "0.4"
 stream_bitset = { path="stream-bitset" }
 anyhow = "1.0.95"
 good_lp = "1.11.0"
+num = "0.4.3"
+array-init = "2.1.0"
 
 [profile.release]
 #lto="fat"
@@ -41,3 +43,9 @@ codegen-units=1
 debug=false
 panic="abort"
 strip=true
+
+[[bin]]
+name = "heuristic"
+path = "src/bin/heuristic_solver.rs"
+required-features = ["signal-handling"]
+test = false

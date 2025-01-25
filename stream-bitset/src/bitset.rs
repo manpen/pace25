@@ -1,7 +1,5 @@
 use std::{borrow::Borrow, marker::PhantomData, ops::*};
 
-use crate::bitmask_stream::{BitmaskSliceStream, BitmaskStream, StreamElement, ToBitmaskStream};
-
 use super::{prelude::*, *};
 
 pub type BitSet32 = BitSetImpl<u32>;
