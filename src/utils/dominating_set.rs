@@ -13,6 +13,26 @@ pub struct DominatingSet {
     num_fixed: NumNodes,
 }
 
+impl PartialEq for DominatingSet {
+    fn eq(&self, other: &Self) -> bool {
+        let mut sol1 = self.solution.clone();
+        let mut sol2 = other.solution.clone();
+
+        if self.len() != other.len() || self.num_of_fixed_nodes() != other.num_of_fixed_nodes() {
+            return false;
+        }
+
+        let num_fixed = self.num_fixed as usize;
+
+        sol1[..num_fixed].sort_unstable();
+        sol1[num_fixed..].sort_unstable();
+        sol2[..num_fixed].sort_unstable();
+        sol2[num_fixed..].sort_unstable();
+
+        sol1 == sol2
+    }
+}
+
 impl DominatingSet {
     /// Creates a new dominating set
     pub fn new(n: NumNodes) -> Self {
