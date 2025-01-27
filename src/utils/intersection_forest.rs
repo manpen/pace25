@@ -65,7 +65,7 @@ impl IntersectionTree {
                 let item = dest[ptr1];
                 let result = other[ptrr..].binary_search_by(|x| x.cmp(&item));
                 dest[ptrw] = item;
-                ptrw += result.is_ok() as usize;
+                ptrw += 1;
                 ptrr += result.unwrap_or_else(|x| x);
 
                 if ptrr == other.len() {
@@ -75,8 +75,9 @@ impl IntersectionTree {
         } else {
             for item in other {
                 let result = dest[ptrr..].binary_search_by(|x| x.cmp(item));
-                dest[ptrw] = *item;
-                ptrw += result.is_ok() as usize;
+                let is_ok = result.is_ok() as Node;
+                dest[ptrw] = is_ok * *item + (1 - is_ok) * dest[ptrw];
+                ptrw += is_ok as usize;
                 ptrr += result.unwrap_or_else(|x| x);
 
                 if ptrr == dest.len() {
@@ -431,7 +432,7 @@ impl<Neighbors: NeighborsSlice> IntersectionForest<Neighbors> {
 
 #[cfg(test)]
 mod tests {
-    use rand::seq::SliceRandom;
+    use rand::{seq::SliceRandom, Rng};
 
     use crate::{graph::CsrGraph, io::GraphPaceReader};
 
@@ -444,13 +445,15 @@ mod tests {
             for _ in 0..100 {
                 let mut base: Vec<Node> = (0..n).collect();
 
+                let size = rng.gen_range(20..((n as usize) / 2));
+
                 base.shuffle(rng);
-                let mut list1a = base[..((n as usize) / 2)].to_vec();
+                let mut list1a = base[..size].to_vec();
                 list1a.sort_unstable();
                 let mut list1b = list1a.clone();
 
                 base.shuffle(rng);
-                let mut list2 = base[..((n as usize) / 2)].to_vec();
+                let mut list2 = base[..size].to_vec();
                 list2.sort_unstable();
 
                 IntersectionTree::intersect_balanced(&mut list1a, &list2);
