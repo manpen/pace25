@@ -65,7 +65,7 @@ impl IntersectionTree {
                 let item = dest[ptr1];
                 let result = other[ptrr..].binary_search_by(|x| x.cmp(&item));
                 dest[ptrw] = item;
-                ptrw += 1;
+                ptrw += result.is_ok() as usize;
                 ptrr += result.unwrap_or_else(|x| x);
 
                 if ptrr == other.len() {
