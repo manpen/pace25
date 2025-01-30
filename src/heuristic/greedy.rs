@@ -95,14 +95,8 @@ pub fn greedy_approximation(
     }
 
     // Compute rest of DomSet via GreedyAlgorithm
-    let max_degree = graph.max_degree();
-    let degrees: Vec<NumNodes> = graph
-        .vertices()
-        .map(|u| (max_degree - graph.degree_of(u)))
-        .collect();
-
     while total_covered < graph.number_of_nodes() {
-        let (_, node) = heap.pop_with_tiebreaker(&degrees).unwrap();
+        let (_, node) = heap.pop().unwrap();
         solution.add_node(node);
 
         for u in graph.neighbors_of(node) {

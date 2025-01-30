@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use num::{FromPrimitive, ToPrimitive};
 
 use crate::graph::Node;
@@ -201,6 +199,9 @@ impl<K: RadixKey, V: RadixValue, const NUM_BUCKETS: usize> IndexedRadixHeap<K, V
     /// tiebreaker.
     ///
     /// Returns *None* if no element is left on the heap
+    ///
+    /// WARNING: if used many times with many entries in the heap, this is a very slow function and
+    /// should be avoided at all costs to ensure efficiency
     pub fn pop_with_tiebreaker<T: PartialOrd>(&mut self, tiebreaker: &[T]) -> Option<(K, V)> {
         if self.buckets[0].is_empty() {
             self.update_buckets();
@@ -213,7 +214,7 @@ impl<K: RadixKey, V: RadixValue, const NUM_BUCKETS: usize> IndexedRadixHeap<K, V
                 .min_by(|(_, (_, v1)), (_, (_, v2))| {
                     tiebreaker[v1.to_usize().unwrap()]
                         .partial_cmp(&tiebreaker[v2.to_usize().unwrap()])
-                        .unwrap_or(Ordering::Equal)
+                        .unwrap()
                 })?;
 
         let key = *key;
