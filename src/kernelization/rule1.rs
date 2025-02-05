@@ -31,6 +31,7 @@ const NOT_SET: Node = Node::MAX;
 impl<Graph: AdjacencyList + SelfLoop> KernelizationRule<&Graph> for Rule1 {
     fn apply_rule(graph: &Graph, sol: &mut DominatingSet) -> BitSet {
         let n = graph.len();
+        assert!(NOT_SET as usize >= n);
 
         // Inverse mappings of step (1) and (2)
         let mut inv_mappings: Vec<Vec<Node>> = vec![Vec::new(); n];
@@ -57,7 +58,9 @@ impl<Graph: AdjacencyList + SelfLoop> KernelizationRule<&Graph> for Rule1 {
         for u in graph.vertices() {
             let max_neighbor = graph
                 .neighbors_of(u)
-                .max_by(|&v1, &v2| (graph.degree_of(v1), v1).cmp(&(graph.degree_of(v2), v2)))
+                .map(|u| (graph.degree_of(u), u))
+                .max()
+                .map(|(_, u)| u)
                 .unwrap();
             if max_neighbor != u {
                 inv_mappings[max_neighbor as usize].push(u);
@@ -68,7 +71,7 @@ impl<Graph: AdjacencyList + SelfLoop> KernelizationRule<&Graph> for Rule1 {
 
         // (1) Compute list of candidate-pairs based on mapping
         for u in graph.vertices() {
-            // Mark closed neighborhood of u
+            // Mark closed neighborhood N[u] of u (SelfLoop marker)
             for v in graph.neighbors_of(u) {
                 marked[v as usize] = u;
             }
@@ -84,31 +87,31 @@ impl<Graph: AdjacencyList + SelfLoop> KernelizationRule<&Graph> for Rule1 {
             }
         }
 
+        // We drained inv_mappings earlier completely, so we can now reuse it
+        debug_assert!(inv_mappings.iter().all(|vec| vec.is_empty()));
+
         // (2) Compute second mapping from list of candidate-pairs
         for &(u, _) in &potential_type3_node {
             for v in graph.neighbors_of(u) {
                 // Only process each node once
-                if processed.get_bit(v) || u == v {
+                if u == v || processed.get_bit(v) {
                     continue;
                 }
 
-                // Mark closed neighborhood of v
+                // Mark closed neighborhood N[v] of v (SelfLoop marker)
                 for x in graph.neighbors_of(v) {
                     marked[x as usize] = v;
                 }
 
                 // Find minimum dominating node of neighbors in neighborhood of v
-                if let Some(min_node) = graph
+                if let Some((min_node, _)) = graph
                     .neighbors_of(v)
                     .filter_map(|x| {
                         let pt = parent[x as usize];
-                        if pt != NOT_SET && pt != v && marked[pt as usize] == v {
-                            Some(pt)
-                        } else {
-                            None
-                        }
+                        (pt != NOT_SET && pt != v && marked[pt as usize] == v)
+                            .then_some((graph.degree_of(pt), pt))
                     })
-                    .min_by(|&x1, &x2| (graph.degree_of(x1), x1).cmp(&(graph.degree_of(x2), x2)))
+                    .min()
                 {
                     // We drained inv_mappings earlier completely, so we can now reuse it
                     inv_mappings[min_node as usize].push(v);
@@ -120,7 +123,7 @@ impl<Graph: AdjacencyList + SelfLoop> KernelizationRule<&Graph> for Rule1 {
 
         // (3) Mark candidates as possible Type2-Nodes if their neighborhoods are subsets
         for u in graph.vertices() {
-            // Mark closed neighborhood of u
+            // Mark closed neighborhood N[u] of u (SelfLoop marker)
             for v in graph.neighbors_of(u) {
                 marked[v as usize] = u;
             }
@@ -161,9 +164,8 @@ mod tests {
 
     use super::*;
 
-    // The standard Rule implementation with runtime O(n * D * D) where D is the maximum degree in
-    // the graph.
-    fn worse_rule1_impl(graph: &(impl AdjacencyList + SelfLoop), sol: &mut DominatingSet) {
+    // The standard Rule implementation with runtime O(n * D * D) where D is the maximum degree in the graph.
+    fn naive_rule1_impl(graph: &(impl AdjacencyList + SelfLoop), sol: &mut DominatingSet) {
         let mut marked = BitSet::new(graph.number_of_nodes());
         let mut type2_nodes = BitSet::new(graph.number_of_nodes());
         for u in graph.vertices() {
@@ -242,9 +244,9 @@ mod tests {
             let mut sol2 = sol1.clone();
 
             Rule1::apply_rule(&graph, &mut sol1);
-            worse_rule1_impl(&graph, &mut sol2);
+            naive_rule1_impl(&graph, &mut sol2);
 
-            assert_eq!(sol1, sol2);
+            assert!(sol1.equals(&sol2));
         }
     }
 }
