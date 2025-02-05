@@ -7,7 +7,11 @@ use crate::{
     graph::*,
     kernelization::subset_reduction,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
-    utils::{intersection_forest::IntersectionForest, sampler::WeightedPow2Sampler, DominatingSet},
+    utils::{
+        intersection_forest::{InlineIntersectionForest, IntersectionForest},
+        sampler::WeightedPow2Sampler,
+        DominatingSet,
+    },
 };
 
 /// # GreedyReverseSearch
@@ -103,7 +107,7 @@ pub struct GreedyReverseSearch<
     ///
     /// Note that we only *really* consider neighbors that are not subset-dominated and thus can appear in any
     /// optimal DomSet without the possibility of directly replacing them.
-    intersection_forest: IntersectionForest<<G as ToSliceRepresentation>::SliceRepresentation>,
+    pub intersection_forest: InlineIntersectionForest,
 
     /// Keep track of all applied modifications to current_solution to also apply them to
     /// best_solution when new best solution is found
@@ -140,9 +144,7 @@ where
                 redundant_nodes: Vec::new(),
                 scores: Vec::new(),
                 age: Vec::new(),
-                intersection_forest: IntersectionForest::new(
-                    <G as ToSliceRepresentation>::SliceRepresentation::default(),
-                ),
+                intersection_forest: InlineIntersectionForest::default(),
                 round: 1,
                 domset_modifications: Vec::new(),
             };
@@ -153,7 +155,7 @@ where
         // Run Subset-Reduction and create reduced edge set
         let mut neighborhoods = graph.to_slice_representation();
         let non_optimal_nodes = subset_reduction(&mut neighborhoods, &mut initial_solution);
-        neighborhoods.filter_out_nodes(&non_optimal_nodes);
+        let (csr_edges, csr_offsets) = neighborhoods.extract_csr_repr();
 
         let mut num_covered = vec![0; n];
         let mut age = vec![0; n];
@@ -197,10 +199,21 @@ where
             }
         }
 
-        // Instantiate sampler and merge trees with reduced neighbor-set
+        // Instantiate sampler and IntersectionForest with reduced neighbor-set
         let mut sampler = WeightedPow2Sampler::new(n);
         let mut scores = vec![0; n];
-        let mut intersection_forest = IntersectionForest::new_sorted(neighborhoods);
+
+        // Fixed nodes will never appear in the IntersectionForest as they are fixed in the DomSet,
+        // ie. no Tree-Owners, and will thus be never uniquely covered by another DomSet node nor
+        // will they be a neighbor to a uniquely covered node (of another DomSet node).
+        let fixed_nodes =
+            BitSet::new_with_bits_set(graph.number_of_nodes(), initial_solution.iter_fixed());
+        let mut intersection_forest = InlineIntersectionForest::new_unsorted(
+            csr_edges,
+            csr_offsets,
+            fixed_nodes,
+            non_optimal_nodes,
+        );
 
         // Insert uniquely covered neighbors of dominating nodes into IntersectionTrees & Sampler
         for u in initial_solution.iter_non_fixed() {
@@ -403,7 +416,7 @@ where
         // Copy IntersectionTree in the first iteration as it should be a superset of the intended one for
         // new_node by (I3). This will later be further updated and corrected.
         if MARKER {
-            self.intersection_forest.transfer(old_node, new_node);
+            self.intersection_forest.transfer_tree(old_node, new_node);
             self.scores[old_node as usize] = 1;
             self.sampler.add_entry(old_node, 0);
         } else {
@@ -419,7 +432,7 @@ where
                 }
             }
             self.scores[old_node as usize] = 0;
-            self.intersection_forest.clear(old_node);
+            self.intersection_forest.clear_tree(old_node);
         }
     }
 

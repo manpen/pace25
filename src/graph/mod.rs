@@ -418,6 +418,23 @@ pub trait NeighborsSlice: AdjacencyList {
 
     /// Returns a mutable slive over all neighbors of u.
     fn neighbors_slice_mut(&mut self, u: Node) -> &mut [Node];
+
+    /// Extract a CSR representation of the graph, ie. a compacted list of all edges sorted by
+    /// source and a list of offsets indicating where the neighbors of u begin to appear in this
+    /// edge list.
+    fn extract_csr_repr(&self) -> (Vec<Node>, Vec<NumEdges>) {
+        let mut offsets = Vec::with_capacity(self.len() + 1);
+        offsets.push(0);
+
+        let mut edges = Vec::new();
+
+        for u in self.vertices() {
+            offsets.push(self.neighbors_slice(u).len() as NumEdges);
+            edges.extend_from_slice(self.neighbors_slice(u));
+        }
+
+        (edges, offsets)
+    }
 }
 
 /// Conversion trait for extracting a NeighborSlice representation of a graph.

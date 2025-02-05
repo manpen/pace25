@@ -1,7 +1,7 @@
 use std::{io::Write, time::Instant};
 
 use dss::{
-    graph::CsrGraph,
+    graph::{CsrGraph, NeighborsSlice},
     heuristic::{greedy_approximation, reverse_greedy_search::GreedyReverseSearch},
     io::GraphPaceReader,
     prelude::IterativeAlgorithm,
@@ -32,7 +32,7 @@ fn main() -> anyhow::Result<()> {
     timer = Instant::now();
 
     let mut counter = 1usize;
-    while !signal_handling::received_ctrl_c() && !search.is_completed() {
+    while !signal_handling::received_ctrl_c() && !search.is_completed() && counter < 1000000 {
         counter += 1;
         search.step();
     }
