@@ -8,9 +8,7 @@ use crate::{
     kernelization::subset_reduction,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
     utils::{
-        intersection_forest::{InlineIntersectionForest, IntersectionForest},
-        sampler::WeightedPow2Sampler,
-        DominatingSet,
+        intersection_forest::InlineIntersectionForest, sampler::WeightedPow2Sampler, DominatingSet,
     },
 };
 
@@ -227,10 +225,7 @@ where
             for &v in intersection_forest.get_root_nodes(u) {
                 if u != v {
                     scores[v as usize] += 1;
-                    if sampler.is_in_sampler(v) {
-                        sampler.remove_entry(v);
-                    }
-                    sampler.add_entry(v, scores[v as usize] as usize - 1);
+                    sampler.set_bucket(v, scores[v as usize] as usize);
                 }
             }
         }
@@ -247,7 +242,7 @@ where
             rng,
             nodes_to_update: Vec::new(),
             in_nodes_to_update: BitSet::new(n as NumNodes),
-            temp_nodes: Vec::new(),
+            temp_nodes: Vec::with_capacity(n),
             num_covered,
             uniquely_covered,
             redundant_nodes: Vec::new(),
@@ -424,11 +419,8 @@ where
             for &node in self.intersection_forest.get_root_nodes(old_node) {
                 if node != old_node && node != new_node {
                     self.scores[node as usize] -= 1;
-                    self.sampler.remove_entry(node);
-                    if self.scores[node as usize] > 0 {
-                        self.sampler
-                            .add_entry(node, self.scores[node as usize] as usize - 1);
-                    }
+                    self.sampler
+                        .set_bucket(node, self.scores[node as usize] as usize);
                 }
             }
             self.scores[old_node as usize] = 0;

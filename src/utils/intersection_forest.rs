@@ -662,7 +662,7 @@ impl InlineIntersectionForest {
 
                 let not_removable = !removable_nodes.get_bit(node);
                 write_ptr += (not_removable && !ignorable_nodes.get_bit(node)) as usize;
-                ignorable_offset += not_removable as u64;
+                ignorable_offset += not_removable as NumEdges;
                 read_ptr += 1;
             }
 
@@ -840,9 +840,10 @@ impl InlineIntersectionForest {
     }
 
     /// Intersects associated data of dest and other and writes them into the associated data of dest.
+    /// Returns *true* if the data in dest was modified by intersect.
     ///
     /// (I2, I3) Data[dest] and Data[other] are non-empty and sorted.
-    fn intersect(&mut self, dest: Node, other: Node) {
+    fn intersect(&mut self, dest: Node, other: Node) -> bool {
         // (I2) and (I3)
         debug_assert!(!data!(self, dest).is_empty() && !data!(self, other).is_empty());
         debug_assert!(data!(self, dest).is_sorted() && data!(self, other).is_sorted());
@@ -850,24 +851,31 @@ impl InlineIntersectionForest {
         // Application of (I2): if any list has length 1, the element must be the owner of the
         // tree, which is common
         if node!(self, dest).data_len == 1 {
-            return;
+            return false;
         }
         if node!(self, other).data_len == 1 {
             data!(self, dest)[0] = data!(self, other)[0];
             node!(self, dest).data_len = 1;
 
-            return;
+            return true;
         }
+
+        const SIZE_DIFF: NumNodes = 4;
 
         let dest_len = node!(self, dest).data_len;
         let other_len = node!(self, other).data_len;
-        if dest_len << 8 <= other_len {
+        if dest_len << SIZE_DIFF <= other_len {
             self.intersect_unbalanced::<true>(dest, other);
-        } else if other_len << 8 <= dest_len {
+        } else if other_len << SIZE_DIFF <= dest_len {
             self.intersect_unbalanced::<false>(dest, other);
         } else {
             self.intersect_balanced(dest, other);
         }
+
+        // Intersections can only remove elements from dest and not add new ones.
+        // Thus, if lengths remain unchanged, no elements were removed (or added) and dest remained
+        // unchanged.
+        dest_len != node!(self, dest).data_len
     }
 
     /// 'Restores' the associated data of a node by assigning its original neighborhood as data
@@ -895,15 +903,18 @@ impl InlineIntersectionForest {
     /// 'Repairs' the associated data of the node at position pos in Tree[u] by computing the intersection of its original data
     /// as well as those of its two (or one, or zero) children.
     ///
+    /// Returns *true* if the length of the data was changed by repairing the node.
+    ///
     /// Warning: this can break (I5) for the parent of u.
-    fn repair_node(&mut self, u: Node, pos: usize) {
+    fn repair_node(&mut self, u: Node, pos: usize) -> bool {
         debug_assert!(self.owns_tree(u));
         debug_assert!(node!(self, u).tree_len > pos as NumNodes);
 
         let node = self.node_at(u, pos);
         if Self::is_free_node(node) {
-            return;
+            return true;
         }
+        let len = node!(self, node).data_len;
         self.restore_node(node);
 
         // Right child
@@ -922,17 +933,50 @@ impl InlineIntersectionForest {
                 self.intersect(node, left_child);
             }
         }
+
+        len != node!(self, node).data_len
     }
 
-    /// 'Repairs' Tree[u] upwards from node at position pos
+    /// 'Repairs' Tree[u] upwards from node at position pos.
+    /// Stops when no change was detected.
     ///
     /// Restores (I5) in the path from pos to root
     fn repair_up(&mut self, u: Node, mut pos: usize) {
+        // We call repair_node when changing data at position pos.
+        // Even if no length-change was detected, data can still differ from before and we thus
+        // need to at least update its parent.
         self.repair_node(u, pos);
         while pos > 0 {
             pos = (pos - 1) >> 1;
-            self.repair_node(u, pos);
+            // Early returns when no change in data length was done.
+            // This assumes that every node in the path from pos->root has unchanged children
+            // (except at pos).
+            if !self.repair_node(u, pos) {
+                return;
+            }
         }
+    }
+
+    /// 'Repairs' Tree[u] upwards from node at position pos.
+    /// Stops when no change was detected.
+    ///
+    /// Returns *true* if at any point, position must_see_pos was repaired as well as its parent
+    /// (if existent).
+    fn repair_up_ensure_pos(&mut self, u: Node, mut pos: usize, must_see_pos: usize) -> bool {
+        let mut pos_seen = pos == must_see_pos;
+        self.repair_node(u, pos);
+        while pos > 0 {
+            pos = (pos - 1) >> 1;
+            // If pos == must_see_pos, we return early before marking must_see_pos as true as we
+            // need to update its parent (if existent) as well.
+            if !self.repair_node(u, pos) {
+                break;
+            }
+
+            pos_seen = pos_seen || pos == must_see_pos;
+        }
+
+        pos_seen
     }
 
     /// Inserts node v into the Tree[u]
@@ -964,7 +1008,11 @@ impl InlineIntersectionForest {
             pos = (pos - 1) >> 1;
 
             let parent = self.forest[u_offset + pos];
-            self.intersect(parent, v);
+            // If the data did not change from before, no further elements must be removed in
+            // cascading updates and we can stop early.
+            if !self.intersect(parent, v) {
+                break;
+            }
 
             // Propagate node
             v = parent;
@@ -1028,7 +1076,13 @@ impl InlineIntersectionForest {
             self.forest[u_offset + leaf_pos] = node!(self, u).free_pos | !FREE_SLOT_MASK;
             node!(self, u).free_pos = leaf_pos as NumNodes;
         }
-        self.repair_up(u, (leaf_pos - 1) >> 1);
+
+        // Repair from the leaf position. If the original position of the removed node was also
+        // repaired (as well as its) parent, we can safely stop computing cascading intersections.
+        // Otherwise, we need to start another repair_up procedure from the original position.
+        if !self.repair_up_ensure_pos(u, (leaf_pos - 1) >> 1, pos as usize) {
+            self.repair_up(u, pos as usize);
+        }
     }
 
     /// Clears a tree, ie. removes it from the forest.
@@ -1114,7 +1168,7 @@ impl InlineIntersectionForest {
 
     /// Compresses a tree by swapping nodes in lower levels with free nodes in higher levels such
     /// that the whole tree (including remaining free nodes) does not exceed a size of threshold in
-    /// array representation. 
+    /// array representation.
     ///
     /// Requires threshold >= Tree[u].len() - Free[u].len()
     fn compress_tree(&mut self, u: Node, threshold: NumNodes) {
@@ -1147,6 +1201,11 @@ impl InlineIntersectionForest {
 
             node!(self, u).tree_len -= 1;
             self.dirty_nodes.set_bit(init_tree_len - last_free_pos);
+
+            // Also add the parent of the added tree node into the bitset as we will definitely
+            // need to update it later on.
+            self.dirty_nodes
+                .set_bit(init_tree_len - ((last_free_pos - 1) >> 1));
             self.dirty_nodes
                 .set_bit(init_tree_len - ((node!(self, u).tree_len - 1) >> 1));
 
@@ -1167,12 +1226,13 @@ impl InlineIntersectionForest {
                 continue;
             }
 
-            self.repair_node(u, bit_pos as usize);
-            let parent = (bit_pos - 1) >> 1;
-            if bit_pos == 0 {
-                break;
+            // If a the data of a node did not change, do not cause cascading updates.
+            // Only for a node with a position change, we need to update its parent which is
+            // ensured by inserting them in the previous part preemptively.
+            if self.repair_node(u, bit_pos as usize) {
+                let parent = (bit_pos - 1) >> 1;
+                self.dirty_nodes.set_bit(init_tree_len - parent);
             }
-            self.dirty_nodes.set_bit(init_tree_len - parent);
         }
 
         // If remaining free nodes inside Tree[u] point to (previous) free node positions outside

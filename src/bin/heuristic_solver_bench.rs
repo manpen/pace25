@@ -1,7 +1,7 @@
 use std::{io::Write, time::Instant};
 
 use dss::{
-    graph::{CsrGraph, NeighborsSlice},
+    graph::CsrGraph,
     heuristic::{greedy_approximation, reverse_greedy_search::GreedyReverseSearch},
     io::GraphPaceReader,
     prelude::IterativeAlgorithm,
@@ -26,7 +26,7 @@ fn main() -> anyhow::Result<()> {
     let greedy_time = timer.elapsed().as_millis();
     timer = Instant::now();
 
-    let mut search = GreedyReverseSearch::<_, _, 8, 10>::new(&mut graph, domset, &mut rng);
+    let mut search = GreedyReverseSearch::<_, _, 10, 10>::new(&mut graph, domset, &mut rng);
 
     let init_time = timer.elapsed().as_millis();
     timer = Instant::now();
