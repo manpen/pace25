@@ -5,7 +5,7 @@ use rand_distr::Distribution;
 
 use crate::{
     graph::*,
-    kernelization::subset_reduction,
+    kernelization::{KernelizationRule, SubsetRule},
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
     utils::{intersection_forest::IntersectionForest, sampler::WeightedPow2Sampler, DominatingSet},
 };
@@ -152,7 +152,7 @@ where
 
         // Run Subset-Reduction and create reduced edge set
         let mut neighborhoods = graph.to_slice_representation();
-        let non_optimal_nodes = subset_reduction(&mut neighborhoods, &mut initial_solution);
+        let non_optimal_nodes = SubsetRule::apply_rule(&mut neighborhoods, &mut initial_solution);
         neighborhoods.filter_out_nodes(&non_optimal_nodes);
 
         let mut num_covered = vec![0; n];
