@@ -257,4 +257,28 @@ impl DominatingSet {
         }
         Ok(())
     }
+
+    /// Returns *true* if Self and another DomSet are identical to each other.
+    pub fn equals(&self, other: &Self) -> bool {
+        if self.len() != other.len() || self.num_of_fixed_nodes() != other.num_of_fixed_nodes() {
+            return false;
+        }
+
+        let mut sol1 = self.solution.clone();
+        let mut sol2 = other.solution.clone();
+
+        let num_fixed = self.num_fixed as usize;
+
+        sol1[..num_fixed].sort_unstable();
+        sol2[..num_fixed].sort_unstable();
+
+        if sol1[..num_fixed] != sol2[..num_fixed] {
+            return false;
+        }
+
+        sol1[num_fixed..].sort_unstable();
+        sol2[num_fixed..].sort_unstable();
+
+        sol1[num_fixed..] == sol2[num_fixed..]
+    }
 }
