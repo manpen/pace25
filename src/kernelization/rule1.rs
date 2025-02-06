@@ -108,8 +108,11 @@ impl<Graph: AdjacencyList + SelfLoop> KernelizationRule<&Graph> for Rule1 {
                     .neighbors_of(v)
                     .filter_map(|x| {
                         let pt = parent[x as usize];
-                        (pt != NOT_SET && pt != v && marked[pt as usize] == v)
-                            .then_some((graph.degree_of(pt), pt))
+                        if pt != NOT_SET && pt != v && marked[pt as usize] == v {
+                            Some((graph.degree_of(pt), pt))
+                        } else {
+                            None
+                        }
                     })
                     .min()
                 {

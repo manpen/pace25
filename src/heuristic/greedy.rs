@@ -1,7 +1,6 @@
-use itertools::Itertools;
-
 use crate::{
     graph::*,
+    kernelization::{rule1::Rule1, KernelizationRule},
     utils::{dominating_set::DominatingSet, radix::NodeHeap},
 };
 
@@ -22,46 +21,8 @@ pub fn greedy_approximation(
 ) -> DominatingSet {
     let mut solution = DominatingSet::new(graph.number_of_nodes());
 
-    // Computed fixed nodes (ie. nodes that are guaranteed to be in an optimal solution)
-    for u in graph.vertices() {
-        match graph.degree_of(u) {
-            // Singletons
-            1 => {
-                solution.fix_node(u);
-            }
-            // Nodes with leafs
-            2 => {
-                let (nb1, nb2) = graph.neighbors_of(u).collect_tuple().unwrap();
-                let nb = if nb1 == u { nb2 } else { nb1 };
-
-                if !solution.is_fixed_node(u) && !solution.is_fixed_node(nb) {
-                    solution.fix_node(nb);
-                }
-            }
-            // Nodes in a triangle where both other nodes not incident to any other node
-            3 => {
-                let (nb1, nb2) = graph
-                    .neighbors_of(u)
-                    .filter(|v| *v != u)
-                    .collect_tuple()
-                    .unwrap();
-
-                if solution.is_fixed_node(u)
-                    || solution.is_fixed_node(nb1)
-                    || solution.is_fixed_node(nb2)
-                {
-                    continue;
-                }
-
-                if graph.degree_of(nb1) == 3 && graph.has_edge(nb1, nb2) {
-                    solution.fix_node(nb2);
-                } else if graph.degree_of(nb2) == 3 && graph.has_edge(nb2, nb1) {
-                    solution.fix_node(nb1);
-                }
-            }
-            _ => {}
-        };
-    }
+    // Apply Rule1
+    Rule1::apply_rule(graph, &mut solution);
 
     // Compute how many neighbors in the DomSet every node has
     let mut num_covered = vec![0usize; graph.number_of_nodes() as usize];
