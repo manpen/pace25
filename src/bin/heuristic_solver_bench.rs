@@ -43,7 +43,7 @@ fn main() -> anyhow::Result<()> {
 
     writeln!(
         std::io::stdout(),
-        "{size},{counter},{read_time},{greedy_time},{init_time},{search_time}"
+        "{read_time},{greedy_time},{init_time},{counter},{search_time},{size}"
     )?;
 
     Ok(())
