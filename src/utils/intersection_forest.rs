@@ -532,7 +532,7 @@ pub struct InlineIntersectionForest {
 
     /// Important information for all nodes u
     /// * offset_filtered := first neighbor of u in edges <=> begin of associated data entries in data
-    /// * offset_unfiltered := begin of owned tree representation in forest <=> begin of list of free nodes in owned tree in free_nodes
+    /// * offset_unfiltered := begin of owned tree representation in forest     
     /// * tree_len := length of the owned tree: Tree[u] = forest[offset_unfiltered..(offset_unfiltered + tree_len)]
     /// * data_len := length of associated data if node in a tree: Data[u] = data[offset_filtered..(offset_filtered + data_len)]
     /// * tree_pos := position in the tree where u is inserted: if u in Tree[v], then forest[offset_unfiltered + TreePos[u]] = u and TreePos[u] < TreeLen[v]
@@ -1253,5 +1253,348 @@ impl InlineIntersectionForest {
             }
             self.forest[offset + last_free_pos as usize] = current_head | !FREE_SLOT_MASK;
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct NodeInfo {
+    pub offset_unfiltered: NumEdges,
+    pub offset_filtered: NumEdges,
+    pub list_idx: NumNodes,
+    pub list_len: NumNodes,
+    pub list_pos: NumNodes,
+}
+
+/// IntersectionLists - Efficient queries into common neighborhoods with higher memory consumption
+///
+/// This data structure supports dynamic queries into common neighborhoods of select subsets of
+/// nodes subject to some invariants listed below. That is, if a set S of nodes is inserted into
+/// some IntersectionList T, the associated data of the highest bucket of T is the list of all nodes that are
+/// incident to *every* node in S.
+///
+/// It is implemented by storing a list of all nodes partitioned by number of occurences in
+/// neighborhoods of inserted nodes.
+///
+/// See the GreedyReverseSearch heuristic for a more in-depth example.
+///
+/// The datastructure relies on a series of invariants listed below
+/// (I1) Every node can be inserted in at most one list at a time.
+/// (I2) The owner of a tree is a neighbor of all nodes inserted into the tree.
+/// (I3) Neighborhoods, ie. associated data are sorted in increasing order (no multi-edges).
+/// (I4) The number of trees is non-increasing over time
+///
+#[derive(Debug, Clone, Default)]
+pub struct IntersectionLists {
+    /// Number of Nodes
+    n: usize,
+
+    /// MaxDegree of Graph + 2: represents the maximum number of buckets (ie. occurences) that are
+    /// possible. (+2) because we need a bucket 0 as well as a bucket MaxDegree + 1 to allow for
+    /// branchless slice-access.
+    delta: usize,
+
+    /// List of all edges sorted by source, then by target
+    edges: Vec<Node>,
+
+    /// Important information for all nodes u
+    /// * offset_filtered := first neighbor of u in edges <=> begin of associated data entries in data
+    /// * offset_unfiltered := begin of owned list representation in forest   
+    /// * list_idx := Index of List owned by node in self.buckets
+    /// * list_len := length of the owned list: List[u] = lists[offset_unfiltered..(offset_unfiltered + list_len)]
+    /// * list_pos := position in the list where u is inserted: if u in List[v], then lists[offset_unfiltered + ListPos[u]] = u and ListPos[u] < ListLen[v]
+    ///
+    /// To allow faster slice access without bound-checks, we store an artificial node (n + 1) with
+    /// * offset_filtered = edges.len()
+    /// * offset_unfiltered = lists.len()
+    /// * .. = 0
+    nodes: Vec<NodeInfo>,
+
+    /// Inlined list of all inserted nodes
+    ///
+    /// Indexed by offset_unfiltered in self.nodes.
+    lists: Vec<Node>,
+
+    /// Nodes partitioned by
+    /// (1) Associated List L
+    /// (2) Number of occurences in neighborhoods of inserted nodes of L
+    buckets: Vec<Node>,
+
+    /// Stores in which bucket and position a node is stored in the respective list.
+    /// Partitioned by associated list.
+    ///
+    /// The position (second value) is independent of the bucket (although it has to be between the
+    /// corresponding offsets).
+    pointer: Vec<(NumNodes, NumNodes)>,
+
+    /// Stores the offsets of the buckets for each list inlined into a single Vec.
+    /// Partitioned by associated list. Here, every list only gets delta-entries as the number of
+    /// buckets is upper bounded by delta.
+    offsets: Vec<NumNodes>,
+}
+
+macro_rules! neighbors {
+    ($self:ident, $node:ident) => {
+        &$self.edges[($self.nodes[$node as usize].offset_filtered as usize)
+            ..($self.nodes[$node as usize + 1].offset_filtered as usize)]
+    };
+}
+
+impl IntersectionLists {
+    /// Creates a new IntersectionLists from a Csr-Representation of the graph as well as two BitSets
+    /// indicating which nodes will never appear in any way (owner/list-node/data-node) in this
+    /// datastructure (removable_nodes) and which nodes can be ignored in data-lists (ignorable_nodes).
+    /// Also requires an initial list of all list owners.
+    ///
+    /// This assumes that the edges lists are sorted by source and target.
+    pub fn new(
+        csr_edges: Vec<Node>,
+        csr_offsets: Vec<NumEdges>,
+        removable_nodes: BitSet,
+        ignorable_nodes: BitSet,
+        initial_tree_owners: Vec<Node>,
+    ) -> Self {
+        Self::new_inner::<true>(
+            csr_edges,
+            csr_offsets,
+            removable_nodes,
+            ignorable_nodes,
+            initial_tree_owners,
+        )
+    }
+
+    /// Creates a new IntersectionLists from a Csr-Representation of the graph as well as two BitSets
+    /// indicating which nodes will never appear in any way (owner/list-node/data-node) in this
+    /// datastructure (removable_nodes) and which nodes can be ignored in data-lists (ignorable_nodes).
+    /// Also requires an initial list of all list owners.
+    ///
+    /// This will sort the edge lists by source and target when initializing.
+    pub fn new_unsorted(
+        csr_edges: Vec<Node>,
+        csr_offsets: Vec<NumEdges>,
+        removable_nodes: BitSet,
+        ignorable_nodes: BitSet,
+        initial_tree_owners: Vec<Node>,
+    ) -> Self {
+        Self::new_inner::<false>(
+            csr_edges,
+            csr_offsets,
+            removable_nodes,
+            ignorable_nodes,
+            initial_tree_owners,
+        )
+    }
+
+    fn new_inner<const SORTED: bool>(
+        mut edges: Vec<Node>,
+        csr_offsets: Vec<NumEdges>,
+        removable_nodes: BitSet,
+        ignorable_nodes: BitSet,
+        initial_tree_owners: Vec<Node>,
+    ) -> Self {
+        let n = csr_offsets.len() - 1;
+
+        // We reserve values with the leftmost bit set to 1 as free nodes and use the 0111..111 as
+        // a marker for a null-free node (see self.forest documentation). Thus the number of nodes
+        // is restricted to values less than 0111..111
+        debug_assert!(n < FREE_SLOT_MASK as usize);
+
+        let mut nodes = Vec::with_capacity(n + 1);
+
+        let mut max_degree = 0;
+
+        let mut read_ptr = 0usize;
+        let mut write_ptr = 0usize;
+        let mut ignorable_offset = 0;
+        for u in 0..n {
+            nodes.push(NodeInfo {
+                offset_filtered: write_ptr as NumEdges,
+                offset_unfiltered: ignorable_offset,
+                list_idx: NOT_SET,
+                list_len: 0,
+                list_pos: 0,
+            });
+
+            while read_ptr < csr_offsets[u + 1] as usize {
+                let node = edges[read_ptr];
+                edges[write_ptr] = node;
+
+                let not_removable = !removable_nodes.get_bit(node);
+                write_ptr += (not_removable && !ignorable_nodes.get_bit(node)) as usize;
+                ignorable_offset += not_removable as NumEdges;
+                read_ptr += 1;
+            }
+
+            if !SORTED {
+                edges[(nodes[u].offset_filtered as usize)..write_ptr].sort_unstable();
+            }
+
+            max_degree = max_degree.max(ignorable_offset - nodes[u].offset_unfiltered);
+        }
+
+        // Node (n + 1) does not exist, but to prevent unnecessary branching, we store an
+        // additional NodeInformation to keep track of the final offsets
+        nodes.push(NodeInfo {
+            offset_filtered: write_ptr as NumEdges,
+            offset_unfiltered: ignorable_offset,
+            list_idx: NOT_SET,
+            list_len: 0,
+            list_pos: 0,
+        });
+
+        edges.truncate(write_ptr);
+
+        let num_owners = initial_tree_owners.len();
+
+        let lists = vec![NOT_SET; ignorable_offset as usize];
+        let buckets = (0..(n * num_owners))
+            .map(|x| (x % n) as Node)
+            .collect::<Vec<Node>>();
+        let pointer = (0..(n * num_owners))
+            .map(|x| (0, (x % n) as NumNodes))
+            .collect();
+        let mut offsets = vec![n as NumNodes; (max_degree as usize + 2) * num_owners];
+
+        // Assign initial lists
+        for (i, u) in initial_tree_owners.into_iter().enumerate() {
+            nodes[u as usize].list_idx = i as NumNodes;
+            offsets[i * (max_degree as usize + 2)] = 0;
+        }
+
+        Self {
+            n,
+            delta: max_degree as usize + 2,
+            edges,
+            nodes,
+            lists,
+            buckets,
+            pointer,
+            offsets,
+        }
+    }
+
+    /// Returns the associated data of List[u], ie. the set of nodes that are neighbored by all
+    /// inserted nodes of List[u].
+    ///
+    /// If u does not own a list, an empty slice is returned to prevent requiring additional checks.    
+    pub fn get_root_nodes(&self, u: Node) -> &[Node] {
+        let len = self.nodes[u as usize].list_len as usize;
+        if len == 0 {
+            return &[];
+        }
+
+        let list = self.nodes[u as usize].list_idx as usize;
+        debug_assert!(list != NOT_SET as usize);
+
+        &self.buckets[(list * self.n + self.offsets[list * self.delta + len] as usize)
+            ..(list * self.n + self.offsets[list * self.delta + len + 1] as usize)]
+    }
+
+    /// Inserts node v into List[u]
+    pub fn add_entry(&mut self, u: Node, v: Node) {
+        debug_assert!(self.nodes[u as usize].list_idx != NOT_SET);
+
+        // Updates lists
+        self.lists[self.nodes[u as usize].offset_unfiltered as usize
+            + self.nodes[u as usize].list_len as usize] = v;
+        self.nodes[v as usize].list_pos = self.nodes[u as usize].list_len;
+        self.nodes[u as usize].list_len += 1;
+
+        // Faster indexing
+        let list = self.nodes[u as usize].list_idx as usize;
+        let buckets = &mut self.buckets[(list * self.n)..((list + 1) * self.n)];
+        let pointer = &mut self.pointer[(list * self.n)..((list + 1) * self.n)];
+        let offsets = &mut self.offsets[(list * self.delta)..((list + 1) * self.delta)];
+
+        // Move every neighbor of v one bucket up
+        for &w in neighbors!(self, v) {
+            let (bucket, position) = pointer[w as usize];
+            debug_assert!(bucket <= self.nodes[u as usize].list_len);
+            debug_assert_eq!(buckets[position as usize], w);
+            debug_assert!(
+                offsets[bucket as usize] <= position && position < offsets[bucket as usize + 1]
+            );
+
+            offsets[bucket as usize + 1] -= 1;
+
+            let swap_position = offsets[bucket as usize + 1];
+            buckets.swap(position as usize, swap_position as usize);
+
+            pointer[buckets[position as usize] as usize].1 = position;
+            pointer[w as usize] = (bucket + 1, swap_position);
+        }
+    }
+
+    /// Removes node v from List[u]
+    pub fn remove_entry(&mut self, u: Node, v: Node) {
+        debug_assert!(self.nodes[u as usize].list_idx != NOT_SET);
+
+        // Updates lists
+        self.nodes[u as usize].list_len -= 1;
+        let orig_pos = self.nodes[v as usize].list_pos;
+        let swap_node = self.lists[self.nodes[u as usize].offset_unfiltered as usize
+            + self.nodes[u as usize].list_len as usize];
+        self.lists[self.nodes[u as usize].offset_unfiltered as usize + orig_pos as usize] =
+            swap_node;
+        self.nodes[swap_node as usize].list_pos = orig_pos;
+        self.nodes[v as usize].list_pos = NOT_SET;
+
+        // Faster indexing
+        let list = self.nodes[u as usize].list_idx as usize;
+        let buckets = &mut self.buckets[(list * self.n)..((list + 1) * self.n)];
+        let pointer = &mut self.pointer[(list * self.n)..((list + 1) * self.n)];
+        let offsets = &mut self.offsets[(list * self.delta)..((list + 1) * self.delta)];
+
+        // Move every neighbor of v one bucket down
+        for &w in neighbors!(self, v) {
+            let (bucket, position) = pointer[w as usize];
+            debug_assert!(bucket > 0);
+            debug_assert_eq!(buckets[position as usize], w);
+            debug_assert!(
+                offsets[bucket as usize] <= position && position < offsets[bucket as usize + 1]
+            );
+
+            let swap_position = offsets[bucket as usize];
+            buckets.swap(position as usize, swap_position as usize);
+
+            offsets[bucket as usize] += 1;
+
+            pointer[buckets[position as usize] as usize].1 = position;
+            pointer[w as usize] = (bucket - 1, swap_position);
+        }
+    }
+
+    /// Transfer ownership of List[u] to v
+    pub fn transfer_tree(&mut self, u: Node, v: Node) {
+        debug_assert!(
+            self.nodes[u as usize].list_idx != NOT_SET
+                && self.nodes[v as usize].list_idx == NOT_SET
+        );
+
+        let list_len = self.nodes[u as usize].list_len as usize;
+
+        // SAFETY: by (I2), tree_len <= Neighbors[u].len(), Neighbors[v].len();
+        // thus, intervals are non-overlapping and belong to u and v respectively.
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                self.lists
+                    .as_ptr()
+                    .add(self.nodes[u as usize].offset_unfiltered as usize),
+                self.lists
+                    .as_mut_ptr()
+                    .add(self.nodes[v as usize].offset_unfiltered as usize),
+                list_len,
+            );
+        }
+
+        self.nodes[u as usize].list_len = 0;
+        self.nodes[v as usize].list_len = list_len as NumNodes;
+        self.nodes[v as usize].list_idx = self.nodes[u as usize].list_idx;
+        self.nodes[u as usize].list_idx = NOT_SET;
+    }
+
+    /// Clears List[u], ie. removes it from tracking.
+    /// This essentially deletes a list forever.
+    pub fn clear_tree(&mut self, u: Node) {
+        self.nodes[u as usize].list_idx = NOT_SET;
     }
 }
