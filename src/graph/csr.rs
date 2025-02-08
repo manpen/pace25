@@ -1,50 +1,24 @@
 use crate::impl_static_graph_tests;
 
-use super::*;
+use super::{sliced_buffer::SlicedBuffer, *};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct NodeWithCrossPos {
+    pub node: Node,
+    pub cross_pos: NumNodes,
+}
 
 #[derive(Debug, Clone)]
 pub struct CsrGraph {
-    edges: Vec<Node>,
-    offsets: Vec<NumEdges>,
-    cross_references: Vec<NumNodes>,
-
+    neighborhoods: SlicedBuffer<NodeWithCrossPos>,
     max_degree: NumNodes,
-}
-
-impl CsrGraph {
-    #[inline(always)]
-    fn offset_range(&self, u: Node) -> Range<usize> {
-        (self.offsets[u as usize] as usize)..(self.offsets[(u + 1) as usize] as usize)
-    }
-
-    #[inline(always)]
-    fn neighbor_slice(&self, u: Node) -> &[Node] {
-        &self.edges[self.offset_range(u)]
-    }
-
-    #[inline(always)]
-    fn cross_pos_slice(&self, u: Node) -> &[NumNodes] {
-        &self.cross_references[self.offset_range(u)]
-    }
-
-    #[inline(always)]
-    fn neighbor_slice_mut(&mut self, u: Node) -> &mut [Node] {
-        let range = self.offset_range(u);
-        &mut self.edges[range]
-    }
-
-    #[inline(always)]
-    fn cross_pos_slice_mut(&mut self, u: Node) -> &mut [NumNodes] {
-        let range = self.offset_range(u);
-        &mut self.cross_references[range]
-    }
 }
 
 impl GraphNodeOrder for CsrGraph {
     type VertexIter<'a> = impl Iterator<Item = Node> + 'a;
 
     fn number_of_nodes(&self) -> NumNodes {
-        (self.offsets.len() - 1) as NumNodes
+        self.neighborhoods.number_of_nodes()
     }
 
     fn vertices_range(&self) -> Range<Node> {
@@ -58,22 +32,29 @@ impl GraphNodeOrder for CsrGraph {
 
 impl GraphEdgeOrder for CsrGraph {
     fn number_of_edges(&self) -> NumEdges {
-        self.edges.len() as NumEdges - self.number_of_nodes() as NumEdges
+        self.neighborhoods.number_of_edges() - self.number_of_nodes() as NumEdges
     }
 }
 
 impl NeighborsSlice for CsrGraph {
-    fn neighbors_slice(&self, u: Node) -> &[Node] {
-        &self.edges[self.offset_range(u)]
-    }
-
-    fn neighbors_slice_mut(&mut self, u: Node) -> &mut [Node] {
-        let range = self.offset_range(u);
-        &mut self.edges[range]
-    }
+    //fn neighbors_slice(&self, u: Node) -> &[Node] {
+    //    &self.edges[self.offset_range(u)]
+    //}
+    //
+    //fn neighbors_slice_mut(&mut self, u: Node) -> &mut [Node] {
+    //    let range = self.offset_range(u);
+    //    &mut self.edges[range]
+    //}
 
     fn extract_csr_repr(&self) -> (Vec<Node>, Vec<NumEdges>) {
-        (self.edges.clone(), self.offsets.clone())
+        (
+            self.neighborhoods
+                .raw_buffer_slice()
+                .iter()
+                .map(|x| x.node)
+                .collect(),
+            self.neighborhoods.raw_offset_slice().to_vec(),
+        )
     }
 }
 
@@ -84,11 +65,11 @@ impl AdjacencyList for CsrGraph {
         Self: 'a;
 
     fn neighbors_of(&self, u: Node) -> Self::NeighborIter<'_> {
-        self.edges[self.offset_range(u)].iter().copied()
+        self.neighborhoods[u].iter().map(|x| x.node)
     }
 
     fn degree_of(&self, u: Node) -> NumNodes {
-        (self.offsets[(u + 1) as usize] - self.offsets[u as usize]) as NumNodes
+        self.neighborhoods.degree_of(u)
     }
 
     fn max_degree(&self) -> NumNodes {
@@ -107,39 +88,35 @@ impl AdjacencyList for CsrGraph {
 
 impl AdjacencyTest for CsrGraph {
     fn has_edge(&self, u: Node, v: Node) -> bool {
-        self.edges[self.offset_range(u)].contains(&v)
+        // TODO: for skewed degree distrs, it might be beneficial to search the smaller neighborhood
+        self.neighborhoods[u].iter().any(|x| x.node == v)
     }
 }
 
 impl IndexedAdjacencyList for CsrGraph {
+    #[inline(always)]
     fn ith_neighbor(&self, u: Node, i: NumNodes) -> Node {
-        self.neighbor_slice(u)[i as usize]
+        self.neighborhoods[u][i as usize].node
     }
 
+    #[inline(always)]
     fn ith_cross_position(&self, u: Node, i: NumNodes) -> NumNodes {
-        self.cross_pos_slice(u)[i as usize]
+        self.neighborhoods[u][i as usize].cross_pos
     }
 
     fn swap_neighbors(&mut self, u: Node, nb1_pos: NumNodes, nb2_pos: NumNodes) {
-        let nb1 = self.ith_neighbor(u, nb1_pos);
-        let nb2 = self.ith_neighbor(u, nb2_pos);
+        let nb1 = self.neighborhoods[u][nb1_pos as usize];
+        let nb2 = self.neighborhoods[u][nb2_pos as usize];
 
-        let nb1_cross_pos = self.ith_cross_position(u, nb1_pos);
-        let nb2_cross_pos = self.ith_cross_position(u, nb2_pos);
+        debug_assert_eq!(self.ith_neighbor(nb1.node, nb1.cross_pos), u);
+        debug_assert_eq!(self.ith_neighbor(nb2.node, nb2.cross_pos), u);
+        debug_assert_eq!(self.ith_cross_position(nb1.node, nb1.cross_pos), nb1_pos);
+        debug_assert_eq!(self.ith_cross_position(nb2.node, nb2.cross_pos), nb2_pos);
 
-        debug_assert_eq!(self.ith_neighbor(nb1, nb1_cross_pos), u);
-        debug_assert_eq!(self.ith_neighbor(nb2, nb2_cross_pos), u);
+        self.neighborhoods[nb1.node][nb1.cross_pos as usize].cross_pos = nb2_pos;
+        self.neighborhoods[nb2.node][nb2.cross_pos as usize].cross_pos = nb1_pos;
 
-        debug_assert_eq!(self.ith_cross_position(nb1, nb1_cross_pos), nb1_pos);
-        debug_assert_eq!(self.ith_cross_position(nb2, nb2_cross_pos), nb2_pos);
-
-        self.cross_pos_slice_mut(nb1)[nb1_cross_pos as usize] = nb2_pos;
-        self.cross_pos_slice_mut(nb2)[nb2_cross_pos as usize] = nb1_pos;
-
-        self.cross_pos_slice_mut(u)
-            .swap(nb1_pos as usize, nb2_pos as usize);
-        self.neighbor_slice_mut(u)
-            .swap(nb1_pos as usize, nb2_pos as usize);
+        self.neighborhoods[u].swap(nb1_pos as usize, nb2_pos as usize);
     }
 }
 
@@ -167,15 +144,14 @@ impl GraphFromReader for CsrGraph {
         let mut max_degree = 0;
 
         let mut offsets = Vec::with_capacity(n + 1);
-        let mut cross_references = vec![0; m];
-        let mut edges = vec![0; m];
+        let mut edges = vec![NodeWithCrossPos::default(); m];
 
         offsets.push(0);
 
         let mut running_offset = num_of_neighbors[0] + 1;
         for u in 1..n {
             offsets.push(running_offset as NumEdges);
-            edges[running_offset as usize] = u as Node;
+            edges[running_offset as usize].node = u as Node;
 
             running_offset += num_of_neighbors[u] + 1;
 
@@ -191,21 +167,22 @@ impl GraphFromReader for CsrGraph {
             let addr_u = offsets[u as usize] as usize + num_of_neighbors[u as usize] as usize;
             let addr_v = offsets[v as usize] as usize + num_of_neighbors[v as usize] as usize;
 
-            edges[addr_u] = v;
-            edges[addr_v] = u;
-
-            cross_references[addr_u] = num_of_neighbors[v as usize];
-            cross_references[addr_v] = num_of_neighbors[u as usize];
+            edges[addr_u] = NodeWithCrossPos {
+                node: v,
+                cross_pos: num_of_neighbors[v as usize],
+            };
+            edges[addr_v] = NodeWithCrossPos {
+                node: u,
+                cross_pos: num_of_neighbors[u as usize],
+            };
 
             num_of_neighbors[u as usize] += 1;
             num_of_neighbors[v as usize] += 1;
         }
 
         Self {
+            neighborhoods: SlicedBuffer::new(edges, offsets),
             max_degree: max_degree as NumNodes,
-            edges,
-            offsets,
-            cross_references,
         }
     }
 }
@@ -264,14 +241,14 @@ impl GraphEdgeOrder for CsrEdgesOnly {
 }
 
 impl NeighborsSlice for CsrEdgesOnly {
-    fn neighbors_slice(&self, u: Node) -> &[Node] {
-        &self.edges[self.offset_range(u)]
-    }
-
-    fn neighbors_slice_mut(&mut self, u: Node) -> &mut [Node] {
-        let range = self.offset_range(u);
-        &mut self.edges[range]
-    }
+    //fn neighbors_slice(&self, u: Node) -> &[Node] {
+    //    &self.edges[self.offset_range(u)]
+    //}
+    //
+    //fn neighbors_slice_mut(&mut self, u: Node) -> &mut [Node] {
+    //    let range = self.offset_range(u);
+    //    &mut self.edges[range]
+    //}
 
     fn extract_csr_repr(&self) -> (Vec<Node>, Vec<NumEdges>) {
         (self.edges.clone(), self.offsets.clone())
@@ -312,10 +289,9 @@ impl ToSliceRepresentation for CsrGraph {
     type SliceRepresentation = CsrEdgesOnly;
 
     fn to_slice_representation(&self) -> Self::SliceRepresentation {
-        CsrEdgesOnly {
-            edges: self.edges.clone(),
-            offsets: self.offsets.clone(),
-        }
+        let (edges, offsets) = self.extract_csr_repr();
+
+        CsrEdgesOnly { edges, offsets }
     }
 }
 

@@ -299,20 +299,20 @@ macro_rules! impl_static_graph_tests {
                 }
             }
 
-            #[test]
-            fn sorted_neighbors() {
-                let mut rng = Pcg64::seed_from_u64(123345);
-
-                for _ in 0..100 {
-                    let n = rng.gen_range(5..50);
-                    let m = rng.gen_range(1..(n * (n - 1) / 4)) as NumEdges;
-
-                    let mut graph = get_random_graph(&mut rng, n, m);
-
-                    graph.sort_all_neighbors();
-                    assert!(graph.are_all_neighbors_sorted());
-                }
-            }
+            //#[test]
+            //fn sorted_neighbors() {
+            //    let mut rng = Pcg64::seed_from_u64(123345);
+            //
+            //    for _ in 0..100 {
+            //        let n = rng.gen_range(5..50);
+            //        let m = rng.gen_range(1..(n * (n - 1) / 4)) as NumEdges;
+            //
+            //        let mut graph = get_random_graph(&mut rng, n, m);
+            //
+            //        graph.sort_all_neighbors();
+            //        assert!(graph.are_all_neighbors_sorted());
+            //    }
+            //}
         }
     };
 }

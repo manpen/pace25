@@ -32,8 +32,8 @@ regex = "1.11.1"
 structopt = "0.3.26"
 
 [profile.release]
-#lto="fat"
-#codegen-units=1
+lto="fat"
+codegen-units=1
 debug=true
 
 [profile.optil]
