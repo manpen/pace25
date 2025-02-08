@@ -37,7 +37,7 @@ pub use traversal::*;
 pub use weisfeiler_lehman::*;
 
 use itertools::Itertools;
-use std::{borrow::Borrow, cmp::Ordering, ops::Range};
+use std::{borrow::Borrow, ops::Range};
 use stream_bitset::prelude::*;
 mod graph_tests;
 mod sliced_buffer;
