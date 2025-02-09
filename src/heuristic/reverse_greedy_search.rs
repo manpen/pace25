@@ -1,7 +1,4 @@
-use std::cmp::Reverse;
-
 use rand::Rng;
-use rand_distr::Distribution;
 
 use crate::{
     graph::*,
@@ -302,17 +299,22 @@ where
             return None;
         }
 
-        (0..NUM_SAMPLES)
-            .map(|_| {
-                let node = self.sampler.sample(&mut self.rng);
-                (
-                    self.scores[node as usize],
-                    Reverse(self.age[node as usize]),
-                    node,
-                )
-            })
-            .max()
-            .map(|(_, _, x)| x)
+        let mut sample_node = None;
+        let mut sample_bucket = 0;
+        let mut sample_age = 0;
+
+        self.sampler
+            .sample_many::<_, NUM_SAMPLES>(&mut self.rng, |bucket, node| {
+                if sample_bucket == bucket && sample_age < self.age[node as usize] {
+                    return;
+                }
+
+                sample_node = Some(node);
+                sample_bucket = bucket;
+                sample_age = self.age[node as usize];
+            });
+
+        sample_node
     }
 
     /// Adds a node to the DomSet that was not part of it before.
@@ -413,7 +415,7 @@ where
         if MARKER {
             self.intersection_forest.transfer_tree(old_node, new_node);
             self.scores[old_node as usize] = 1;
-            self.sampler.add_entry(old_node, 0);
+            self.sampler.add_entry(old_node, 1);
         } else {
             // (I4) Update sampler
             for &node in self.intersection_forest.get_root_nodes(old_node) {
@@ -476,7 +478,7 @@ where
             // Add all nodes for which an update occured to the sampler again
             for node in self.temp_nodes.drain(..) {
                 self.sampler
-                    .add_entry(node, self.scores[node as usize] as usize - 1);
+                    .add_entry(node, self.scores[node as usize] as usize);
             }
         }
     }
