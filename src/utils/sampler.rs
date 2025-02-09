@@ -136,7 +136,7 @@ impl<const NUM_BUCKETS_PLUS_TWO: usize> WeightedPow2Sampler<NUM_BUCKETS_PLUS_TWO
 /// Sample a node according to the given weights from the sampler
 ///
 /// As we use this sampler in an algorithm where we expect the vast majority of elements to be in
-/// buckets[1] (and buckets[2]), we iterate bottom-up and not top-down, despite bigger weights in
+/// `buckets[1]` (and `buckets[2]`), we iterate bottom-up and not top-down, despite bigger weights in
 /// higher buckets.
 impl<const NUM_BUCKETS_PLUS_TWO: usize> Distribution<Node>
     for WeightedPow2Sampler<NUM_BUCKETS_PLUS_TWO>

@@ -33,6 +33,7 @@ pub trait BipartiteTest {
     /// Tests whether the graph is bipartite.
     ///
     /// # Examples
+    /// ```
     /// use dss::prelude::*;
     /// let mut graph = AdjArray::new(4); // path graph
     /// graph.add_edges([(0, 1), (1, 2), (2, 3)], EdgeColor::Black);

@@ -18,7 +18,7 @@ use crate::{
 /// possible, replace two or more nodes by one.
 ///
 /// The algorithm stores for each node u in the dominating set how many nodes they uniquely cover,
-/// ie. how many nodes are *only* covered by u. If this number is 0, the node is considered
+/// i.e. how many nodes are *only* covered by u. If this number is 0, the node is considered
 /// redundant and can be safely removed from the DomSet.
 ///
 /// Using an IntersectionForest, it efficiently stores for each dominating node u the set of all
@@ -29,14 +29,14 @@ use crate::{
 /// dominating nodes u that v can replace in that way. In each iteration, we then sample such a
 /// replacement node v in proportion to its score. Afterwards, we add v to the DomSet, remove the
 /// redundant dominating node u from the DomSet and possibly further nodes in the DomSet that are
-/// now redundant (ie. score[v] > 1).
+/// now redundant (i.e. `score[v] > 1`).
 ///
 /// See descriptions of variables for more information.
 /// We have multiple invariants throughout the algorithm that we need to maintain:
 /// (I1) Adjacency-Lists are partitioned by appearance in the current DomSet: nodes in the DomSet appear first, then nodes not in the DomSet
-/// (I2) Only nodes u with num_covered[u] = 1 are inserted into the IntersectionForest
-/// (I3) scores[u] is equivalent to the number of IntersectionTrees where u is stored in the root (as an entry, not the node itself): excluded are dominating nodes
-/// (I4) if scores[u] > 0, u is inserted into the Sampler
+/// (I2) Only nodes `u` with `num_covered[u] = 1` are inserted into the IntersectionForest
+/// (I3) `scores[u]` is equivalent to the number of IntersectionTrees where u is stored in the root (as an entry, not the node itself): excluded are dominating nodes
+/// (I4) if `scores[u] > 0`, u is inserted into the Sampler
 pub struct GreedyReverseSearch<
     'a,
     R,
@@ -57,7 +57,7 @@ pub struct GreedyReverseSearch<
     best_solution: DominatingSet,
     /// Is the algorithm stuck in a (local) optimum?
     ///
-    /// Will be true if the sampler is empty, ie. the algorithm can no longer improve the solution.
+    /// Will be true if the sampler is empty, i.e. the algorithm can no longer improve the solution.
     is_locally_optimal: bool,
 
     /// A sampler for sampling nodes with weights that are powers of 2.
@@ -80,14 +80,14 @@ pub struct GreedyReverseSearch<
 
     /// Number of incident dominating nodes
     ///
-    /// (I1) Neighbors[u][..num_covered[u]] is a subset of the current DomSet
+    /// (I1) `Neighbors[u][..num_covered\[u\]]` is a subset of the current DomSet
     num_covered: Vec<NumNodes>,
     /// Number of nodes this (dominating) nodes covers uniquely (no other dominating node covers)
     uniquely_covered: Vec<NumNodes>,
 
     /// Nodes u that can possibly be removed from the DomSet as uniquely_covered[u] = 0
     redundant_nodes: Vec<Node>,
-    /// Number of appearences in entries of root nodes in the IntersectionForest
+    /// Number of appearances in entries of root nodes in the IntersectionForest
     scores: Vec<NumNodes>,
 
     /// Last time a node was added/removed from the DomSet
@@ -98,10 +98,10 @@ pub struct GreedyReverseSearch<
     /// IntersectionForest
     ///
     /// Every node u in the DomSet is assigned an IntersectionTree. Nodes that are uniquely covered by this
-    /// u are then inserted into the IntersectionTree of u. IntersectionTree[u] thus stores all nodes in its root
+    /// u are then inserted into the IntersectionTree of `u`. `IntersectionTree[u]` thus stores all nodes in its root
     /// that are incident to *all* uniquely covered nodes of u and can thus replace u in the DomSet.
     ///
-    /// v in root of IntersectionTree[u] ==> scores[v] > 0 ==> v in sampler ==> v can be sampled to replace u
+    /// v in root of `IntersectionTree[u]` ==> `scores[v] > 0` ==> `v` in sampler ==> `v` can be sampled to replace `u`
     ///
     /// Note that we only *really* consider neighbors that are not subset-dominated and thus can appear in any
     /// optimal DomSet without the possibility of directly replacing them.
