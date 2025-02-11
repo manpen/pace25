@@ -251,6 +251,9 @@ where
     /// 3. Remove all now redundant nodes of the DomSet
     /// 4. Update IntersectionTrees/Scores/Sampler accordingly
     pub fn step(&mut self) {
+        #[cfg(debug_assertions)]
+        self.assert_correctness();
+
         // Sample node: if no node can be sampled, current solution is optimal
         let proposed_node = if let Some(node) = self.draw_node() {
             node
@@ -260,6 +263,8 @@ where
         };
 
         self.round += 1;
+
+        debug_assert!(self.scores[proposed_node as usize] > 0);
 
         // Add node to DomSet
         self.add_node_to_domset(proposed_node);
@@ -483,6 +488,59 @@ where
                 }
             }
         }
+    }
+
+    /// Asserts that all current datastructures contain correct values
+    #[allow(unused)]
+    pub fn assert_correctness(&self) {
+        let mut unique = vec![0; self.graph.len()];
+        let mut scores = vec![0; self.graph.len()];
+        for u in self.graph.vertices() {
+            // Check (I1)
+            for i in 0..self.num_covered[u as usize] {
+                assert!(self
+                    .current_solution
+                    .is_in_domset(self.graph.ith_neighbor(u, i)));
+            }
+
+            if self.current_solution.is_fixed_node(u) {
+                continue;
+            }
+
+            // Check that only non-fixed DomSet-Nodes own trees
+            assert_eq!(
+                self.current_solution.is_in_domset(u),
+                self.intersection_forest.owns_tree(u)
+            );
+
+            // Check (I2)
+            if self.num_covered[u as usize] == 1 {
+                let dom = self.graph.ith_neighbor(u, 0);
+                unique[dom as usize] += 1;
+                assert!(self.intersection_forest.is_in_tree(dom, u));
+            }
+
+            // Prepare Check (I3)
+            if self.current_solution.is_in_domset(u) {
+                for &v in self.intersection_forest.get_root_nodes(u) {
+                    if v != u {
+                        scores[v as usize] += 1;
+                    }
+                }
+            }
+        }
+
+        // Check (I3) and UniquelyCovered
+        assert_eq!(self.uniquely_covered, unique);
+        assert_eq!(self.scores, scores);
+
+        for u in self.graph.vertices() {
+            // Check (I4)
+            assert_eq!(scores[u as usize] as usize, self.sampler.bucket_of_node(u));
+        }
+
+        // Check Sampler-Weight
+        self.sampler.assert_total_weight();
     }
 }
 

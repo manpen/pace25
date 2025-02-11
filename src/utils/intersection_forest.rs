@@ -166,6 +166,7 @@ impl InlineIntersectionForest {
                 offset_filtered: write_ptr as NumEdges,
                 offset_unfiltered: ignorable_offset,
                 free_pos: FREE_SLOT_MASK,
+                tree_pos: NOT_SET,
                 ..Default::default()
             });
 
@@ -192,6 +193,7 @@ impl InlineIntersectionForest {
             offset_filtered: write_ptr as NumEdges,
             offset_unfiltered: ignorable_offset,
             free_pos: FREE_SLOT_MASK,
+            tree_pos: NOT_SET,
             ..Default::default()
         });
 
@@ -221,9 +223,8 @@ impl InlineIntersectionForest {
         node!(self, u).tree_len > 0
     }
 
-    /// Returns `true` if u is inserted into a tree
     pub fn is_tree_node(&self, u: Node) -> bool {
-        node!(self, u).data_len > 0
+        node!(self, u).tree_pos != NOT_SET
     }
 
     /// Returns `true` if u is neither the owner of a tree nor inserted into one
@@ -253,19 +254,6 @@ impl InlineIntersectionForest {
 
         let root = self.forest[node!(self, u).offset_unfiltered as usize];
         data_ref!(self, root)
-    }
-
-    /// Costly function to find the owner of the tree where u is inserted.
-    /// Only meant for Debug-Purposes and/or checks.
-    fn find_owner(&self, u: Node) -> Node {
-        debug_assert!(self.is_tree_node(u));
-        let pos = node!(self, u).tree_pos as usize;
-        (0..self.number_of_nodes())
-            .find(|&v| {
-                self.owns_tree(v)
-                    && self.forest[node!(self, v).offset_unfiltered as usize + pos] == u
-            })
-            .unwrap()
     }
 
     /// Unbalanced case of intersect(dest, node), where one data-list is significantly longer than the other.
@@ -395,7 +383,6 @@ impl InlineIntersectionForest {
     ///
     /// Warning: this breaks (I5)
     fn restore_node(&mut self, u: Node) {
-        debug_assert!(!self.owns_tree(u));
         debug_assert!(!Self::is_free_node(u));
 
         let beg = node!(self, u).offset_filtered as usize;
@@ -420,7 +407,6 @@ impl InlineIntersectionForest {
     ///
     /// Warning: this can break (I5) for the parent of u.
     fn repair_node(&mut self, u: Node, pos: usize) -> bool {
-        debug_assert!(self.owns_tree(u));
         debug_assert!(node!(self, u).tree_len > pos as NumNodes);
 
         let node = self.node_at(u, pos);
@@ -494,7 +480,7 @@ impl InlineIntersectionForest {
 
     /// Inserts node `v` into the `Tree[u]`
     pub fn add_entry(&mut self, u: Node, mut v: Node) {
-        debug_assert!(self.owns_tree(u) && !self.is_tree_node(v));
+        debug_assert!(!self.is_tree_node(v));
 
         let u_offset = node!(self, u).offset_unfiltered as usize;
 
@@ -534,16 +520,12 @@ impl InlineIntersectionForest {
 
     /// Removes node `v` from `Tree[u]`
     pub fn remove_entry(&mut self, u: Node, v: Node) {
-        debug_assert!(self.owns_tree(u) && self.is_tree_node(v));
-        debug_assert_eq!(self.find_owner(v), u);
+        debug_assert!(self.is_in_tree(u, v));
 
         let pos = node!(self, v).tree_pos;
-        let tree_len = node!(self, u).tree_len;
+        self.nodes[v as usize].tree_pos = NOT_SET;
 
-        debug_assert_eq!(
-            self.forest[node!(self, u).offset_unfiltered as usize + pos as usize],
-            v
-        );
+        let tree_len = node!(self, u).tree_len;
 
         // Trees without nodes are considered empty and can be cleared
         if tree_len == 1 {
@@ -766,6 +748,38 @@ impl InlineIntersectionForest {
             }
             self.forest[offset + last_free_pos as usize] = current_head | !FREE_SLOT_MASK;
         }
+    }
+
+    /// Returns an iterator over all nodes that own trees
+    #[allow(unused)]
+    pub fn tree_owners(&self) -> impl Iterator<Item = Node> + '_ {
+        (0..self.number_of_nodes()).filter(|&u| self.owns_tree(u))
+    }
+
+    /// Returns an iterator over all nodes in a tree
+    #[allow(unused)]
+    pub fn tree_nodes(&self, u: Node) -> impl Iterator<Item = Node> + '_ {
+        let beg = self.nodes[u as usize].offset_unfiltered as usize;
+        let end = beg + self.nodes[u as usize].tree_len as usize;
+        self.forest[beg..end]
+            .iter()
+            .copied()
+            .filter(|&v| !Self::is_free_node(v))
+    }
+
+    /// Returns *true* if v is inserted into Tree[u]
+    #[allow(unused)]
+    pub fn is_in_tree(&self, u: Node, v: Node) -> bool {
+        let pos = self.nodes[v as usize].tree_pos;
+        if pos == NOT_SET {
+            return false;
+        }
+
+        if pos >= self.nodes[u as usize].tree_len {
+            return false;
+        }
+
+        self.forest[self.nodes[u as usize].offset_unfiltered as usize + pos as usize] == v
     }
 }
 

@@ -57,6 +57,23 @@ impl<const NUM_BUCKETS_PLUS_TWO: usize> WeightedPow2Sampler<NUM_BUCKETS_PLUS_TWO
             - 1
     }
 
+    /// Returns the bucket of node
+    #[allow(unused)]
+    pub fn bucket_of_node(&self, u: Node) -> usize {
+        self.bucket(self.pointer[u as usize])
+    }
+
+    /// Panics if the stored total weight does not match the assigned buckets
+    #[allow(unused)]
+    pub fn assert_total_weight(&self) {
+        assert_eq!(
+            self.total_weight,
+            (1..(NUM_BUCKETS_PLUS_TWO - 1))
+                .map(|b| { ((self.offsets[b + 1] - self.offsets[b]) << b) >> 1 })
+                .sum()
+        );
+    }
+
     /// Directly sets the bucket for a given node
     pub fn set_bucket(&mut self, node: Node, mut new_bucket: usize) {
         let pos = self.pointer[node as usize];
