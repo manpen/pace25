@@ -43,7 +43,7 @@ mod graph_tests;
 
 pub type Node = u32;
 pub type NumNodes = Node;
-pub type NumEdges = u64;
+pub type NumEdges = u32;
 pub type BitSet = BitSetImpl<Node>;
 pub type EdgeBitSet = BitSetImpl<NumEdges>;
 

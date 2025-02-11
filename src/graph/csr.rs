@@ -112,10 +112,12 @@ impl AdjacencyTest for CsrGraph {
 }
 
 impl IndexedAdjacencyList for CsrGraph {
+    #[inline(always)]
     fn ith_neighbor(&self, u: Node, i: NumNodes) -> Node {
         self.neighbor_slice(u)[i as usize]
     }
 
+    #[inline(always)]
     fn ith_cross_position(&self, u: Node, i: NumNodes) -> NumNodes {
         self.cross_pos_slice(u)[i as usize]
     }
