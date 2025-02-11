@@ -480,8 +480,6 @@ impl InlineIntersectionForest {
 
     /// Inserts node `v` into the `Tree[u]`
     pub fn add_entry(&mut self, u: Node, mut v: Node) {
-        debug_assert!(!self.is_tree_node(v));
-
         let u_offset = node!(self, u).offset_unfiltered as usize;
 
         let pos;

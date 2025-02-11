@@ -503,21 +503,25 @@ where
                     .is_in_domset(self.graph.ith_neighbor(u, i)));
             }
 
-            if self.current_solution.is_fixed_node(u) {
-                continue;
+            if !self.current_solution.is_fixed_node(u) {
+                // Check that only non-fixed DomSet-Nodes own trees
+                assert_eq!(
+                    self.current_solution.is_in_domset(u),
+                    self.intersection_forest.owns_tree(u)
+                );
             }
-
-            // Check that only non-fixed DomSet-Nodes own trees
-            assert_eq!(
-                self.current_solution.is_in_domset(u),
-                self.intersection_forest.owns_tree(u)
-            );
 
             // Check (I2)
             if self.num_covered[u as usize] == 1 {
                 let dom = self.graph.ith_neighbor(u, 0);
                 unique[dom as usize] += 1;
-                assert!(self.intersection_forest.is_in_tree(dom, u));
+                if !self.current_solution.is_fixed_node(dom) {
+                    assert!(self.intersection_forest.is_in_tree(dom, u));
+                }
+            }
+
+            if self.current_solution.is_fixed_node(u) {
+                continue;
             }
 
             // Prepare Check (I3)
@@ -542,6 +546,8 @@ where
         // Check Sampler-Weight
         self.sampler.assert_positions();
         self.sampler.assert_total_weight();
+
+        println!("Check completed");
     }
 }
 
