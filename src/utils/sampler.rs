@@ -74,6 +74,14 @@ impl<const NUM_BUCKETS_PLUS_TWO: usize> WeightedPow2Sampler<NUM_BUCKETS_PLUS_TWO
         );
     }
 
+    /// Panics if any node stores a wrong position
+    #[allow(unused)]
+    pub fn assert_positions(&self) {
+        for u in 0..self.buckets.len() {
+            assert_eq!(self.buckets[self.pointer[u]], u as Node);
+        }
+    }
+
     /// Directly sets the bucket for a given node
     pub fn set_bucket(&mut self, node: Node, mut new_bucket: usize) {
         let pos = self.pointer[node as usize];
@@ -173,7 +181,6 @@ impl<const NUM_BUCKETS_PLUS_TWO: usize> WeightedPow2Sampler<NUM_BUCKETS_PLUS_TWO
     /// Moves the node into bucket 0
     pub fn remove_entry(&mut self, node: Node) {
         debug_assert!(self.bucket(self.pointer[node as usize]) > 0);
-
         let old_bucket = self.bucket(self.pointer[node as usize]);
 
         // Set weight
@@ -185,7 +192,10 @@ impl<const NUM_BUCKETS_PLUS_TWO: usize> WeightedPow2Sampler<NUM_BUCKETS_PLUS_TWO
 
         // Make first bucket element into last recursively
         for bucket in (1..old_bucket).rev() {
-            self.pointer[self.buckets[self.offsets[bucket]] as usize] = self.offsets[bucket + 1];
+            if !self.is_bucket_empty(bucket) {
+                self.pointer[self.buckets[self.offsets[bucket]] as usize] =
+                    self.offsets[bucket + 1];
+            }
             self.buckets[self.offsets[bucket + 1]] = self.buckets[self.offsets[bucket]];
             self.offsets[bucket + 1] += 1;
         }
@@ -199,6 +209,10 @@ impl<const NUM_BUCKETS_PLUS_TWO: usize> WeightedPow2Sampler<NUM_BUCKETS_PLUS_TWO
     /// Returns *true* if there are no elements in the sampler
     pub fn is_empty(&self) -> bool {
         self.offsets[1] == self.buckets.len()
+    }
+
+    pub fn is_bucket_empty(&self, bucket: usize) -> bool {
+        self.offsets[bucket] == self.offsets[bucket + 1]
     }
 
     /// Returns *true* if the node is currently in the sampler
@@ -226,7 +240,7 @@ impl<const NUM_BUCKETS_PLUS_TWO: usize> WeightedPow2Sampler<NUM_BUCKETS_PLUS_TWO
 
             reject_below = 0;
             for i in 1..(NUM_BUCKETS_PLUS_TWO - 1) {
-                let weight = ((self.offsets[i + 1] - self.offsets[i]) << i) >> 1;
+                let weight = (self.offsets[i + 1] - self.offsets[i]) << (i - 1);
                 if weight > rval {
                     let node = self.buckets[self.offsets[i] + (rval >> (i - 1))];
                     cb(i, node);

@@ -540,6 +540,7 @@ where
         }
 
         // Check Sampler-Weight
+        self.sampler.assert_positions();
         self.sampler.assert_total_weight();
     }
 }
