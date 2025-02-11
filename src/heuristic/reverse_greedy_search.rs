@@ -69,11 +69,6 @@ pub struct GreedyReverseSearch<
     nodes_to_update: Vec<Node>,
     /// Helper BitSet to easily identify if a node is pushed to `nodes_to_update`
     in_nodes_to_update: BitSet,
-    /// Additional supporting vector used in `self.update_trees_and_sampler()` to temporarily store
-    /// nodes that need to be re-inserted into the sampler.
-    ///
-    /// To prevent re-allocations, this is initialized inside the algorithm itself.
-    temp_nodes: Vec<Node>,
 
     /// Number of incident dominating nodes
     ///
@@ -133,7 +128,6 @@ where
                 rng,
                 nodes_to_update: Vec::new(),
                 in_nodes_to_update: BitSet::new(1),
-                temp_nodes: Vec::new(),
                 num_covered: Vec::new(),
                 uniquely_covered: Vec::new(),
                 redundant_nodes: Vec::new(),
@@ -239,7 +233,6 @@ where
             rng,
             nodes_to_update: Vec::new(),
             in_nodes_to_update: BitSet::new(n as NumNodes),
-            temp_nodes: Vec::with_capacity(n),
             num_covered,
             uniquely_covered,
             redundant_nodes: Vec::new(),
@@ -425,7 +418,6 @@ where
                         .set_bucket(node, self.scores[node as usize] as usize);
                 }
             }
-            self.scores[old_node as usize] = 0;
             self.intersection_forest.clear_tree(old_node);
         }
     }
@@ -449,10 +441,8 @@ where
             for &node in self.intersection_forest.get_root_nodes(dominating_node) {
                 if node != dominating_node && self.scores[node as usize] != 0 {
                     self.scores[node as usize] -= 1;
-                    self.sampler.remove_entry(node);
-                    if self.scores[node as usize] > 0 {
-                        self.temp_nodes.push(node);
-                    }
+                    self.sampler
+                        .set_bucket(node, self.scores[node as usize] as usize);
                 }
             }
 
@@ -469,16 +459,9 @@ where
             for &node in self.intersection_forest.get_root_nodes(dominating_node) {
                 if node != dominating_node {
                     self.scores[node as usize] += 1;
-                    if self.scores[node as usize] == 1 {
-                        self.temp_nodes.push(node);
-                    }
+                    self.sampler
+                        .set_bucket(node, self.scores[node as usize] as usize);
                 }
-            }
-
-            // Add all nodes for which an update occured to the sampler again
-            for node in self.temp_nodes.drain(..) {
-                self.sampler
-                    .add_entry(node, self.scores[node as usize] as usize);
             }
         }
     }
