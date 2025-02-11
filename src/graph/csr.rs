@@ -71,6 +71,10 @@ impl NeighborsSlice for CsrGraph {
         let range = self.offset_range(u);
         &mut self.edges[range]
     }
+
+    fn extract_csr_repr(&self) -> (Vec<Node>, Vec<NumEdges>) {
+        (self.edges.clone(), self.offsets.clone())
+    }
 }
 
 impl AdjacencyList for CsrGraph {
@@ -108,10 +112,12 @@ impl AdjacencyTest for CsrGraph {
 }
 
 impl IndexedAdjacencyList for CsrGraph {
+    #[inline(always)]
     fn ith_neighbor(&self, u: Node, i: NumNodes) -> Node {
         self.neighbor_slice(u)[i as usize]
     }
 
+    #[inline(always)]
     fn ith_cross_position(&self, u: Node, i: NumNodes) -> NumNodes {
         self.cross_pos_slice(u)[i as usize]
     }
@@ -267,6 +273,10 @@ impl NeighborsSlice for CsrEdgesOnly {
     fn neighbors_slice_mut(&mut self, u: Node) -> &mut [Node] {
         let range = self.offset_range(u);
         &mut self.edges[range]
+    }
+
+    fn extract_csr_repr(&self) -> (Vec<Node>, Vec<NumEdges>) {
+        (self.edges.clone(), self.offsets.clone())
     }
 }
 

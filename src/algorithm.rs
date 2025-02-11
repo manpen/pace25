@@ -15,8 +15,6 @@ use std::time::{Duration, Instant};
 /// As an adopter of [`IterativeAlgorithm`], you have to implement at least the methods
 ///   [`IterativeAlgorithm::execute_step`],
 ///   [`IterativeAlgorithm::is_completed`] and [`IterativeAlgorithm::best_known_solution`].
-/// You may also implement [`IterativeAlgorithm::best_known_solution_size`] if the size of the solution
-/// can be computed more cheaply than the solution itself.
 ///
 /// If your algorithm is known to eventually terminate please also implement the marker trait
 /// [`TerminatingIterativeAlgorithm`]. It offers and easy interface to run the algorithm to completion.

@@ -181,6 +181,11 @@ impl DominatingSet {
         self.num_fixed as usize
     }
 
+    /// Returns the number of non-fixed nodes in the dominating set.
+    pub fn num_of_non_fixed_nodes(&self) -> usize {
+        self.len() - self.num_of_fixed_nodes()
+    }
+
     /// Returns *true* if all nodes in the dominating set are fixed.
     pub fn all_fixed(&self) -> bool {
         self.num_fixed as usize == self.len()
