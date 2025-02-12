@@ -496,6 +496,235 @@ where
             }
         }
     }
+
+    fn force_removal_dms(&mut self) {
+        debug_assert!(self.current_solution.num_of_non_fixed_nodes() > 0);
+
+        let mut uncovered_nodes;
+
+        let min_loss_node = self
+            .current_solution
+            .iter_non_fixed()
+            .map(|u| (self.uniquely_covered[u as usize], self.age[u as usize], u))
+            .min()
+            .unwrap()
+            .2;
+        // TODO: Remove redundant nodes
+        uncovered_nodes = self.force_remove_node_from_domset(min_loss_node);
+
+        // CHECK: Is there guaranteed to be a non-fixed node here?
+        let random_node = self.current_solution.sample_non_fixed(self.rng);
+        uncovered_nodes += self.force_remove_node_from_domset(random_node);
+
+        if self.rng.gen_bool(0.5) && self.current_solution.num_of_non_fixed_nodes() > 0 {
+            let min_loss_node = self
+                .current_solution
+                .sample_many_non_fixed::<_, 50>(self.rng)
+                .map(|u| (self.uniquely_covered[u as usize], self.age[u as usize], u))
+                .min()
+                .unwrap()
+                .2;
+            uncovered_nodes += self.force_remove_node_from_domset(min_loss_node);
+        }
+
+        // Repair solution
+        while uncovered_nodes > 0 {
+            let best_candidate = self.find_best_candidate();
+            uncovered_nodes -= self.force_add_node_to_domset(best_candidate);
+        }
+
+        // TODO: repair Forest/Sampler
+
+        self.update_best_solution();
+    }
+
+    fn force_remove_node_from_domset(&mut self, u: Node) -> usize {
+        debug_assert!(self.current_solution.is_in_domset(u));
+
+        let mut num_non_covered_nodes = 0;
+
+        // Remove node from DomSet & update values
+        self.current_solution.remove_node(u);
+        self.age[u as usize] = self.round;
+        self.uniquely_covered[u as usize] = 0;
+
+        for i in (0..self.graph.degree_of(u)).rev() {
+            let v = self.graph.ith_neighbor(u, i);
+            self.num_covered[v as usize] -= 1;
+            self.graph.swap_neighbors(
+                v,
+                self.graph.ith_cross_position(u, i),
+                self.num_covered[v as usize],
+            );
+
+            match self.num_covered[v as usize] {
+                0 => {
+                    num_non_covered_nodes += 1;
+                    for w in self.graph.neighbors_of(v) {
+                        // TODO: increase ForceRemovalScore[v] by 1
+                        if !self.in_nodes_to_update.set_bit(w) {
+                            self.nodes_to_update.push(w);
+                        }
+                    }
+                }
+                1 => {
+                    let dominating_node = self.graph.ith_neighbor(v, 0);
+                    self.uniquely_covered[dominating_node as usize] += 1;
+                }
+                _ => {}
+            };
+        }
+
+        num_non_covered_nodes
+    }
+
+    fn find_best_candidate(&mut self) -> Node {
+        let mut max_score = 0;
+
+        // A simulated ReservoirSampler with 1 element.
+        // First element is the chosen element, second element is the number of elements inserted.
+        let mut reservoir: (Node, NumNodes) = (0, 0);
+
+        for i in (0..self.nodes_to_update.len()).rev() {
+            let u = self.nodes_to_update[i];
+            // TODO: replace with ForceRemovalScore
+            if self.scores[u as usize] == 0 {
+                self.in_nodes_to_update.clear_bit(u);
+                self.nodes_to_update.swap_remove(i);
+                continue;
+            }
+
+            // TODO: store SubsetDominatedNodes-Subset in the DS and check if not subset-dominated
+            if true {
+                // TODO: check reduced neighborhood for NumCovered >= 2 and continue
+
+                // TODO replace with ForceRemovalScore
+                if self.scores[u as usize] > max_score {
+                    max_score = self.scores[u as usize];
+                    // Resets reservoir
+                    reservoir = (u, 1);
+                } else if self.scores[u as usize] == max_score {
+                    // Replaces stored node in reservoir with probability 1/N where N is the number
+                    // of previous candidates with the same score
+                    reservoir.1 += 1;
+                    if self.rng.gen_ratio(1, reservoir.1) {
+                        reservoir.0 = u;
+                    }
+                }
+            }
+        }
+
+        reservoir.0
+    }
+
+    fn force_add_node_to_domset(&mut self, u: Node) -> usize {
+        let prev_size = self.nodes_to_update.len();
+
+        let mut newly_covered_nodes = 0;
+
+        self.current_solution.add_node(u);
+        self.age[u as usize] = self.round;
+
+        for i in 0..self.graph.degree_of(u) {
+            let v = self.graph.ith_neighbor(u, i);
+            self.graph.swap_neighbors(
+                v,
+                self.graph.ith_cross_position(u, i),
+                self.num_covered[v as usize],
+            );
+            self.num_covered[v as usize] += 1;
+
+            match self.num_covered[v as usize] {
+                1 => {
+                    newly_covered_nodes += 1;
+                    self.uniquely_covered[u as usize] += 1;
+
+                    // TODO: decrease score of every neighbor of v
+                }
+                2 => {
+                    // (I1) the first neighbor must be a dominating node
+                    let former_unique_covering_node = self.graph.ith_neighbor(v, 0);
+                    self.uniquely_covered[former_unique_covering_node as usize] -= 1;
+                    if self.uniquely_covered[former_unique_covering_node as usize] == 0 {
+                        self.nodes_to_update.push(former_unique_covering_node);
+                    }
+                }
+                _ => {}
+            };
+        }
+
+        // Remove redundant vertices
+        // TODO: use self.redundant_nodes instead?
+        for i in prev_size..self.nodes_to_update.len() {
+            let v = self.nodes_to_update[i];
+            if self.uniquely_covered[v as usize] == 0 {
+                self.force_remove_node_from_domset(v);
+            }
+        }
+        self.nodes_to_update.truncate(prev_size);
+
+        newly_covered_nodes
+    }
+
+    /// Asserts that all current datastructures contain correct values
+    #[allow(unused)]
+    pub fn assert_correctness(&self) {
+        let mut unique = vec![0; self.graph.len()];
+        let mut scores = vec![0; self.graph.len()];
+        for u in self.graph.vertices() {
+            // Check (I1)
+            for i in 0..self.num_covered[u as usize] {
+                assert!(self
+                    .current_solution
+                    .is_in_domset(self.graph.ith_neighbor(u, i)));
+            }
+
+            if !self.current_solution.is_fixed_node(u) {
+                // Check that only non-fixed DomSet-Nodes own trees
+                assert_eq!(
+                    self.current_solution.is_in_domset(u),
+                    self.intersection_forest.owns_tree(u)
+                );
+            }
+
+            // Check (I2)
+            if self.num_covered[u as usize] == 1 {
+                let dom = self.graph.ith_neighbor(u, 0);
+                unique[dom as usize] += 1;
+                if !self.current_solution.is_fixed_node(dom) {
+                    assert!(self.intersection_forest.is_in_tree(dom, u));
+                }
+            }
+
+            if self.current_solution.is_fixed_node(u) {
+                continue;
+            }
+
+            // Prepare Check (I3)
+            if self.current_solution.is_in_domset(u) {
+                for &v in self.intersection_forest.get_root_nodes(u) {
+                    if v != u {
+                        scores[v as usize] += 1;
+                    }
+                }
+            }
+        }
+
+        // Check (I3) and UniquelyCovered
+        assert_eq!(self.uniquely_covered, unique);
+        assert_eq!(self.scores, scores);
+
+        for u in self.graph.vertices() {
+            // Check (I4)
+            assert_eq!(scores[u as usize] as usize, self.sampler.bucket_of_node(u));
+        }
+
+        // Check Sampler-Weight
+        self.sampler.assert_positions();
+        self.sampler.assert_total_weight();
+
+        println!("Check completed");
+    }
 }
 
 /// Helper enum to keep track of DomSet-Changes

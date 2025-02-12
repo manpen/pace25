@@ -1,3 +1,6 @@
+use rand::Rng;
+use rand_distr::{Distribution, Uniform};
+
 use crate::prelude::*;
 use std::io::Write;
 
@@ -291,5 +294,23 @@ impl DominatingSet {
         sol2[num_fixed..].sort_unstable();
 
         sol1[num_fixed..] == sol2[num_fixed..]
+    }
+
+    /// Samples a uniform node from all non-fixed nodes in the DominatingSet.
+    /// Panics if there are no there are no non-fixed nodes in the DominatingSet.
+    pub fn sample_non_fixed<R: Rng>(&self, rng: &mut R) -> Node {
+        self.solution[rng.gen_range(self.num_of_fixed_nodes()..self.len())]
+    }
+
+    /// Samples multiple non-fixed nodes in the DominatingSet as an iterator.
+    /// Panics if there are no non-fixed nodes in the DominatingSet.
+    pub fn sample_many_non_fixed<'a, R: Rng, const NUM_SAMPLES: usize>(
+        &'a self,
+        rng: &'a mut R,
+    ) -> impl Iterator<Item = Node> + 'a {
+        Uniform::new(self.num_of_fixed_nodes(), self.len())
+            .sample_iter(rng)
+            .take(NUM_SAMPLES)
+            .map(move |idx| self.solution[idx])
     }
 }
