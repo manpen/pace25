@@ -498,7 +498,7 @@ where
     }
 
     fn force_removal_dms(&mut self) {
-        debug_assert!(self.current_solution.num_of_non_fixed_nodes() > 0);
+        debug_assert!(self.current_solution.num_of_non_fixed_nodes() > 1);
 
         let mut uncovered_nodes;
 
@@ -607,7 +607,7 @@ where
                     // Replaces stored node in reservoir with probability 1/N where N is the number
                     // of previous candidates with the same score
                     reservoir.1 += 1;
-                    if self.rng.gen_ratio(1, reservoir.1) {
+                    if self.rng.gen_range(0..reservoir.1) == 0 {
                         reservoir.0 = u;
                     }
                 }
