@@ -838,6 +838,10 @@ where
 
         for u in self.graph.vertices() {
             // Check (I4)
+            if scores[u as usize] as usize > NUM_SAMPLER_BUCKETS - 1 {
+                assert_eq!(NUM_SAMPLER_BUCKETS - 1, self.sampler.bucket_of_node(u));
+                continue;
+            }
             assert_eq!(scores[u as usize] as usize, self.sampler.bucket_of_node(u));
         }
 
