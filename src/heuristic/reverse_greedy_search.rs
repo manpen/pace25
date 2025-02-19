@@ -225,7 +225,7 @@ where
 
         let current_solution = initial_solution.clone();
         let best_solution = initial_solution;
-        
+
         Self {
             graph,
             current_solution,

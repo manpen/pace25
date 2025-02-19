@@ -136,8 +136,8 @@ impl InlineIntersectionForest {
         // is restricted to values less than 0111..111
         debug_assert!(n < FREE_SLOT_MASK as usize);
 
-        let mut filtered_offsets = Vec::with_capacity(n);
-        let mut unfiltered_offsets = Vec::with_capacity(n);
+        let mut filtered_offsets = Vec::with_capacity(n + 1);
+        let mut unfiltered_offsets = Vec::with_capacity(n + 1);
 
         let nodes = vec![NodeInformation::default(); n];
 
@@ -190,7 +190,7 @@ impl InlineIntersectionForest {
 
     /// Returns the number of nodes in the underyling graph
     fn number_of_nodes(&self) -> NumNodes {
-        (self.nodes.len() - 1) as NumNodes
+        self.nodes.len() as NumNodes
     }
 
     /// Returns *true* if u owns a tree
