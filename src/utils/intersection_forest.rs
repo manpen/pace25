@@ -3,6 +3,8 @@ use crate::graph::{
     BitSet, CsrEdges, Node, NumEdges, NumNodes,
 };
 
+const NOT_SET: NumNodes = NumNodes::MAX;
+
 #[derive(Debug, Clone, Copy)]
 struct NodeInformation {
     pub tree_len: NumNodes,
@@ -17,7 +19,7 @@ impl Default for NodeInformation {
             tree_len: 0,
             free_pos: FREE_SLOT_MASK,
             data_len: 0,
-            tree_pos: 0,
+            tree_pos: NOT_SET,
         }
     }
 }
@@ -231,6 +233,7 @@ impl IntersectionForest {
 
     /// Costly function to find the owner of the tree where u is inserted.
     /// Only meant for Debug-Purposes and/or checks.
+    #[allow(unused)]
     fn find_owner(&self, u: Node) -> Node {
         debug_assert!(self.is_tree_node(u));
         let pos = node!(self, u).tree_pos as usize;
@@ -480,6 +483,8 @@ impl IntersectionForest {
         let pos = node!(self, v).tree_pos;
         self.nodes[v as usize].tree_pos = NOT_SET;
 
+        let tree_len = node!(self, u).tree_len;
+
         debug_assert_eq!(self.forest[u][pos as usize], v);
 
         // Trees without nodes are considered empty and can be cleared
@@ -716,9 +721,7 @@ impl IntersectionForest {
     /// Returns an iterator over all nodes in a tree
     #[allow(unused)]
     pub fn tree_nodes(&self, u: Node) -> impl Iterator<Item = Node> + '_ {
-        let beg = self.nodes[u as usize].offset_unfiltered as usize;
-        let end = beg + self.nodes[u as usize].tree_len as usize;
-        self.forest[beg..end]
+        self.forest[u][..node!(self, u).tree_len as usize]
             .iter()
             .copied()
             .filter(|&v| !Self::is_free_node(v))
@@ -736,6 +739,6 @@ impl IntersectionForest {
             return false;
         }
 
-        self.forest[self.nodes[u as usize].offset_unfiltered as usize + pos as usize] == v
+        self.forest[u][pos as usize] == v
     }
 }
