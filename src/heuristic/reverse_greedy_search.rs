@@ -5,7 +5,7 @@ use rand_distr::Distribution;
 
 use crate::{
     graph::*,
-    kernelization::KernelizationRule,
+    kernelization::{KernelizationRule, SubsetRule},
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
     utils::{
         intersection_forest::InlineIntersectionForest, sampler::WeightedPow2Sampler, DominatingSet,
@@ -46,7 +46,6 @@ pub struct GreedyReverseSearch<
 > where
     R: Rng,
     G: StaticGraph + SelfLoop,
-    <G as ToSliceRepresentation>::SliceRepresentation: ReduceGraphNodes + SelfLoop + Default,
 {
     /// A reference to the graph: mutable access is needed as we need to re-order adjacency lists
     graph: &'a mut G,
@@ -117,7 +116,6 @@ impl<'a, R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
 where
     R: Rng,
     G: StaticGraph + SelfLoop,
-    <G as ToSliceRepresentation>::SliceRepresentation: ReduceGraphNodes + SelfLoop + Default,
 {
     /// Creates a new instance of the algorithm for a given graph and a starting DomSet which must be valid.
     /// Runs Subset-Reduction beforehand to further reduce the DomSet and removes redundant nodes afterwards.
@@ -151,9 +149,8 @@ where
         let n = graph.number_of_nodes() as usize;
 
         // Run Subset-Reduction and create reduced edge set
-        let neighborhoods = graph.to_slice_representation();
-        let non_optimal_nodes = BitSet::new(graph.number_of_nodes()); // SubsetRule::apply_rule(&mut neighborhoods, &mut initial_solution);
-        let (csr_edges, csr_offsets) = neighborhoods.extract_csr_repr();
+        let mut csr_repr = graph.extract_csr_repr();
+        let non_optimal_nodes = SubsetRule::apply_rule(&mut csr_repr, &mut initial_solution);
 
         let mut num_covered = vec![0; n];
         let mut age = vec![0; n];
@@ -206,12 +203,8 @@ where
         // will they be a neighbor to a uniquely covered node (of another DomSet node).
         let fixed_nodes =
             BitSet::new_with_bits_set(graph.number_of_nodes(), initial_solution.iter_fixed());
-        let mut intersection_forest = InlineIntersectionForest::new_unsorted(
-            csr_edges,
-            csr_offsets,
-            fixed_nodes,
-            non_optimal_nodes,
-        );
+        let mut intersection_forest =
+            InlineIntersectionForest::new_unsorted(csr_repr, fixed_nodes, non_optimal_nodes);
 
         // Insert uniquely covered neighbors of dominating nodes into IntersectionTrees & Sampler
         for u in initial_solution.iter_non_fixed() {
@@ -232,7 +225,7 @@ where
 
         let current_solution = initial_solution.clone();
         let best_solution = initial_solution;
-
+        
         Self {
             graph,
             current_solution,
@@ -513,7 +506,6 @@ impl<R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
 where
     R: Rng,
     G: StaticGraph + SelfLoop,
-    <G as ToSliceRepresentation>::SliceRepresentation: ReduceGraphNodes + SelfLoop + Default,
 {
     fn execute_step(&mut self) {
         self.step();
@@ -534,6 +526,5 @@ impl<R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
 where
     R: Rng,
     G: StaticGraph + SelfLoop,
-    <G as ToSliceRepresentation>::SliceRepresentation: ReduceGraphNodes + SelfLoop + Default,
 {
 }
