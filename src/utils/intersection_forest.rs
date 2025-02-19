@@ -34,13 +34,13 @@ const FREE_SLOT_MASK: NumNodes = NumNodes::MAX >> 1;
 /// incident to *every* node in S.
 ///
 /// It is implemented using an inlined binary tree and supports adding nodes to trees, removing
-/// nodes from trees, as well as transfering ownership of a tree to another node. Intersections are
+/// nodes from trees, as well as transferring ownership of a tree to another node. Intersections are
 /// computed bottom-up such that the root holds the intersection of all associated data in the
 /// tree.
 ///
 /// See the GreedyReverseSearch heuristic for a more in-depth example.
 ///
-/// The datastructure relies on a series of invariants listed below; function-related invariants
+/// The data structure relies on a series of invariants listed below; function-related invariants
 /// are stated in the function documentation.
 /// (I1) Every node can be inserted in at most one tree at a time. Nodes that own trees can only be inserted into their own tree (as a consequence of (I2))
 /// (I2) The owner of a tree is a neighbor of all nodes inserted into the tree.
@@ -62,7 +62,7 @@ pub struct IntersectionForest {
     /// Inlined forest: if TreeLen[u] > 0 => Tree[u] = forest[u][..tree_len]
     ///
     /// Every node currently not a tree node but an empty node or a free node has its leftmost bit set to 1.
-    /// Free nodes simulate a linked list, ie. if Tree[u][v] = x is a free node, then Bits[x] = yz where y = 1 indicating that x is a free node and z = (0|1)^(Bits[x].len() - 1)
+    /// Free nodes simulate a linked list, i.e. if Tree[u][v] = x is a free node, then Bits[x] = yz where y = 1 indicating that x is a free node and z = (0|1)^(Bits[x].len() - 1)
     /// is the next element in the simulated linked list.
     /// The head of the linked list of Tree[u] is stored in FreePos[u] in nodes.
     /// The tail of the linked lists points to 0111..111 which is considered a null-element.
@@ -101,16 +101,16 @@ macro_rules! node {
 impl IntersectionForest {
     /// Creates a new IntersectionForest from a Csr-Representation of the graph as well as two BitSets
     /// indicating which nodes will never appear in any way (owner/tree-node/data-node) in this
-    /// datastructure (removable_nodes) and which nodes can be ignored in data-lists (ignorable_nodes).
+    /// data structure (removable_nodes) and which nodes can be ignored in data-lists (ignorable_nodes).
     ///
     /// This assumes that the edges lists are sorted by source and target.
     pub fn new(csr_repr: CsrEdges, removable_nodes: BitSet, ignorable_nodes: BitSet) -> Self {
         Self::new_inner::<true>(csr_repr, removable_nodes, ignorable_nodes)
     }
 
-    /// Creates a new IntersectionForest from a Csr-Representation of the graph as well as two BitSets
+    /// Creates a new IntersectionForest from a CSR-Representation of the graph as well as two BitSets
     /// indicating which nodes will never appear in any way (owner/tree-node/data-node) in this
-    /// datastructure (removable_nodes) and which nodes can be ignored in data-lists (ignorable_nodes).
+    /// data structure (removable_nodes) and which nodes can be ignored in data-lists (ignorable_nodes).
     ///
     /// This will sort the edge lists by source and target when initializing.
     pub fn new_unsorted(
@@ -186,41 +186,40 @@ impl IntersectionForest {
         }
     }
 
-    /// Returns the number of nodes in the underyling graph
+    /// Returns the number of nodes in the underlying graph
     fn number_of_nodes(&self) -> NumNodes {
         self.nodes.len() as NumNodes
     }
 
-    /// Returns *true* if u owns a tree
+    /// Returns `true` if u owns a tree
     pub fn owns_tree(&self, u: Node) -> bool {
         node!(self, u).tree_len > 0
     }
 
-    /// Returns *true* if u is inserted into a tree
     pub fn is_tree_node(&self, u: Node) -> bool {
-        node!(self, u).data_len > 0
+        node!(self, u).tree_pos != NOT_SET
     }
 
-    /// Returns *true* if u is neither the owner of a tree nor inserted into one
+    /// Returns `true` if u is neither the owner of a tree nor inserted into one
     pub fn is_unassigned(&self, u: Node) -> bool {
         !self.owns_tree(u) && !self.is_tree_node(u)
     }
 
-    /// Returns the node at position pos in Tree[u]
+    /// Returns the node at position pos in `Tree[u]`
     fn node_at(&self, u: Node, pos: usize) -> Node {
         debug_assert!(self.owns_tree(u));
         self.forest[u][pos]
     }
 
-    /// Returns *true* if u is a free node
+    /// Returns `true` if u is a free node
     fn is_free_node(u: Node) -> bool {
         (u & !FREE_SLOT_MASK) > 0
     }
 
-    /// Returns the associated data of the root node of Tree[u]
+    /// Returns the associated data of the root node of `Tree[u]`
     ///
     /// If u does not own a tree, an empty slice is returned to prevent requiring additional checks.
-    /// By (I2), if Tree[u] exists, u must be stored in the root and Data[Root[Tree[u]].len() >= 1
+    /// By (I2), if `Tree[u]` exists, `u` must be stored in the root and `Root\[Tree\[u\]\].len() >= 1`
     pub fn get_root_nodes(&self, u: Node) -> &[Node] {
         if node!(self, u).tree_len == 0 {
             return &[];
@@ -286,7 +285,7 @@ impl IntersectionForest {
         node!(self, dest).data_len = ptrw as NumNodes;
     }
 
-    /// Balanced case of ìntersect(dest, node) where both data lists are roughly the same size
+    /// Balanced case of intersect(dest, node) where both data lists are roughly the same size
     fn intersect_balanced(&mut self, dest: Node, other: Node) {
         let (dest_data, other_data) = self.data.double_mut(dest, other);
 
@@ -313,7 +312,7 @@ impl IntersectionForest {
     }
 
     /// Intersects associated data of dest and other and writes them into the associated data of dest.
-    /// Returns *true* if the data in dest was modified by intersect.
+    /// Returns `true` if the data in dest was modified by intersect.
     ///
     /// (I2, I3) Data[dest] and Data[other] are non-empty and sorted.
     fn intersect(&mut self, dest: Node, other: Node) -> bool {
@@ -360,11 +359,10 @@ impl IntersectionForest {
     /// 'Repairs' the associated data of the node at position pos in Tree[u] by computing the intersection of its original data
     /// as well as those of its two (or one, or zero) children.
     ///
-    /// Returns *true* if the length of the data was changed by repairing the node.
+    /// Returns `true` if the length of the data was changed by repairing the node.
     ///
     /// Warning: this can break (I5) for the parent of u.
     fn repair_node(&mut self, u: Node, pos: usize) -> bool {
-        debug_assert!(self.owns_tree(u));
         debug_assert!(node!(self, u).tree_len > pos as NumNodes);
 
         let node = self.node_at(u, pos);
@@ -418,7 +416,7 @@ impl IntersectionForest {
     /// 'Repairs' Tree[u] upwards from node at position pos.
     /// Stops when no change was detected.
     ///
-    /// Returns *true* if at any point, position must_see_pos was repaired as well as its parent
+    /// Returns `true` if at any point, position must_see_pos was repaired as well as its parent
     /// (if existent).
     fn repair_up_ensure_pos(&mut self, u: Node, mut pos: usize, must_see_pos: usize) -> bool {
         let mut pos_seen = pos == must_see_pos;
@@ -437,7 +435,7 @@ impl IntersectionForest {
         pos_seen
     }
 
-    /// Inserts node v into the Tree[u]
+    /// Inserts node `v` into the `Tree[u]`
     pub fn add_entry(&mut self, u: Node, mut v: Node) {
         debug_assert!(!self.is_tree_node(v));
 
@@ -475,13 +473,12 @@ impl IntersectionForest {
         }
     }
 
-    /// Removes node v from Tree[u]
+    /// Removes node `v` from `Tree[u]`
     pub fn remove_entry(&mut self, u: Node, v: Node) {
-        debug_assert!(self.owns_tree(u) && self.is_tree_node(v));
-        debug_assert_eq!(self.find_owner(v), u);
+        debug_assert!(self.is_in_tree(u, v));
 
         let pos = node!(self, v).tree_pos;
-        let tree_len = node!(self, u).tree_len;
+        self.nodes[v as usize].tree_pos = NOT_SET;
 
         debug_assert_eq!(self.forest[u][pos as usize], v);
 
@@ -491,7 +488,7 @@ impl IntersectionForest {
             return;
         }
 
-        // If v is the last node in the tree, ie. its rightmost leaf, remove it and repair upwards
+        // If v is the last node in the tree, i.e. its rightmost leaf, remove it and repair upwards
         if pos == tree_len - 1 {
             node!(self, u).tree_len -= 1;
             self.repair_up(u, ((pos - 1) >> 1) as usize);
@@ -539,7 +536,7 @@ impl IntersectionForest {
         }
     }
 
-    /// Clears a tree, ie. removes it from the forest.
+    /// Clears a tree, i.e. removes it from the forest.
     pub fn clear_tree(&mut self, u: Node) {
         debug_assert!(self.owns_tree(u));
         node!(self, u).tree_len = 0;
@@ -583,15 +580,15 @@ impl IntersectionForest {
         }
     }
 
-    /// Transfers ownership of Tree[u] to v, ie. Tree[v] = Tree[u], followed by Tree[u].clear()
+    /// Transfers ownership of `Tree[u]` to `v`, i.e. `Tree[v] = Tree[u]`, followed by `Tree[u].clear()`
     ///
-    /// (I2) Every inserted node in Tree[u] is a neighbor of v, ie. Root[Tree[u]] contains v.
+    /// (I2) Every inserted node in `Tree[u]` is a neighbor of `v`, i.e. `Root\[Tree\[u\]\]` contains `v`.
     pub fn transfer_tree(&mut self, u: Node, v: Node) {
         // (I2)
         debug_assert!(self.get_root_nodes(u).contains(&v));
 
         // If Tree[u] does not fit into the reserved space of v, compress it to make it fit:
-        // By (I2), every inserted node in Tree[u] is a neighbor of v and v has reserved space for
+        // By (I2), every inserted node in `Tree[u]` is a neighbor of v and v has reserved space for
         // all its neighbors: if u had more neighbors that now are free nodes, it is possibly too
         // big counting all its free nodes
         let target_size = self.forest.degree_of(v);
@@ -708,5 +705,37 @@ impl IntersectionForest {
             }
             u_tree[last_free_pos as usize] = current_head | !FREE_SLOT_MASK;
         }
+    }
+
+    /// Returns an iterator over all nodes that own trees
+    #[allow(unused)]
+    pub fn tree_owners(&self) -> impl Iterator<Item = Node> + '_ {
+        (0..self.number_of_nodes()).filter(|&u| self.owns_tree(u))
+    }
+
+    /// Returns an iterator over all nodes in a tree
+    #[allow(unused)]
+    pub fn tree_nodes(&self, u: Node) -> impl Iterator<Item = Node> + '_ {
+        let beg = self.nodes[u as usize].offset_unfiltered as usize;
+        let end = beg + self.nodes[u as usize].tree_len as usize;
+        self.forest[beg..end]
+            .iter()
+            .copied()
+            .filter(|&v| !Self::is_free_node(v))
+    }
+
+    /// Returns *true* if v is inserted into Tree[u]
+    #[allow(unused)]
+    pub fn is_in_tree(&self, u: Node, v: Node) -> bool {
+        let pos = self.nodes[v as usize].tree_pos;
+        if pos == NOT_SET {
+            return false;
+        }
+
+        if pos >= self.nodes[u as usize].tree_len {
+            return false;
+        }
+
+        self.forest[self.nodes[u as usize].offset_unfiltered as usize + pos as usize] == v
     }
 }

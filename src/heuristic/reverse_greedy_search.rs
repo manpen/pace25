@@ -1,7 +1,4 @@
-use std::cmp::Reverse;
-
 use rand::Rng;
-use rand_distr::Distribution;
 
 use crate::{
     graph::*,
@@ -16,7 +13,7 @@ use crate::{
 /// possible, replace two or more nodes by one.
 ///
 /// The algorithm stores for each node u in the dominating set how many nodes they uniquely cover,
-/// ie. how many nodes are *only* covered by u. If this number is 0, the node is considered
+/// i.e. how many nodes are *only* covered by u. If this number is 0, the node is considered
 /// redundant and can be safely removed from the DomSet.
 ///
 /// Using an IntersectionForest, it efficiently stores for each dominating node u the set of all
@@ -27,14 +24,14 @@ use crate::{
 /// dominating nodes u that v can replace in that way. In each iteration, we then sample such a
 /// replacement node v in proportion to its score. Afterwards, we add v to the DomSet, remove the
 /// redundant dominating node u from the DomSet and possibly further nodes in the DomSet that are
-/// now redundant (ie. score[v] > 1).
+/// now redundant (i.e. `score[v] > 1`).
 ///
 /// See descriptions of variables for more information.
 /// We have multiple invariants throughout the algorithm that we need to maintain:
 /// (I1) Adjacency-Lists are partitioned by appearance in the current DomSet: nodes in the DomSet appear first, then nodes not in the DomSet
-/// (I2) Only nodes u with num_covered[u] = 1 are inserted into the IntersectionForest
-/// (I3) scores[u] is equivalent to the number of IntersectionTrees where u is stored in the root (as an entry, not the node itself): excluded are dominating nodes
-/// (I4) if scores[u] > 0, u is inserted into the Sampler
+/// (I2) Only nodes `u` with `num_covered[u] = 1` are inserted into the IntersectionForest
+/// (I3) `scores[u]` is equivalent to the number of IntersectionTrees where u is stored in the root (as an entry, not the node itself): excluded are dominating nodes
+/// (I4) if `scores[u] > 0`, u is inserted into the Sampler
 pub struct GreedyReverseSearch<
     'a,
     R,
@@ -54,7 +51,7 @@ pub struct GreedyReverseSearch<
     best_solution: DominatingSet,
     /// Is the algorithm stuck in a (local) optimum?
     ///
-    /// Will be true if the sampler is empty, ie. the algorithm can no longer improve the solution.
+    /// Will be true if the sampler is empty, i.e. the algorithm can no longer improve the solution.
     is_locally_optimal: bool,
 
     /// A sampler for sampling nodes with weights that are powers of 2.
@@ -69,22 +66,17 @@ pub struct GreedyReverseSearch<
     nodes_to_update: Vec<Node>,
     /// Helper BitSet to easily identify if a node is pushed to `nodes_to_update`
     in_nodes_to_update: BitSet,
-    /// Additional supporting vector used in `self.update_trees_and_sampler()` to temporarily store
-    /// nodes that need to be re-inserted into the sampler.
-    ///
-    /// To prevent re-allocations, this is initialized inside the algorithm itself.
-    temp_nodes: Vec<Node>,
 
     /// Number of incident dominating nodes
     ///
-    /// (I1) Neighbors[u][..num_covered[u]] is a subset of the current DomSet
+    /// (I1) `Neighbors[u][..num_covered\[u\]]` is a subset of the current DomSet
     num_covered: Vec<NumNodes>,
     /// Number of nodes this (dominating) nodes covers uniquely (no other dominating node covers)
     uniquely_covered: Vec<NumNodes>,
 
     /// Nodes u that can possibly be removed from the DomSet as uniquely_covered[u] = 0
     redundant_nodes: Vec<Node>,
-    /// Number of appearences in entries of root nodes in the IntersectionForest
+    /// Number of appearances in entries of root nodes in the IntersectionForest
     scores: Vec<NumNodes>,
 
     /// Last time a node was added/removed from the DomSet
@@ -95,10 +87,10 @@ pub struct GreedyReverseSearch<
     /// IntersectionForest
     ///
     /// Every node u in the DomSet is assigned an IntersectionTree. Nodes that are uniquely covered by this
-    /// u are then inserted into the IntersectionTree of u. IntersectionTree[u] thus stores all nodes in its root
+    /// u are then inserted into the IntersectionTree of `u`. `IntersectionTree[u]` thus stores all nodes in its root
     /// that are incident to *all* uniquely covered nodes of u and can thus replace u in the DomSet.
     ///
-    /// v in root of IntersectionTree[u] ==> scores[v] > 0 ==> v in sampler ==> v can be sampled to replace u
+    /// v in root of `IntersectionTree[u]` ==> `scores[v] > 0` ==> `v` in sampler ==> `v` can be sampled to replace `u`
     ///
     /// Note that we only *really* consider neighbors that are not subset-dominated and thus can appear in any
     /// optimal DomSet without the possibility of directly replacing them.
@@ -132,7 +124,6 @@ where
                 rng,
                 nodes_to_update: Vec::new(),
                 in_nodes_to_update: BitSet::new(1),
-                temp_nodes: Vec::new(),
                 num_covered: Vec::new(),
                 uniquely_covered: Vec::new(),
                 redundant_nodes: Vec::new(),
@@ -233,7 +224,6 @@ where
             rng,
             nodes_to_update: Vec::new(),
             in_nodes_to_update: BitSet::new(n as NumNodes),
-            temp_nodes: Vec::with_capacity(n),
             num_covered,
             uniquely_covered,
             redundant_nodes: Vec::new(),
@@ -252,6 +242,9 @@ where
     /// 3. Remove all now redundant nodes of the DomSet
     /// 4. Update IntersectionTrees/Scores/Sampler accordingly
     pub fn step(&mut self) {
+        #[cfg(debug_assertions)]
+        self.assert_correctness();
+
         // Sample node: if no node can be sampled, current solution is optimal
         let proposed_node = if let Some(node) = self.draw_node() {
             node
@@ -261,6 +254,8 @@ where
         };
 
         self.round += 1;
+
+        debug_assert!(self.scores[proposed_node as usize] > 0);
 
         // Add node to DomSet
         self.add_node_to_domset(proposed_node);
@@ -293,17 +288,22 @@ where
             return None;
         }
 
-        (0..NUM_SAMPLES)
-            .map(|_| {
-                let node = self.sampler.sample(&mut self.rng);
-                (
-                    self.scores[node as usize],
-                    Reverse(self.age[node as usize]),
-                    node,
-                )
-            })
-            .max()
-            .map(|(_, _, x)| x)
+        let mut sample_node = None;
+        let mut sample_bucket = 0;
+        let mut sample_age = 0;
+
+        self.sampler
+            .sample_many::<_, NUM_SAMPLES>(&mut self.rng, |bucket, node| {
+                if sample_bucket == bucket && sample_age < self.age[node as usize] {
+                    return;
+                }
+
+                sample_node = Some(node);
+                sample_bucket = bucket;
+                sample_age = self.age[node as usize];
+            });
+
+        sample_node
     }
 
     /// Adds a node to the DomSet that was not part of it before.
@@ -404,7 +404,7 @@ where
         if MARKER {
             self.intersection_forest.transfer_tree(old_node, new_node);
             self.scores[old_node as usize] = 1;
-            self.sampler.add_entry(old_node, 0);
+            self.sampler.add_entry(old_node, 1);
         } else {
             // (I4) Update sampler
             for &node in self.intersection_forest.get_root_nodes(old_node) {
@@ -414,7 +414,6 @@ where
                         .set_bucket(node, self.scores[node as usize] as usize);
                 }
             }
-            self.scores[old_node as usize] = 0;
             self.intersection_forest.clear_tree(old_node);
         }
     }
@@ -438,10 +437,8 @@ where
             for &node in self.intersection_forest.get_root_nodes(dominating_node) {
                 if node != dominating_node && self.scores[node as usize] != 0 {
                     self.scores[node as usize] -= 1;
-                    self.sampler.remove_entry(node);
-                    if self.scores[node as usize] > 0 {
-                        self.temp_nodes.push(node);
-                    }
+                    self.sampler
+                        .set_bucket(node, self.scores[node as usize] as usize);
                 }
             }
 
@@ -458,16 +455,9 @@ where
             for &node in self.intersection_forest.get_root_nodes(dominating_node) {
                 if node != dominating_node {
                     self.scores[node as usize] += 1;
-                    if self.scores[node as usize] == 1 {
-                        self.temp_nodes.push(node);
-                    }
+                    self.sampler
+                        .set_bucket(node, self.scores[node as usize] as usize);
                 }
-            }
-
-            // Add all nodes for which an update occured to the sampler again
-            for node in self.temp_nodes.drain(..) {
-                self.sampler
-                    .add_entry(node, self.scores[node as usize] as usize - 1);
             }
         }
     }
@@ -489,6 +479,66 @@ where
                 }
             }
         }
+    }
+
+    /// Asserts that all current datastructures contain correct values
+    #[allow(unused)]
+    pub fn assert_correctness(&self) {
+        let mut unique = vec![0; self.graph.len()];
+        let mut scores = vec![0; self.graph.len()];
+        for u in self.graph.vertices() {
+            // Check (I1)
+            for i in 0..self.num_covered[u as usize] {
+                assert!(self
+                    .current_solution
+                    .is_in_domset(self.graph.ith_neighbor(u, i)));
+            }
+
+            if !self.current_solution.is_fixed_node(u) {
+                // Check that only non-fixed DomSet-Nodes own trees
+                assert_eq!(
+                    self.current_solution.is_in_domset(u),
+                    self.intersection_forest.owns_tree(u)
+                );
+            }
+
+            // Check (I2)
+            if self.num_covered[u as usize] == 1 {
+                let dom = self.graph.ith_neighbor(u, 0);
+                unique[dom as usize] += 1;
+                if !self.current_solution.is_fixed_node(dom) {
+                    assert!(self.intersection_forest.is_in_tree(dom, u));
+                }
+            }
+
+            if self.current_solution.is_fixed_node(u) {
+                continue;
+            }
+
+            // Prepare Check (I3)
+            if self.current_solution.is_in_domset(u) {
+                for &v in self.intersection_forest.get_root_nodes(u) {
+                    if v != u {
+                        scores[v as usize] += 1;
+                    }
+                }
+            }
+        }
+
+        // Check (I3) and UniquelyCovered
+        assert_eq!(self.uniquely_covered, unique);
+        assert_eq!(self.scores, scores);
+
+        for u in self.graph.vertices() {
+            // Check (I4)
+            assert_eq!(scores[u as usize] as usize, self.sampler.bucket_of_node(u));
+        }
+
+        // Check Sampler-Weight
+        self.sampler.assert_positions();
+        self.sampler.assert_total_weight();
+
+        println!("Check completed");
     }
 }
 

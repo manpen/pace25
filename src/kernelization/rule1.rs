@@ -1,3 +1,5 @@
+use smallvec::SmallVec;
+
 use crate::{graph::*, utils::DominatingSet};
 
 use super::KernelizationRule;
@@ -34,7 +36,7 @@ impl<Graph: AdjacencyList + SelfLoop> KernelizationRule<&Graph> for Rule1 {
         assert!(NOT_SET as usize >= n);
 
         // Inverse mappings of step (1) and (2)
-        let mut inv_mappings: Vec<Vec<Node>> = vec![Vec::new(); n];
+        let mut inv_mappings: Vec<SmallVec<[Node; 4]>> = vec![Default::default(); n];
 
         // Parent[u] = v if (u,v) is a possible candidate
         let mut parent: Vec<Node> = vec![NOT_SET; n];
@@ -104,15 +106,12 @@ impl<Graph: AdjacencyList + SelfLoop> KernelizationRule<&Graph> for Rule1 {
                 }
 
                 // Find minimum dominating node of neighbors in neighborhood of v
-                if let Some((min_node, _)) = graph
+                if let Some((_, min_node)) = graph
                     .neighbors_of(v)
                     .filter_map(|x| {
                         let pt = parent[x as usize];
-                        if pt != NOT_SET && pt != v && marked[pt as usize] == v {
-                            Some((graph.degree_of(pt), pt))
-                        } else {
-                            None
-                        }
+                        (pt != NOT_SET && pt != v && marked[pt as usize] == v)
+                            .then(|| (graph.degree_of(pt), pt))
                     })
                     .min()
                 {
