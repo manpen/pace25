@@ -7,9 +7,7 @@ use crate::{
     graph::*,
     kernelization::{KernelizationRule, SubsetRule},
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
-    utils::{
-        intersection_forest::InlineIntersectionForest, sampler::WeightedPow2Sampler, DominatingSet,
-    },
+    utils::{intersection_forest::IntersectionForest, sampler::WeightedPow2Sampler, DominatingSet},
 };
 
 /// # GreedyReverseSearch
@@ -104,7 +102,7 @@ pub struct GreedyReverseSearch<
     ///
     /// Note that we only *really* consider neighbors that are not subset-dominated and thus can appear in any
     /// optimal DomSet without the possibility of directly replacing them.
-    pub intersection_forest: InlineIntersectionForest,
+    pub intersection_forest: IntersectionForest,
 
     /// Keep track of all applied modifications to current_solution to also apply them to
     /// best_solution when new best solution is found
@@ -140,7 +138,7 @@ where
                 redundant_nodes: Vec::new(),
                 scores: Vec::new(),
                 age: Vec::new(),
-                intersection_forest: InlineIntersectionForest::default(),
+                intersection_forest: IntersectionForest::default(),
                 round: 1,
                 domset_modifications: Vec::new(),
             };
@@ -204,7 +202,7 @@ where
         let fixed_nodes =
             BitSet::new_with_bits_set(graph.number_of_nodes(), initial_solution.iter_fixed());
         let mut intersection_forest =
-            InlineIntersectionForest::new_unsorted(csr_repr, fixed_nodes, non_optimal_nodes);
+            IntersectionForest::new_unsorted(csr_repr, fixed_nodes, non_optimal_nodes);
 
         // Insert uniquely covered neighbors of dominating nodes into IntersectionTrees & Sampler
         for u in initial_solution.iter_non_fixed() {

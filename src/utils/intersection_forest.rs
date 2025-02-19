@@ -51,7 +51,7 @@ const FREE_SLOT_MASK: NumNodes = NumNodes::MAX >> 1;
 /// (I5) The associated data of node u is the intersection of the neighbors of u, and the data (if existent) of its two (or one) children
 ///
 #[derive(Debug, Clone)]
-pub struct InlineIntersectionForest {
+pub struct IntersectionForest {
     /// Important information for all nodes u
     /// * tree_len := length of the owned tree: Tree[u] = forest[u][..tree_len]
     /// * data_len := length of associated data if node in a tree: Data[u] = data[u][..data_len]
@@ -83,7 +83,7 @@ pub struct InlineIntersectionForest {
     dirty_nodes: BitSet,
 }
 
-impl Default for InlineIntersectionForest {
+impl Default for IntersectionForest {
     fn default() -> Self {
         Self {
             nodes: vec![NodeInformation::default()],
@@ -100,7 +100,7 @@ macro_rules! node {
     };
 }
 
-impl InlineIntersectionForest {
+impl IntersectionForest {
     /// Creates a new IntersectionForest from a Csr-Representation of the graph as well as two BitSets
     /// indicating which nodes will never appear in any way (owner/tree-node/data-node) in this
     /// datastructure (removable_nodes) and which nodes can be ignored in data-lists (ignorable_nodes).
