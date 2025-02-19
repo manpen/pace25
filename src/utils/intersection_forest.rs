@@ -3,8 +3,6 @@ use crate::graph::{
     BitSet, CsrEdges, Node, NumEdges, NumNodes,
 };
 
-const NOT_SET: Node = Node::MAX;
-
 #[derive(Debug, Clone, Copy)]
 struct NodeInformation {
     pub tree_len: NumNodes,
