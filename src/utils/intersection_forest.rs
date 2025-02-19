@@ -159,7 +159,7 @@ impl IntersectionForest {
             }
 
             if !SORTED {
-                edges[(unfiltered_offsets[u] as usize)..write_ptr].sort_unstable();
+                edges[(filtered_offsets[u] as usize)..write_ptr].sort_unstable();
             }
 
             max_degree = max_degree.max(ignorable_offset - unfiltered_offsets[u]);
