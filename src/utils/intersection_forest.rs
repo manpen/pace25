@@ -229,7 +229,7 @@ impl InlineIntersectionForest {
         }
 
         let root = self.forest[u][0];
-        &self.data[root][..node!(self, u).data_len as usize]
+        &self.data[root][..node!(self, root).data_len as usize]
     }
 
     /// Costly function to find the owner of the tree where u is inserted.
@@ -373,6 +373,7 @@ impl InlineIntersectionForest {
         if Self::is_free_node(node) {
             return true;
         }
+
         let len = node!(self, node).data_len;
         self.restore_node(node);
 

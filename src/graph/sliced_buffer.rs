@@ -184,7 +184,7 @@ impl<T> Default for SlicedBufferWithDefault<T> {
     }
 }
 
-impl<T: Default + Clone> SlicedBufferWithDefault<T> {
+impl<T: Clone> SlicedBufferWithDefault<T> {
     /// Constructs the SlicedBuffer and panics if one of the three
     /// invariants on offset are violated.
     pub fn new(default: Vec<T>, offsets: Vec<NumEdges>) -> Self {
@@ -193,7 +193,7 @@ impl<T: Default + Clone> SlicedBufferWithDefault<T> {
         assert!(offsets.is_sorted());
         assert!(*offsets.last().unwrap() as usize <= default.len());
 
-        let buffer = vec![T::default(); default.len()];
+        let buffer = default.clone();
         Self {
             buffer,
             default,
