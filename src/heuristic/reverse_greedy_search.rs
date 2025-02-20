@@ -559,31 +559,71 @@ where
     /// 2. Remove another random non-fixed node from the current solution
     /// 3. With probability 0.5, if possible, remove another random non-fixed node with minimal
     ///    loss from the current solution.
-    /// 4. Greedily add nodes back into current solution until it is valid again. Remove redundant
-    ///    nodes while doing so.
-    /// 5. Repair datastructures (IntersectionForest / Sampler)
     fn force_removal_dms(&mut self) {
         debug_assert!(self.current_solution.num_of_non_fixed_nodes() > 1);
 
+        if self.rng.gen_bool(0.5) {
+            self.forced_removal_procedure([
+                ForcedRemovalNodeType::MinLoss,
+                ForcedRemovalNodeType::Random,
+                ForcedRemovalNodeType::RandomMinLoss,
+            ]);
+        } else {
+            self.forced_removal_procedure([
+                ForcedRemovalNodeType::MinLoss,
+                ForcedRemovalNodeType::Random,
+            ]);
+        }
+    }
+
+    /// Convert a ForcedRemovalNodeType to a given node by either sampling, finding the minimum or
+    /// just dropping the wrapper.
+    #[inline(always)]
+    fn forced_removal_node_type_to_node<const NUM_RML_SAMPLES: usize>(
+        &mut self,
+        node_type: ForcedRemovalNodeType,
+    ) -> Node {
+        match node_type {
+            ForcedRemovalNodeType::MinLoss => self.minimum_loss_node(),
+            ForcedRemovalNodeType::Random => self.current_solution.sample_non_fixed(self.rng),
+            ForcedRemovalNodeType::RandomMinLoss => {
+                self.random_minimum_loss_node::<NUM_RML_SAMPLES>()
+            }
+            ForcedRemovalNodeType::Fixed(u) => u,
+        }
+    }
+
+    /// A forced removal procedure
+    ///
+    /// 1. Force out a series of non-fixed nodes out of the current solution
+    /// 2. Greedily add nodes back into the current solution until it is valid again. Remove
+    ///    redundant nodes while doing so.
+    /// 3. Repair datastructures (IntersectionForest / Sampler)
+    fn forced_removal_procedure<I: IntoIterator<Item = ForcedRemovalNodeType>>(
+        &mut self,
+        nodes_to_remove: I,
+    ) {
+        let mut uncovered_nodes = 0;
+
         // Step (1)
-        let mut uncovered_nodes;
-        let min_loss_node = self.minimum_loss_node();
-        uncovered_nodes = self.force_remove_node_from_domset(min_loss_node);
+        for node_type in nodes_to_remove.into_iter() {
+            // Only remove non-fixed nodes
+            if self.current_solution.num_of_non_fixed_nodes() == 0 {
+                break;
+            }
 
-        // Step (2)
-        // CHECK: Is there guaranteed to be a non-fixed node here?
-        // TODO: If only one is fixed, the solution must be optimal, thus we have at least 2 if we
-        // return early at initilization
-        let random_node = self.current_solution.sample_non_fixed(self.rng);
-        uncovered_nodes += self.force_remove_node_from_domset(random_node);
+            let node = self.forced_removal_node_type_to_node::<50>(node_type);
+            // Only remove non-fixed nodes
+            if self.current_solution.is_fixed_node(node)
+                || !self.current_solution.is_in_domset(node)
+            {
+                continue;
+            }
 
-        // Step (3)
-        if self.rng.gen_bool(0.5) && self.current_solution.num_of_non_fixed_nodes() > 0 {
-            let min_loss_node = self.random_minimum_loss_node::<50>();
-            uncovered_nodes += self.force_remove_node_from_domset(min_loss_node);
+            uncovered_nodes += self.force_remove_node_from_domset(node);
         }
 
-        // Step (4)
+        // Step (2)
         while uncovered_nodes > 0 {
             let best_candidate = self.find_best_candidate();
             uncovered_nodes -= self.force_add_node_to_domset(best_candidate);
@@ -592,7 +632,7 @@ where
         // TODO: incorporate elsewhere
         self.helper_bitset.clear_all();
 
-        // Step (5)
+        // Step (3)
         self.update_forest_and_sampler();
         self.update_best_solution();
     }
@@ -857,6 +897,16 @@ where
 enum DomSetModification {
     Add(Node),
     Remove(Node),
+}
+
+/// Helper enum to generalize type of forced node removals
+#[allow(unused)]
+#[derive(Debug, Copy, Clone)]
+enum ForcedRemovalNodeType {
+    MinLoss,
+    Random,
+    RandomMinLoss,
+    Fixed(Node),
 }
 
 impl<R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
