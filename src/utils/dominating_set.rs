@@ -179,7 +179,7 @@ impl DominatingSet {
         self.positions[u as usize] < self.num_fixed
     }
 
-    /// Returns *true* if u is a fixed node of the dominating set.
+    /// Returns *true* if u is a non-fixed node of the dominating set.
     #[inline(always)]
     pub fn is_non_fixed_node(&self, u: Node) -> bool {
         self.is_in_domset(u) && !self.is_fixed_node(u)

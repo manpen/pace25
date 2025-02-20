@@ -1,8 +1,9 @@
-use std::fmt::Debug;
-use std::cmp::Ordering;
+use std::{cmp::Ordering, collections::VecDeque, fmt::Debug};
 
 use rand::Rng;
 use thiserror::Error;
+
+use itertools::Itertools;
 
 use crate::{
     errors::InvariantCheck,
@@ -553,12 +554,115 @@ where
             .2
     }
 
+    /// A BFS search finding all non-fixed nodes in a radius of DEPTH around start_node.
+    fn bfs<const DEPTH: usize>(&mut self, start_node: Node) -> Vec<Node> {
+        self.helper_bitset.clear_all();
+        let mut dom_nodes = Vec::new();
+
+        // A queue of non-dominating nodes in the next frontier
+        let mut bfs_queue = VecDeque::new();
+        bfs_queue.push_back(start_node);
+        self.helper_bitset.set_bit(start_node);
+
+        for _ in 0..DEPTH {
+            let curr_queue_len = bfs_queue.len();
+            for _ in 0..curr_queue_len {
+                let node = bfs_queue.pop_front().unwrap();
+
+                for i in 0..self.num_covered[node as usize] {
+                    let dom_node = self.graph.ith_neighbor(node, i);
+                    if !self.helper_bitset.set_bit(dom_node) {
+                        bfs_queue.push_back(dom_node);
+
+                        if self.current_solution.is_non_fixed_node(dom_node) {
+                            dom_nodes.push(dom_node);
+                        }
+                    }
+                }
+
+                for i in self.num_covered[node as usize]..self.graph.degree_of(node) {
+                    let neighbor = self.graph.ith_neighbor(node, i);
+                    if !self.helper_bitset.set_bit(neighbor) {
+                        bfs_queue.push_back(neighbor);
+                    }
+                }
+            }
+        }
+
+        self.helper_bitset.clear_all();
+
+        dom_nodes
+    }
+
+    /// A modified costly BFS search that only counts non-dominating nodes as a new layer,
+    /// ie. this function returns a list of all (also fixed) dominating nodes u for which there
+    /// exists a path from start_node to u using at most DEPTH many non-dominating nodes.
+    ///
+    /// Runs a BFS on non-dominating nodes and a DFS on dominating ones.
+    fn bfs_non_fixed_nodes<const DEPTH: usize>(&mut self, start_node: Node) -> Vec<Node> {
+        debug_assert!(self.current_solution.is_non_fixed_node(start_node));
+
+        self.helper_bitset.clear_all();
+        let mut dom_nodes = Vec::new();
+
+        // A queue of non-dominating nodes in the next frontier
+        let mut bfs_queue = VecDeque::new();
+
+        // Stack of all tentative dominating nodes in the current frontier
+        let mut bfs_stack = vec![start_node];
+
+        for _ in 0..DEPTH {
+            while let Some(node) = bfs_stack.pop() {
+                dom_nodes.push(node);
+                self.helper_bitset.set_bit(node);
+
+                for i in 0..self.num_covered[node as usize] {
+                    let dom_node = self.graph.ith_neighbor(node, i);
+                    if !self.helper_bitset.set_bit(dom_node) {
+                        bfs_stack.push(dom_node);
+                    }
+                }
+
+                for i in self.num_covered[node as usize]..self.graph.degree_of(node) {
+                    let neighbor = self.graph.ith_neighbor(node, i);
+                    if !self.helper_bitset.set_bit(neighbor) {
+                        bfs_queue.push_back(neighbor);
+                    }
+                }
+            }
+
+            let curr_queue_len = bfs_queue.len();
+            for _ in 0..curr_queue_len {
+                let node = bfs_queue.pop_front().unwrap();
+
+                for i in 0..self.num_covered[node as usize] {
+                    let dom_node = self.graph.ith_neighbor(node, i);
+                    if !self.helper_bitset.set_bit(dom_node) {
+                        bfs_stack.push(dom_node);
+                    }
+                }
+
+                for i in self.num_covered[node as usize]..self.graph.degree_of(node) {
+                    let neighbor = self.graph.ith_neighbor(node, i);
+                    if !self.helper_bitset.set_bit(neighbor) {
+                        bfs_queue.push_back(neighbor);
+                    }
+                }
+            }
+        }
+
+        self.helper_bitset.clear_all();
+
+        dom_nodes
+    }
+
     /// A forced removal rule
     ///
     /// 1. Remove the non-fixed with minimal loss from the current solution
     /// 2. Remove another random non-fixed node from the current solution
     /// 3. With probability 0.5, if possible, remove another random non-fixed node with minimal
     ///    loss from the current solution.
+    #[allow(unused)]
     fn force_removal_dms(&mut self) {
         debug_assert!(self.current_solution.num_of_non_fixed_nodes() > 1);
 
@@ -574,6 +678,30 @@ where
                 ForcedRemovalNodeType::Random,
             ]);
         }
+    }
+
+    /// Forced removal rule using self.bfs
+    #[allow(unused)]
+    fn force_removal_bfs(&mut self) {
+        let min_loss_node = self.minimum_loss_node();
+        let dom_nodes = self
+            .bfs::<3>(min_loss_node)
+            .into_iter()
+            .map(ForcedRemovalNodeType::Fixed)
+            .collect_vec();
+        self.forced_removal_procedure(dom_nodes);
+    }
+
+    /// Forced removal rule using self.bfs_non_fixed_nodes
+    #[allow(unused)]
+    fn force_removal_bfs_non_fixed(&mut self) {
+        let min_loss_node = self.minimum_loss_node();
+        let dom_nodes = self
+            .bfs_non_fixed_nodes::<2>(min_loss_node)
+            .into_iter()
+            .map(ForcedRemovalNodeType::Fixed)
+            .collect_vec();
+        self.forced_removal_procedure(dom_nodes);
     }
 
     /// Convert a ForcedRemovalNodeType to a given node by either sampling, finding the minimum or
@@ -613,14 +741,9 @@ where
             }
 
             let node = self.forced_removal_node_type_to_node::<50>(node_type);
-            // Only remove non-fixed nodes
-            if self.current_solution.is_fixed_node(node)
-                || !self.current_solution.is_in_domset(node)
-            {
-                continue;
+            if self.current_solution.is_non_fixed_node(node) {
+                uncovered_nodes += self.force_remove_node_from_domset(node);
             }
-
-            uncovered_nodes += self.force_remove_node_from_domset(node);
         }
 
         // Step (2)
