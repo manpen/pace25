@@ -37,9 +37,10 @@ pub use traversal::*;
 pub use weisfeiler_lehman::*;
 
 use itertools::Itertools;
-use std::{borrow::Borrow, cmp::Ordering, ops::Range};
+use std::{borrow::Borrow, ops::Range};
 use stream_bitset::prelude::*;
 mod graph_tests;
+pub mod sliced_buffer;
 
 pub type Node = u32;
 pub type NumNodes = Node;
@@ -408,182 +409,12 @@ impl<G: GraphNew + GraphEdgeEditing> GraphFromReader for G {
     }
 }
 
-/// Trait for slice access of neighborhood.
-///
-/// Useful for algorithms/datastructures that rely on slice methods and thus need lower level
-/// access to the neighborhood.
-pub trait NeighborsSlice: AdjacencyList {
-    /// Returns a slice over all neighbors of u.
-    fn neighbors_slice(&self, u: Node) -> &[Node];
-
-    /// Returns a mutable slive over all neighbors of u.
-    fn neighbors_slice_mut(&mut self, u: Node) -> &mut [Node];
-
+/// Trait for extracting a Csr-Representation from the graph.
+pub trait ExtractCsrRepr {
     /// Extract a CSR representation of the graph, ie. a compacted list of all edges sorted by
     /// source and a list of offsets indicating where the neighbors of u begin to appear in this
     /// edge list.
-    fn extract_csr_repr(&self) -> (Vec<Node>, Vec<NumEdges>) {
-        let mut offsets = Vec::with_capacity(self.len() + 1);
-        offsets.push(0);
-
-        let mut edges = Vec::new();
-
-        for u in self.vertices() {
-            offsets.push(self.neighbors_slice(u).len() as NumEdges);
-            edges.extend_from_slice(self.neighbors_slice(u));
-        }
-
-        (edges, offsets)
-    }
-}
-
-/// Conversion trait for extracting a NeighborSlice representation of a graph.
-pub trait ToSliceRepresentation: AdjacencyList {
-    /// Resulting NeighborsSlice representation
-    type SliceRepresentation: NeighborsSlice;
-
-    /// Extracts a NeighborsSlice representation from self.
-    fn to_slice_representation(&self) -> Self::SliceRepresentation;
-}
-
-/// Trait for removing a set of nodes
-pub trait ReduceGraphNodes {
-    /// Filter out nodes from the graph.
-    fn filter_out_nodes(&mut self, nodes_to_remove: &BitSet);
-}
-
-/// Trait for sorting-related methods on neighborhoods (=> port of std-slice-sorting)
-pub trait SortedNeighborhoods: NeighborsSlice {
-    fn are_neighbors_sorted(&self, u: Node) -> bool;
-
-    fn are_neighbors_sorted_by<F: FnMut(&Node, &Node) -> bool>(&self, u: Node, compare: F) -> bool;
-
-    fn are_neighbors_sorted_by_key<K: PartialOrd, F: FnMut(&Node) -> K>(
-        &self,
-        u: Node,
-        f: F,
-    ) -> bool;
-
-    fn are_all_neighbors_sorted(&self) -> bool {
-        self.vertices().all(|u| self.are_neighbors_sorted(u))
-    }
-
-    fn are_all_neighbors_sorted_by<F: Clone + FnMut(&Node, &Node) -> bool>(
-        &self,
-        compare: F,
-    ) -> bool {
-        self.vertices()
-            .all(|u| self.are_neighbors_sorted_by(u, compare.clone()))
-    }
-
-    fn are_all_neighbors_sorted_by_key<K: PartialOrd, F: Clone + FnMut(&Node) -> K>(
-        &self,
-        f: F,
-    ) -> bool {
-        self.vertices()
-            .all(|u| self.are_neighbors_sorted_by_key(u, f.clone()))
-    }
-
-    fn sort_neighbors(&mut self, u: Node);
-
-    fn sort_neighbors_by<F: FnMut(&Node, &Node) -> Ordering>(&mut self, u: Node, compare: F);
-
-    fn sort_neighbors_by_key<K: Ord, F: FnMut(&Node) -> K>(&mut self, u: Node, f: F);
-
-    fn sort_neighbors_unstable(&mut self, u: Node);
-
-    fn sort_neighbors_unstable_by<F: FnMut(&Node, &Node) -> Ordering>(
-        &mut self,
-        u: Node,
-        compare: F,
-    );
-
-    fn sort_neighbors_unstable_by_key<K: Ord, F: FnMut(&Node) -> K>(&mut self, u: Node, f: F);
-
-    fn sort_all_neighbors(&mut self) {
-        for u in self.vertices_range() {
-            self.sort_neighbors(u);
-        }
-    }
-
-    fn sort_all_neighbors_by<F: Clone + FnMut(&Node, &Node) -> Ordering>(&mut self, compare: F) {
-        for u in self.vertices_range() {
-            self.sort_neighbors_by(u, compare.clone());
-        }
-    }
-
-    fn sort_all_neighbors_by_key<K: Ord, F: Clone + FnMut(&Node) -> K>(&mut self, f: F) {
-        for u in self.vertices_range() {
-            self.sort_neighbors_by_key(u, f.clone())
-        }
-    }
-
-    fn sort_all_neighbors_unstable(&mut self) {
-        for u in self.vertices_range() {
-            self.sort_neighbors_unstable(u);
-        }
-    }
-
-    fn sort_all_neighbors_unstable_by<F: Clone + FnMut(&Node, &Node) -> Ordering>(
-        &mut self,
-        compare: F,
-    ) {
-        for u in self.vertices_range() {
-            self.sort_neighbors_unstable_by(u, compare.clone());
-        }
-    }
-
-    fn sort_all_neighbors_unstable_by_key<K: Ord, F: Clone + FnMut(&Node) -> K>(&mut self, f: F) {
-        for u in self.vertices_range() {
-            self.sort_neighbors_unstable_by_key(u, f.clone());
-        }
-    }
-}
-
-impl<G: NeighborsSlice> SortedNeighborhoods for G {
-    fn are_neighbors_sorted(&self, u: Node) -> bool {
-        self.neighbors_slice(u).is_sorted()
-    }
-
-    fn are_neighbors_sorted_by<F: FnMut(&Node, &Node) -> bool>(&self, u: Node, compare: F) -> bool {
-        self.neighbors_slice(u).is_sorted_by(compare)
-    }
-
-    fn are_neighbors_sorted_by_key<K: PartialOrd, F: FnMut(&Node) -> K>(
-        &self,
-        u: Node,
-        f: F,
-    ) -> bool {
-        self.neighbors_slice(u).is_sorted_by_key(f)
-    }
-
-    fn sort_neighbors(&mut self, u: Node) {
-        self.neighbors_slice_mut(u).sort();
-    }
-
-    fn sort_neighbors_by<F: FnMut(&Node, &Node) -> Ordering>(&mut self, u: Node, compare: F) {
-        self.neighbors_slice_mut(u).sort_by(compare);
-    }
-
-    fn sort_neighbors_by_key<K: Ord, F: FnMut(&Node) -> K>(&mut self, u: Node, f: F) {
-        self.neighbors_slice_mut(u).sort_by_key(f);
-    }
-
-    fn sort_neighbors_unstable(&mut self, u: Node) {
-        self.neighbors_slice_mut(u).sort_unstable();
-    }
-
-    fn sort_neighbors_unstable_by<F: FnMut(&Node, &Node) -> Ordering>(
-        &mut self,
-        u: Node,
-        compare: F,
-    ) {
-        self.neighbors_slice_mut(u).sort_unstable_by(compare);
-    }
-
-    fn sort_neighbors_unstable_by_key<K: Ord, F: FnMut(&Node) -> K>(&mut self, u: Node, f: F) {
-        self.neighbors_slice_mut(u).sort_unstable_by_key(f);
-    }
+    fn extract_csr_repr(&self) -> CsrEdges;
 }
 
 /// A marker trait indicating that *u* is considered a neighbor of *u*
@@ -618,12 +449,7 @@ impl<G> FullfledgedGraph for G where
 /// A static graph possibly does not require the ability of edge-modification but instead allows
 /// for edge-reordering
 pub trait StaticGraph:
-    Clone
-    + IndexedAdjacencyList
-    + GraphEdgeOrder
-    + AdjacencyTest
-    + GraphFromReader
-    + ToSliceRepresentation
+    Clone + IndexedAdjacencyList + GraphEdgeOrder + AdjacencyTest + GraphFromReader + ExtractCsrRepr
 {
 }
 
@@ -633,7 +459,7 @@ impl<
             + GraphEdgeOrder
             + AdjacencyTest
             + GraphFromReader
-            + ToSliceRepresentation,
+            + ExtractCsrRepr,
     > StaticGraph for G
 {
 }
