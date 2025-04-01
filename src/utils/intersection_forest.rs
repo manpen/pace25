@@ -115,7 +115,7 @@ impl IntersectionForest {
     /// data structure (removable_nodes) and which nodes can be ignored in data-lists (ignorable_nodes).
     ///
     /// This assumes that the edges lists are sorted by source and target.
-    pub fn new(csr_repr: CsrEdges, removable_nodes: BitSet, ignorable_nodes: BitSet) -> Self {
+    pub fn new(csr_repr: CsrEdges, removable_nodes: &BitSet, ignorable_nodes: &BitSet) -> Self {
         Self::new_inner::<true>(csr_repr, removable_nodes, ignorable_nodes)
     }
 
@@ -126,16 +126,16 @@ impl IntersectionForest {
     /// This will sort the edge lists by source and target when initializing.
     pub fn new_unsorted(
         csr_repr: CsrEdges,
-        removable_nodes: BitSet,
-        ignorable_nodes: BitSet,
+        removable_nodes: &BitSet,
+        ignorable_nodes: &BitSet,
     ) -> Self {
         Self::new_inner::<false>(csr_repr, removable_nodes, ignorable_nodes)
     }
 
     fn new_inner<const SORTED: bool>(
         csr_repr: CsrEdges,
-        removable_nodes: BitSet,
-        ignorable_nodes: BitSet,
+        removable_nodes: &BitSet,
+        ignorable_nodes: &BitSet,
     ) -> Self {
         let n = csr_repr.number_of_nodes() as usize;
         let (mut edges, offsets) = csr_repr.dissolve();

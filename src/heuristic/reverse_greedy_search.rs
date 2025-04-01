@@ -147,6 +147,10 @@ pub struct GreedyReverseSearch<
     /// Keep track of all applied modifications to current_solution to also apply them to
     /// best_solution when new best solution is found
     domset_modifications: Vec<DomSetModification>,
+
+    /// BitSet indicating all nodes that will never appear in an optimal solution and can be
+    /// disregarded
+    non_optimal_nodes: BitSet,
 }
 
 impl<'a, R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
@@ -188,6 +192,7 @@ where
                 intersection_forest: IntersectionForest::default(),
                 round: 1,
                 domset_modifications: Vec::new(),
+                non_optimal_nodes: BitSet::new(1),
             };
         }
 
@@ -253,7 +258,7 @@ where
         let fixed_nodes =
             BitSet::new_with_bits_set(graph.number_of_nodes(), initial_solution.iter_fixed());
         let mut intersection_forest =
-            IntersectionForest::new_unsorted(csr_repr, fixed_nodes, non_optimal_nodes);
+            IntersectionForest::new_unsorted(csr_repr, &fixed_nodes, &non_optimal_nodes);
 
         // (V12) Insert uniquely covered neighbors of dominating nodes into IntersectionTrees & Sampler
         for u in initial_solution.iter_non_fixed() {
@@ -301,6 +306,7 @@ where
             intersection_forest,
             round: 1,
             domset_modifications: Vec::with_capacity(1 + n / 64),
+            non_optimal_nodes,
         }
     }
 
@@ -318,7 +324,7 @@ where
         //
         // TODO: find better threshold
         if self.round % 1000 == 0 {
-            //self.force_removal_dms();
+            self.force_removal_dms();
             self.round += 1;
             return;
         }
@@ -798,6 +804,8 @@ where
 
         // TODO: incorporate elsewhere
         self.helper_bitset.clear_all();
+        self.non_covered_nodes.clear();
+        self.in_non_covered_nodes.clear_all();
 
         // Step (3)
         self.update_forest_and_sampler();
@@ -841,6 +849,10 @@ where
                             self.non_covered_nodes.push(w);
                         }
                     }
+
+                    // Since num_covered[v] = 0, v will be removed from its Tree later in this
+                    // function; thus we do not need to remove v from its Tree again in self.update_forest_and_sampler
+                    self.helper_bitset.set_bit(v);
                 }
                 // Update UniqueCov
                 1 => {
@@ -855,10 +867,6 @@ where
                     // v is *not* in Tree[dominating_node] and can thus not be removed later on in
                     // self.update_forest_and_sampler() if we increase self.num_covered[v] to >= 2
                     // again.
-                    //
-                    // TODO: simple fix is checking in IntersectionForest::remove_entry whether the
-                    // remove is legal (one if check). This should be faster and adopted later on
-                    // when optimizing.
                     self.helper_bitset.set_bit(v);
                 }
                 _ => {}
@@ -889,7 +897,7 @@ where
 
         for i in (0..self.non_covered_nodes.len()).rev() {
             let u = self.non_covered_nodes[i];
-            if self.num_uncovered_neighbors[u as usize] == 0 {
+            if self.num_uncovered_neighbors[u as usize] == 0 || self.non_optimal_nodes.get_bit(u) {
                 self.in_non_covered_nodes.clear_bit(u);
                 self.non_covered_nodes.swap_remove(i);
                 continue;
@@ -950,6 +958,10 @@ where
 
                     for w in self.graph.neighbors_of(v) {
                         self.num_uncovered_neighbors[w as usize] -= 1;
+
+                        if self.num_uncovered_neighbors[u as usize] == 0 {
+                            self.in_non_covered_nodes.clear_bit(u);
+                        }
                     }
 
                     if !self.in_nodes_to_update.set_bit(v) {
@@ -971,6 +983,9 @@ where
 
                     // If node was not uniquely covered previously, v is not inserted into any
                     // IntersectionTree and thus must not be updated later on.
+                    //
+                    // TODO (bench): maybe incorporate an else part which removes v from its Tree: this
+                    // would delete the need of an additional removal in self.update_forest_and_sampler
                     if self.helper_bitset.clear_bit(v) {
                         self.in_nodes_to_update.clear_bit(v);
                     }
@@ -1012,7 +1027,10 @@ where
                 let dom = self.graph.ith_neighbor(u, 0);
                 unique[dom as usize] += 1;
                 if !self.current_solution.is_fixed_node(dom) {
-                    assert!(self.intersection_forest.is_in_tree(dom, u));
+                    assert!(
+                        self.intersection_forest.is_in_tree(dom, u),
+                        "{u} not found in Tree[{dom}]"
+                    );
                 }
             }
 
@@ -1042,6 +1060,13 @@ where
                 continue;
             }
             assert_eq!(scores[u as usize] as usize, self.sampler.bucket_of_node(u));
+        }
+
+        for u in self.current_solution.iter_non_fixed() {
+            assert!(
+                self.intersection_forest.get_root_nodes(u).contains(&u),
+                "{u} is not in Root[Tree[{u}]]"
+            );
         }
 
         // Check Sampler-Weight
