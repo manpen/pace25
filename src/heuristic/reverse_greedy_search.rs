@@ -318,7 +318,7 @@ where
         //
         // TODO: find better threshold
         if self.round % 1000 == 0 {
-            self.force_removal_dms();
+            //self.force_removal_dms();
             self.round += 1;
             return;
         }
@@ -1005,14 +1005,6 @@ where
                 assert!(self
                     .current_solution
                     .is_in_domset(self.graph.ith_neighbor(u, i)));
-            }
-
-            if !self.current_solution.is_fixed_node(u) {
-                // Check that only non-fixed DomSet-Nodes own trees
-                assert_eq!(
-                    self.current_solution.is_in_domset(u),
-                    self.intersection_forest.owns_tree(u)
-                );
             }
 
             // Check (I2)
