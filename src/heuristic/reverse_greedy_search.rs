@@ -324,7 +324,10 @@ where
         //
         // TODO: find better threshold
         if self.round % 1000 == 0 {
-            self.force_removal_dms();
+            let start_node = self.minimum_loss_node();
+            let bfs = self.bfs::<2>(start_node);
+            println!("{} => {bfs:?}", self.round);
+            self.forced_removal_procedure(bfs.into_iter().map(|u| ForcedRemovalNodeType::Fixed(u)));
             self.round += 1;
             return;
         }
@@ -803,12 +806,50 @@ where
         }
 
         // TODO: incorporate elsewhere
-        self.helper_bitset.clear_all();
         self.non_covered_nodes.clear();
         self.in_non_covered_nodes.clear_all();
 
         // Step (3)
-        self.update_forest_and_sampler();
+        //
+        // As we clear every tree of any dominating node we delete as well as remove any node from
+        // a tree that is no longer uniquely covered, we only need to consider nodes with
+        // num_covered[u] = 1 that have to be updated.
+        for candidate in self.nodes_to_update.drain(..) {
+            // Restores (V5)
+            if !self.in_nodes_to_update.clear_bit(candidate)
+                || self.num_covered[candidate as usize] != 1
+            {
+                continue;
+            }
+
+            // fixed nodes do not own trees
+            let dominating_node = self.graph.ith_neighbor(candidate, 0);
+            if self.current_solution.is_fixed_node(dominating_node) {
+                continue;
+            }
+
+            // Remove entries of IntersectionTree[dominating_node] from sampler
+            for &node in self.intersection_forest.get_root_nodes(dominating_node) {
+                if node != dominating_node && self.scores[node as usize] != 0 {
+                    self.scores[node as usize] -= 1;
+                    self.sampler
+                        .set_bucket(node, self.scores[node as usize] as usize);
+                }
+            }
+
+            // Update IntersectionTree[dominating_node]: Restores (V12)
+            self.intersection_forest
+                .add_entry(dominating_node, candidate);
+
+            // Add all entries of IntersectionTree[dominating_node] to sampler
+            for &node in self.intersection_forest.get_root_nodes(dominating_node) {
+                if node != dominating_node {
+                    self.scores[node as usize] += 1;
+                    self.sampler
+                        .set_bucket(node, self.scores[node as usize] as usize);
+                }
+            }
+        }
         self.update_best_solution();
     }
 
@@ -850,9 +891,9 @@ where
                         }
                     }
 
-                    // Since num_covered[v] = 0, v will be removed from its Tree later in this
-                    // function; thus we do not need to remove v from its Tree again in self.update_forest_and_sampler
-                    self.helper_bitset.set_bit(v);
+                    if !self.in_nodes_to_update.set_bit(v) {
+                        self.nodes_to_update.push(v);
+                    }
                 }
                 // Update UniqueCov
                 1 => {
@@ -862,12 +903,6 @@ where
                     if !self.in_nodes_to_update.set_bit(v) {
                         self.nodes_to_update.push(v);
                     }
-
-                    // As we possibly remove a node first, before inserting another later on,
-                    // v is *not* in Tree[dominating_node] and can thus not be removed later on in
-                    // self.update_forest_and_sampler() if we increase self.num_covered[v] to >= 2
-                    // again.
-                    self.helper_bitset.set_bit(v);
                 }
                 _ => {}
             };
@@ -963,10 +998,6 @@ where
                             self.in_non_covered_nodes.clear_bit(u);
                         }
                     }
-
-                    if !self.in_nodes_to_update.set_bit(v) {
-                        self.nodes_to_update.push(v);
-                    }
                 }
                 // Node is now no longer uniquely covered
                 2 => {
@@ -977,17 +1008,48 @@ where
                         self.non_covered_nodes.push(former_unique_covering_node);
                     }
 
-                    if !self.in_nodes_to_update.set_bit(v) {
-                        self.nodes_to_update.push(v);
-                    }
+                    self.in_nodes_to_update.clear_bit(v);
 
-                    // If node was not uniquely covered previously, v is not inserted into any
-                    // IntersectionTree and thus must not be updated later on.
+                    // Remove from Tree[former_unique_covering_node] if in it
                     //
-                    // TODO (bench): maybe incorporate an else part which removes v from its Tree: this
-                    // would delete the need of an additional removal in self.update_forest_and_sampler
-                    if self.helper_bitset.clear_bit(v) {
-                        self.in_nodes_to_update.clear_bit(v);
+                    // TODO
+                    // This is very costly and should be avoided later on but is currently the
+                    // simplest form on solving this problem without introducing multiple
+                    // additional datastructures or incorporating an additional check into
+                    // IntersectionForest.add_entry/remove_entry if the operation is legal.
+                    if self
+                        .intersection_forest
+                        .is_in_tree(former_unique_covering_node, v)
+                    {
+                        // Remove entries of IntersectionTree[former_unique_covering_node] from sampler
+                        for &node in self
+                            .intersection_forest
+                            .get_root_nodes(former_unique_covering_node)
+                        {
+                            if node != former_unique_covering_node
+                                && self.scores[node as usize] != 0
+                            {
+                                self.scores[node as usize] -= 1;
+                                self.sampler
+                                    .set_bucket(node, self.scores[node as usize] as usize);
+                            }
+                        }
+
+                        // Update IntersectionTree[dominating_node]: Restores (V12)
+                        self.intersection_forest
+                            .remove_entry(former_unique_covering_node, v);
+
+                        // Add all entries of IntersectionTree[dominating_node] to sampler
+                        for &node in self
+                            .intersection_forest
+                            .get_root_nodes(former_unique_covering_node)
+                        {
+                            if node != former_unique_covering_node {
+                                self.scores[node as usize] += 1;
+                                self.sampler
+                                    .set_bucket(node, self.scores[node as usize] as usize);
+                            }
+                        }
                     }
                 }
                 _ => {}
