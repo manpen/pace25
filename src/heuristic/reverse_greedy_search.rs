@@ -325,9 +325,8 @@ where
         // TODO: find better threshold
         if self.round % 1000 == 0 {
             let start_node = self.minimum_loss_node();
-            let bfs = self.bfs::<2>(start_node);
-            println!("{} => {bfs:?}", self.round);
-            self.forced_removal_procedure(bfs.into_iter().map(|u| ForcedRemovalNodeType::Fixed(u)));
+            let bfs = self.bfs::<3>(start_node);
+            self.forced_removal_procedure(bfs.into_iter().map(ForcedRemovalNodeType::Fixed));
             self.round += 1;
             return;
         }
@@ -1067,75 +1066,6 @@ where
         self.non_covered_nodes.truncate(prev_size);
 
         newly_covered_nodes
-    }
-
-    /// Asserts that all current datastructures contain correct values
-    #[allow(unused)]
-    pub fn assert_correctness(&self) {
-        assert!(self.current_solution.is_valid(self.graph));
-
-        let mut unique = vec![0; self.graph.len()];
-        let mut scores = vec![0; self.graph.len()];
-        for u in self.graph.vertices() {
-            // Check (I1)
-            for i in 0..self.num_covered[u as usize] {
-                assert!(self
-                    .current_solution
-                    .is_in_domset(self.graph.ith_neighbor(u, i)));
-            }
-
-            // Check (I2)
-            if self.num_covered[u as usize] == 1 {
-                let dom = self.graph.ith_neighbor(u, 0);
-                unique[dom as usize] += 1;
-                if !self.current_solution.is_fixed_node(dom) {
-                    assert!(
-                        self.intersection_forest.is_in_tree(dom, u),
-                        "{u} not found in Tree[{dom}]"
-                    );
-                }
-            }
-
-            if self.current_solution.is_fixed_node(u) {
-                continue;
-            }
-
-            // Prepare Check (I3)
-            if self.current_solution.is_in_domset(u) {
-                for &v in self.intersection_forest.get_root_nodes(u) {
-                    if v != u {
-                        scores[v as usize] += 1;
-                    }
-                }
-            }
-        }
-
-        // Check (I3) and UniquelyCovered
-        assert_eq!(self.uniquely_covered, unique);
-        assert_eq!(self.scores, scores);
-        assert_eq!(self.num_uncovered_neighbors, vec![0; self.graph.len()]);
-
-        for u in self.graph.vertices() {
-            // Check (I4)
-            if scores[u as usize] as usize > NUM_SAMPLER_BUCKETS - 1 {
-                assert_eq!(NUM_SAMPLER_BUCKETS - 1, self.sampler.bucket_of_node(u));
-                continue;
-            }
-            assert_eq!(scores[u as usize] as usize, self.sampler.bucket_of_node(u));
-        }
-
-        for u in self.current_solution.iter_non_fixed() {
-            assert!(
-                self.intersection_forest.get_root_nodes(u).contains(&u),
-                "{u} is not in Root[Tree[{u}]]"
-            );
-        }
-
-        // Check Sampler-Weight
-        self.sampler.assert_positions();
-        self.sampler.assert_total_weight();
-
-        println!("Check completed");
     }
 }
 
