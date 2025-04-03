@@ -545,7 +545,7 @@ pub enum RevGreedyError {
     #[error("{0} covers no node uniquely")]
     RedundantDomNode(Node),
     #[error(
-        "the neighborhood of {0} is not partitioned by appearence in the current dominating set"
+        "the neighborhood of {0} is not partitioned by appearance in the current dominating set"
     )]
     AdjacencyOrdering(Node),
     #[error("{0} is not inserted into the tree of its uniquely covering node {1}")]
