@@ -1,6 +1,11 @@
-use crate::graph::{
-    sliced_buffer::{SlicedBuffer, SlicedBufferWithDefault},
-    BitSet, CsrEdges, Node, NumEdges, NumNodes,
+use thiserror::Error;
+
+use crate::{
+    errors::InvariantCheck,
+    graph::{
+        sliced_buffer::{SlicedBuffer, SlicedBufferWithDefault},
+        BitSet, CsrEdges, Node, NumEdges, NumNodes,
+    },
 };
 
 const NOT_SET: NumNodes = NumNodes::MAX;
@@ -740,5 +745,79 @@ impl IntersectionForest {
         }
 
         self.forest[u][pos as usize] == v
+    }
+}
+
+/// Error type for invariants of IntersectionForest
+#[derive(Copy, Clone, Debug, Error)]
+pub enum IntersectionForestError {
+    #[error("{0} is inserted into the tree of {1} and the tree of {2}")]
+    DoubleInserted(Node, Node, Node),
+    #[error("{1} appears in the tree of {0} at position {2} but stores position {3}")]
+    WrongPosition(Node, Node, NumNodes, NumNodes),
+    #[error("{0} does not appear in the root data of its owned non-empty tree")]
+    OwnerNotInRoot(Node),
+    #[error("the associated data of {0} is not sorted")]
+    UnsortedData(Node),
+    #[error("the parent node of {1} in the tree of {0} is a free node")]
+    FreedParent(Node, Node),
+    /// Currently not checked for
+    #[error(
+        "data of {1} in the tree of {0} does not match the intersection of its childrens data"
+    )]
+    FaultyIntersection(Node, Node),
+}
+
+impl InvariantCheck<IntersectionForestError> for IntersectionForest {
+    fn is_correct(&self) -> Result<(), IntersectionForestError> {
+        let mut owners = vec![NOT_SET; self.number_of_nodes() as usize];
+
+        for u in 0..self.number_of_nodes() {
+            let NodeInformation {
+                tree_len, data_len, ..
+            } = node!(self, u);
+            if !self.data[u][..(data_len as usize)].is_sorted() {
+                return Err(IntersectionForestError::UnsortedData(u));
+            }
+
+            for i in 0..tree_len {
+                let v = self.forest[u][i as usize];
+                if Self::is_free_node(v) {
+                    continue;
+                }
+
+                if i > 0 {
+                    let p = (i - 1) >> 1;
+                    if Self::is_free_node(self.forest[u][p as usize]) {
+                        return Err(IntersectionForestError::FreedParent(v, u));
+                    }
+                } else {
+                    if !self.data[v][..(node!(self, v).data_len as usize)].contains(&u) {
+                        return Err(IntersectionForestError::OwnerNotInRoot(u));
+                    }
+                }
+
+                if owners[v as usize] != NOT_SET {
+                    return Err(IntersectionForestError::DoubleInserted(
+                        v,
+                        owners[v as usize],
+                        u,
+                    ));
+                }
+
+                if node!(self, v).tree_pos != i {
+                    return Err(IntersectionForestError::WrongPosition(
+                        u,
+                        v,
+                        i,
+                        node!(self, v).tree_pos,
+                    ));
+                }
+
+                owners[v as usize] = u;
+            }
+        }
+
+        Ok(())
     }
 }

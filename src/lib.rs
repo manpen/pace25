@@ -6,6 +6,7 @@
 #![feature(vec_push_within_capacity)]
 
 pub mod algorithm;
+pub mod errors;
 pub mod exact;
 pub mod graph;
 pub mod heuristic;
@@ -13,7 +14,6 @@ pub mod io;
 pub mod kernelization;
 pub mod log;
 pub mod utils;
-pub mod errors;
 
 pub mod prelude {
     pub use super::algorithm::*;

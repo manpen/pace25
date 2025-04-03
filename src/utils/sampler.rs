@@ -287,13 +287,18 @@ pub enum SamplerError {
     WrongTotalWeight(usize, usize),
 }
 
-impl<const NUM_BUCKETS_PLUS_TWO: usize> InvariantCheck<SamplerError> for WeightedPow2Sampler<NUM_BUCKETS_PLUS_TWO> {
+impl<const NUM_BUCKETS_PLUS_TWO: usize> InvariantCheck<SamplerError>
+    for WeightedPow2Sampler<NUM_BUCKETS_PLUS_TWO>
+{
     fn is_correct(&self) -> Result<(), SamplerError> {
         let correct_weight = (1..(NUM_BUCKETS_PLUS_TWO - 1))
             .map(|b| ((self.offsets[b + 1] - self.offsets[b]) << b) >> 1)
             .sum();
         if self.total_weight != correct_weight {
-            return Err(SamplerError::WrongTotalWeight(self.total_weight, correct_weight));
+            return Err(SamplerError::WrongTotalWeight(
+                self.total_weight,
+                correct_weight,
+            ));
         }
 
         for u in 0..self.buckets.len() {
@@ -304,7 +309,7 @@ impl<const NUM_BUCKETS_PLUS_TWO: usize> InvariantCheck<SamplerError> for Weighte
                     u,
                 ));
             }
-        } 
+        }
 
         Ok(())
     }
