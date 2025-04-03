@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, fmt::Debug};
 
 use rand::Rng;
 use rand_distr::Distribution;
@@ -279,12 +279,18 @@ impl<const NUM_BUCKETS_PLUS_TWO: usize> Distribution<Node>
 }
 
 /// Error type for the sampler invariants
-#[derive(Copy, Clone, Debug, Error)]
+#[derive(Copy, Clone, Error)]
 pub enum SamplerError {
     #[error("{0} is in position {2} but stores {1}")]
     WrongPosition(Node, usize, usize),
     #[error("total weight of sampler should be {1}, not {0}")]
     WrongTotalWeight(usize, usize),
+}
+
+impl Debug for SamplerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
 }
 
 impl<const NUM_BUCKETS_PLUS_TWO: usize> InvariantCheck<SamplerError>

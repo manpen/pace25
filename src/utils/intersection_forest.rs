@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use thiserror::Error;
 
 use crate::{
@@ -742,7 +744,7 @@ impl IntersectionForest {
 }
 
 /// Error type for invariants of IntersectionForest
-#[derive(Copy, Clone, Debug, Error)]
+#[derive(Copy, Clone, Error)]
 pub enum IntersectionForestError {
     #[error("{0} is inserted into the tree of {1} and the tree of {2}")]
     DoubleInserted(Node, Node, Node),
@@ -759,6 +761,12 @@ pub enum IntersectionForestError {
         "data of {1} in the tree of {0} does not match the intersection of its childrens data"
     )]
     FaultyIntersection(Node, Node),
+}
+
+impl Debug for IntersectionForestError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
 }
 
 impl InvariantCheck<IntersectionForestError> for IntersectionForest {

@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use rand::Rng;
 use thiserror::Error;
 
@@ -526,7 +528,7 @@ where
 {
 }
 
-#[derive(Copy, Clone, Debug, Error)]
+#[derive(Copy, Clone, Error)]
 pub enum BaseStateError {
     #[error("nodes_to_update should be empty")]
     NodesToUpdate,
@@ -534,7 +536,13 @@ pub enum BaseStateError {
     InNodesToUpdate,
 }
 
-#[derive(Copy, Clone, Debug, Error)]
+impl Debug for BaseStateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}
+
+#[derive(Copy, Clone, Error)]
 pub enum RevGreedyError {
     #[error("SamplerError: {0}")]
     SamplerError(SamplerError),
@@ -562,6 +570,12 @@ pub enum RevGreedyError {
     WorseBestSolution(NumNodes, NumNodes),
     #[error("VariableError: {0}")]
     VariableBaseError(BaseStateError),
+}
+
+impl Debug for RevGreedyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
 }
 
 impl<R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
