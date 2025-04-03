@@ -791,10 +791,8 @@ impl InvariantCheck<IntersectionForestError> for IntersectionForest {
                     if Self::is_free_node(self.forest[u][p as usize]) {
                         return Err(IntersectionForestError::FreedParent(v, u));
                     }
-                } else {
-                    if !self.data[v][..(node!(self, v).data_len as usize)].contains(&u) {
-                        return Err(IntersectionForestError::OwnerNotInRoot(u));
-                    }
+                } else if !self.data[v][..(node!(self, v).data_len as usize)].contains(&u) {
+                    return Err(IntersectionForestError::OwnerNotInRoot(u));
                 }
 
                 if owners[v as usize] != NOT_SET {
