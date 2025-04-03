@@ -13,6 +13,7 @@ pub mod io;
 pub mod kernelization;
 pub mod log;
 pub mod utils;
+pub mod errors;
 
 pub mod prelude {
     pub use super::algorithm::*;

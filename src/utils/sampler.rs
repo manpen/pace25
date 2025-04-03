@@ -2,8 +2,9 @@ use std::cmp::Ordering;
 
 use rand::Rng;
 use rand_distr::Distribution;
+use thiserror::Error;
 
-use crate::graph::Node;
+use crate::{errors::InvariantCheck, graph::Node};
 
 /// Allows fast sampling of nodes where each node has a weight that is a power of 2.
 /// Nodes are sorted into buckets where nodes u with Bucket[u] = i have a weight of 2^(i - 1) with
@@ -86,7 +87,7 @@ impl<const NUM_BUCKETS_PLUS_TWO: usize> WeightedPow2Sampler<NUM_BUCKETS_PLUS_TWO
     pub fn set_bucket(&mut self, node: Node, mut new_bucket: usize) {
         let pos = self.pointer[node as usize];
 
-        new_bucket = new_bucket.min(NUM_BUCKETS_PLUS_TWO - 1);
+        new_bucket = new_bucket.min(NUM_BUCKETS_PLUS_TWO - 2);
         let old_bucket = self.bucket(pos);
 
         // Set weight
@@ -274,6 +275,38 @@ impl<const NUM_BUCKETS_PLUS_TWO: usize> Distribution<Node>
             }
         }
         panic!("The total weight is larger than the stored weight!");
+    }
+}
+
+/// Error type for the sampler invariants
+#[derive(Copy, Clone, Debug, Error)]
+pub enum SamplerError {
+    #[error("{0} is in position {2} but stores {1}")]
+    WrongPosition(Node, usize, usize),
+    #[error("total weight of sampler should be {1}, not {0}")]
+    WrongTotalWeight(usize, usize),
+}
+
+impl<const NUM_BUCKETS_PLUS_TWO: usize> InvariantCheck<SamplerError> for WeightedPow2Sampler<NUM_BUCKETS_PLUS_TWO> {
+    fn is_correct(&self) -> Result<(), SamplerError> {
+        let correct_weight = (1..(NUM_BUCKETS_PLUS_TWO - 1))
+            .map(|b| ((self.offsets[b + 1] - self.offsets[b]) << b) >> 1)
+            .sum();
+        if self.total_weight != correct_weight {
+            return Err(SamplerError::WrongTotalWeight(self.total_weight, correct_weight));
+        }
+
+        for u in 0..self.buckets.len() {
+            if u != self.pointer[self.buckets[u] as usize] {
+                return Err(SamplerError::WrongPosition(
+                    self.buckets[u],
+                    self.pointer[self.buckets[u] as usize],
+                    u,
+                ));
+            }
+        } 
+
+        Ok(())
     }
 }
 
