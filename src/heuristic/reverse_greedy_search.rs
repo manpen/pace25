@@ -1,10 +1,18 @@
+use std::fmt::Debug;
+
 use rand::Rng;
+use thiserror::Error;
 
 use crate::{
+    errors::InvariantCheck,
     graph::*,
     kernelization::{KernelizationRule, SubsetRule},
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
-    utils::{intersection_forest::IntersectionForest, sampler::WeightedPow2Sampler, DominatingSet},
+    utils::{
+        intersection_forest::{IntersectionForest, IntersectionForestError},
+        sampler::{SamplerError, WeightedPow2Sampler},
+        DominatingSet,
+    },
 };
 
 /// # GreedyReverseSearch
@@ -32,6 +40,11 @@ use crate::{
 /// (I2) Only nodes `u` with `num_covered[u] = 1` are inserted into the IntersectionForest
 /// (I3) `scores[u]` is equivalent to the number of IntersectionTrees where u is stored in the root (as an entry, not the node itself): excluded are dominating nodes
 /// (I4) if `scores[u] > 0`, u is inserted into the Sampler
+///
+///
+/// As this is a step-based algorithm, different members of this struct have certain BaseStates in
+/// which they must be at the beginning/end of each *round*. See BaseStateError down below for a
+/// description of these states.
 pub struct GreedyReverseSearch<
     'a,
     R,
@@ -243,7 +256,7 @@ where
     /// 4. Update IntersectionTrees/Scores/Sampler accordingly
     pub fn step(&mut self) {
         #[cfg(debug_assertions)]
-        self.assert_correctness();
+        self.is_correct().unwrap();
 
         // Sample node: if no node can be sampled, current solution is optimal
         let proposed_node = if let Some(node) = self.draw_node() {
@@ -255,6 +268,7 @@ where
 
         self.round += 1;
 
+        debug_assert!(!self.current_solution.is_in_domset(proposed_node));
         debug_assert!(self.scores[proposed_node as usize] > 0);
 
         // Add node to DomSet
@@ -271,6 +285,8 @@ where
             }
             self.redundant_nodes.clear();
         }
+
+        debug_assert!(self.uniquely_covered[proposed_node as usize] > 0);
 
         // Update IntersectionForest/Sampler for all remaining nodes_to_update
         self.update_forest_and_sampler();
@@ -480,66 +496,6 @@ where
             }
         }
     }
-
-    /// Asserts that all current datastructures contain correct values
-    #[allow(unused)]
-    pub fn assert_correctness(&self) {
-        let mut unique = vec![0; self.graph.len()];
-        let mut scores = vec![0; self.graph.len()];
-        for u in self.graph.vertices() {
-            // Check (I1)
-            for i in 0..self.num_covered[u as usize] {
-                assert!(self
-                    .current_solution
-                    .is_in_domset(self.graph.ith_neighbor(u, i)));
-            }
-
-            if !self.current_solution.is_fixed_node(u) {
-                // Check that only non-fixed DomSet-Nodes own trees
-                assert_eq!(
-                    self.current_solution.is_in_domset(u),
-                    self.intersection_forest.owns_tree(u)
-                );
-            }
-
-            // Check (I2)
-            if self.num_covered[u as usize] == 1 {
-                let dom = self.graph.ith_neighbor(u, 0);
-                unique[dom as usize] += 1;
-                if !self.current_solution.is_fixed_node(dom) {
-                    assert!(self.intersection_forest.is_in_tree(dom, u));
-                }
-            }
-
-            if self.current_solution.is_fixed_node(u) {
-                continue;
-            }
-
-            // Prepare Check (I3)
-            if self.current_solution.is_in_domset(u) {
-                for &v in self.intersection_forest.get_root_nodes(u) {
-                    if v != u {
-                        scores[v as usize] += 1;
-                    }
-                }
-            }
-        }
-
-        // Check (I3) and UniquelyCovered
-        assert_eq!(self.uniquely_covered, unique);
-        assert_eq!(self.scores, scores);
-
-        for u in self.graph.vertices() {
-            // Check (I4)
-            assert_eq!(scores[u as usize] as usize, self.sampler.bucket_of_node(u));
-        }
-
-        // Check Sampler-Weight
-        self.sampler.assert_positions();
-        self.sampler.assert_total_weight();
-
-        println!("Check completed");
-    }
 }
 
 /// Helper enum to keep track of DomSet-Changes
@@ -575,4 +531,180 @@ where
     R: Rng,
     G: StaticGraph + SelfLoop,
 {
+}
+
+#[derive(Copy, Clone, Error)]
+pub enum BaseStateError {
+    #[error("nodes_to_update should be empty")]
+    NodesToUpdate,
+    #[error("in_nodes_to_update should be set to 00...00")]
+    InNodesToUpdate,
+    #[error("redundant_nodes should be empty")]
+    RedundantNodes,
+}
+
+impl Debug for BaseStateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}
+
+#[derive(Copy, Clone, Error)]
+pub enum RevGreedyError {
+    #[error("SamplerError: {0}")]
+    SamplerError(SamplerError),
+    #[error("IntersectionForestError: {0}")]
+    IntersectionForestError(IntersectionForestError),
+    #[error("{0} is not covered by any node")]
+    NotCovered(Node),
+    #[error("{0} covers no node uniquely")]
+    RedundantDomNode(Node),
+    #[error(
+        "the neighborhood of {0} is not partitioned by appearance in the current dominating set"
+    )]
+    AdjacencyOrdering(Node),
+    #[error("{0} is not inserted into the tree of its uniquely covering node {1}")]
+    TreeInsertion(Node, Node),
+    #[error("{0} covers {2} uniquely but {1} is stored")]
+    FaultyUniquelyCovered(Node, NumNodes, NumNodes),
+    #[error("{0} has score {2} but {1} is stored")]
+    FaultyScore(Node, NumNodes, NumNodes),
+    #[error("{0} is in sampler bucket {2} but should be in bucket {1}")]
+    FaultyBucket(Node, NumNodes, NumNodes),
+    #[error("the current solution has {0} fixed nodes whereas the best solution has {1}")]
+    FixedNodesDifference(NumNodes, NumNodes),
+    #[error("the current solution with size {0} is better than the best solution with size {1}")]
+    WorseBestSolution(NumNodes, NumNodes),
+    #[error("VariableError: {0}")]
+    VariableBaseError(BaseStateError),
+}
+
+impl Debug for RevGreedyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}
+
+impl<R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
+    InvariantCheck<RevGreedyError>
+    for GreedyReverseSearch<'_, R, G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
+where
+    R: Rng,
+    G: StaticGraph + SelfLoop,
+{
+    fn is_correct(&self) -> Result<(), RevGreedyError> {
+        self.sampler
+            .is_correct()
+            .map_err(RevGreedyError::SamplerError)?;
+        self.intersection_forest
+            .is_correct()
+            .map_err(RevGreedyError::IntersectionForestError)?;
+
+        if self.current_solution.num_of_fixed_nodes() != self.best_solution.num_of_fixed_nodes() {
+            return Err(RevGreedyError::FixedNodesDifference(
+                self.current_solution.num_of_fixed_nodes() as NumNodes,
+                self.best_solution.num_of_fixed_nodes() as NumNodes,
+            ));
+        }
+
+        if self.current_solution.len() < self.best_solution.len() {
+            return Err(RevGreedyError::WorseBestSolution(
+                self.current_solution.len() as NumNodes,
+                self.best_solution.len() as NumNodes,
+            ));
+        }
+
+        if !self.nodes_to_update.is_empty() {
+            return Err(RevGreedyError::VariableBaseError(
+                BaseStateError::NodesToUpdate,
+            ));
+        }
+
+        if self.in_nodes_to_update.cardinality() > 0 {
+            return Err(RevGreedyError::VariableBaseError(
+                BaseStateError::InNodesToUpdate,
+            ));
+        }
+
+        if !self.redundant_nodes.is_empty() {
+            return Err(RevGreedyError::VariableBaseError(
+                BaseStateError::RedundantNodes,
+            ));
+        }
+
+        let mut unique = vec![0; self.graph.len()];
+        let mut scores = vec![0; self.graph.len()];
+
+        for u in self.graph.vertices() {
+            if self.num_covered[u as usize] == 0 {
+                return Err(RevGreedyError::NotCovered(u));
+            }
+
+            for i in 0..self.num_covered[u as usize] {
+                if !self
+                    .current_solution
+                    .is_in_domset(self.graph.ith_neighbor(u, i))
+                {
+                    return Err(RevGreedyError::AdjacencyOrdering(u));
+                }
+            }
+
+            for i in self.num_covered[u as usize]..self.graph.degree_of(u) {
+                if self
+                    .current_solution
+                    .is_in_domset(self.graph.ith_neighbor(u, i))
+                {
+                    return Err(RevGreedyError::AdjacencyOrdering(u));
+                }
+            }
+
+            if self.num_covered[u as usize] == 1 {
+                let dom = self.graph.ith_neighbor(u, 0);
+                unique[dom as usize] += 1;
+                if !self.current_solution.is_fixed_node(dom)
+                    && !self.intersection_forest.is_in_tree(dom, u)
+                {
+                    return Err(RevGreedyError::TreeInsertion(u, dom));
+                }
+            }
+
+            if self.current_solution.is_non_fixed_node(u) {
+                for &v in self.intersection_forest.get_root_nodes(u) {
+                    if v != u {
+                        scores[v as usize] += 1;
+                    }
+                }
+            }
+        }
+
+        for u in self.graph.vertices() {
+            if self.uniquely_covered[u as usize] != unique[u as usize] {
+                return Err(RevGreedyError::FaultyUniquelyCovered(
+                    u,
+                    self.uniquely_covered[u as usize],
+                    unique[u as usize],
+                ));
+            }
+
+            if self.scores[u as usize] != scores[u as usize] {
+                return Err(RevGreedyError::FaultyScore(
+                    u,
+                    self.scores[u as usize],
+                    scores[u as usize],
+                ));
+            }
+
+            let bucket = scores[u as usize].min((NUM_SAMPLER_BUCKETS - 2) as NumNodes);
+            let real_bucket = self.sampler.bucket_of_node(u) as NumNodes;
+            if bucket != real_bucket {
+                return Err(RevGreedyError::FaultyBucket(u, real_bucket, bucket));
+            }
+
+            if self.current_solution.is_non_fixed_node(u) && unique[u as usize] == 0 {
+                return Err(RevGreedyError::RedundantDomNode(u));
+            }
+        }
+
+        Ok(())
+    }
 }

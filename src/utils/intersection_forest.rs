@@ -1,6 +1,13 @@
-use crate::graph::{
-    sliced_buffer::{SlicedBuffer, SlicedBufferWithDefault},
-    BitSet, CsrEdges, Node, NumEdges, NumNodes,
+use std::fmt::Debug;
+
+use thiserror::Error;
+
+use crate::{
+    errors::InvariantCheck,
+    graph::{
+        sliced_buffer::{SlicedBuffer, SlicedBufferWithDefault},
+        BitSet, CsrEdges, Node, NumEdges, NumNodes,
+    },
 };
 
 const NOT_SET: NumNodes = NumNodes::MAX;
@@ -189,31 +196,25 @@ impl IntersectionForest {
     }
 
     /// Returns the number of nodes in the underlying graph
+    #[inline(always)]
     fn number_of_nodes(&self) -> NumNodes {
         self.nodes.len() as NumNodes
     }
 
-    /// Returns `true` if u owns a tree
-    pub fn owns_tree(&self, u: Node) -> bool {
-        node!(self, u).tree_len > 0
-    }
-
+    /// Returns *true* if u is inserted into any tree
+    #[inline(always)]
     pub fn is_tree_node(&self, u: Node) -> bool {
         node!(self, u).tree_pos != NOT_SET
     }
 
-    /// Returns `true` if u is neither the owner of a tree nor inserted into one
-    pub fn is_unassigned(&self, u: Node) -> bool {
-        !self.owns_tree(u) && !self.is_tree_node(u)
-    }
-
     /// Returns the node at position pos in `Tree[u]`
+    #[inline(always)]
     fn node_at(&self, u: Node, pos: usize) -> Node {
-        debug_assert!(self.owns_tree(u));
         self.forest[u][pos]
     }
 
     /// Returns `true` if u is a free node
+    #[inline(always)]
     fn is_free_node(u: Node) -> bool {
         (u & !FREE_SLOT_MASK) > 0
     }
@@ -238,7 +239,7 @@ impl IntersectionForest {
         debug_assert!(self.is_tree_node(u));
         let pos = node!(self, u).tree_pos as usize;
         (0..self.number_of_nodes())
-            .find(|&v| self.owns_tree(v) && self.forest[v][pos] == u)
+            .find(|&v| node!(self, v).tree_len > (pos as NumNodes) && self.forest[v][pos] == u)
             .unwrap()
     }
 
@@ -249,10 +250,32 @@ impl IntersectionForest {
         let dest_len = node!(self, dest).data_len as usize;
         let other_len = node!(self, other).data_len as usize;
 
+        // Cap sizes of data to prevent binary search to overshoot and find matching elements in
+        // regions that are out-of-bounds
+        let dest_data = &mut dest_data[..dest_len];
+        let other_data = &mut other_data[..other_len];
+
         let mut ptrw = 0usize;
         let mut ptrr = 0usize;
 
         if DEST {
+            // other_len < dest_len
+            for &item in &other_data[..other_len] {
+                let mut idem = dest_data[ptrr];
+                let result = dest_data[ptrr..].binary_search_by(|x| x.cmp(&item));
+                // cmov and no branch?
+                if result.is_ok() {
+                    idem = item;
+                }
+                dest_data[ptrw] = idem;
+                ptrw += result.is_ok() as usize;
+                ptrr += result.unwrap_or_else(|x| x);
+
+                if ptrr == dest_len {
+                    break;
+                }
+            }
+        } else {
             // dest_len < other_len
             for idx in 0..dest_len {
                 let item = dest_data[idx];
@@ -264,22 +287,6 @@ impl IntersectionForest {
                 ptrr += result.unwrap_or_else(|x| x);
 
                 if ptrr == other_len {
-                    break;
-                }
-            }
-        } else {
-            // other_len < dest_len
-            for &item in &other_data[..other_len] {
-                let result = dest_data[ptrr..].binary_search(&item);
-
-                // Branchless update of value
-                // If Err(_) = result, then Data[dest][ptrw] <- 0 * item + 1 * Data[dest][ptrw] = Data[dest][ptrw]
-                let is_ok = result.is_ok() as Node;
-                dest_data[ptrw] = is_ok * item + (1 - is_ok) * dest_data[ptrw];
-                ptrw += is_ok as usize;
-                ptrr += result.unwrap_or_else(|x| x);
-
-                if ptrr == dest_len {
                     break;
                 }
             }
@@ -319,6 +326,9 @@ impl IntersectionForest {
     ///
     /// (I2, I3) Data[dest] and Data[other] are non-empty and sorted.
     fn intersect(&mut self, dest: Node, other: Node) -> bool {
+        // (I2)
+        debug_assert!(node!(self, dest).data_len > 0 && node!(self, other).data_len > 0);
+
         // Application of (I2): if any list has length 1, the element must be the owner of the
         // tree, which is common
         if node!(self, dest).data_len == 1 {
@@ -335,10 +345,12 @@ impl IntersectionForest {
 
         let dest_len = node!(self, dest).data_len;
         let other_len = node!(self, other).data_len;
-        if dest_len << SIZE_DIFF <= other_len {
+        if other_len << SIZE_DIFF <= dest_len {
             self.intersect_unbalanced::<true>(dest, other);
-        } else if other_len << SIZE_DIFF <= dest_len {
+            //self.intersect_balanced(dest, other);
+        } else if dest_len << SIZE_DIFF <= other_len {
             self.intersect_unbalanced::<false>(dest, other);
+            //self.intersect_balanced(dest, other);
         } else {
             self.intersect_balanced(dest, other);
         }
@@ -353,7 +365,8 @@ impl IntersectionForest {
     ///
     /// Warning: this breaks (I5)
     fn restore_node(&mut self, u: Node) {
-        debug_assert!(!Self::is_free_node(u));
+        debug_assert!(u < self.number_of_nodes());
+        debug_assert!(self.is_tree_node(u));
 
         self.data.restore_node(u);
         node!(self, u).data_len = self.data.degree_of(u);
@@ -369,6 +382,7 @@ impl IntersectionForest {
         debug_assert!(node!(self, u).tree_len > pos as NumNodes);
 
         let node = self.node_at(u, pos);
+        // Free nodes dont have children but can necessitate cascading updates if the node was just freed
         if Self::is_free_node(node) {
             return true;
         }
@@ -401,6 +415,8 @@ impl IntersectionForest {
     ///
     /// Restores (I5) in the path from pos to root
     fn repair_up(&mut self, u: Node, mut pos: usize) {
+        debug_assert!(node!(self, u).tree_len > pos as NumNodes);
+
         // We call repair_node when changing data at position pos.
         // Even if no length-change was detected, data can still differ from before and we thus
         // need to at least update its parent.
@@ -440,8 +456,6 @@ impl IntersectionForest {
 
     /// Inserts node `v` into the `Tree[u]`
     pub fn add_entry(&mut self, u: Node, mut v: Node) {
-        debug_assert!(!self.is_tree_node(v));
-
         let pos;
         if node!(self, u).free_pos != FREE_SLOT_MASK {
             pos = node!(self, u).free_pos;
@@ -507,6 +521,7 @@ impl IntersectionForest {
         // If v is an inner leaf, ie. a leaf, but not the rightmost leaf,
         // mark it as a free node and repair upwards
         if leaf_pos == pos as usize {
+            // If the root is a leaf, but tree_len > 1 (due to free nodes)
             if pos == 0 {
                 self.clear_tree(u);
                 return;
@@ -543,7 +558,6 @@ impl IntersectionForest {
 
     /// Clears a tree, i.e. removes it from the forest.
     pub fn clear_tree(&mut self, u: Node) {
-        debug_assert!(self.owns_tree(u));
         node!(self, u).tree_len = 0;
         node!(self, u).free_pos = FREE_SLOT_MASK;
     }
@@ -712,12 +726,6 @@ impl IntersectionForest {
         }
     }
 
-    /// Returns an iterator over all nodes that own trees
-    #[allow(unused)]
-    pub fn tree_owners(&self) -> impl Iterator<Item = Node> + '_ {
-        (0..self.number_of_nodes()).filter(|&u| self.owns_tree(u))
-    }
-
     /// Returns an iterator over all nodes in a tree
     #[allow(unused)]
     pub fn tree_nodes(&self, u: Node) -> impl Iterator<Item = Node> + '_ {
@@ -740,5 +748,140 @@ impl IntersectionForest {
         }
 
         self.forest[u][pos as usize] == v
+    }
+}
+
+/// Error type for invariants of IntersectionForest
+#[derive(Copy, Clone, Error)]
+pub enum IntersectionForestError {
+    #[error("{0} is inserted into the tree of {1} and the tree of {2}")]
+    DoubleInserted(Node, Node, Node),
+    #[error("{1} appears in the tree of {0} at position {2} but stores position {3}")]
+    WrongPosition(Node, Node, NumNodes, NumNodes),
+    #[error("{0} does not appear in the root data of its owned non-empty tree")]
+    OwnerNotInRoot(Node),
+    #[error("the associated data of {0} is not sorted")]
+    UnsortedData(Node),
+    #[error("the parent node of {1} in the tree of {0} is a free node")]
+    FreedParent(Node, Node),
+    #[error(
+        "data of {1} in the tree of {0} does not match the intersection of its childrens data"
+    )]
+    FaultyIntersection(Node, Node),
+}
+
+impl Debug for IntersectionForestError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}
+
+impl InvariantCheck<IntersectionForestError> for IntersectionForest {
+    fn is_correct(&self) -> Result<(), IntersectionForestError> {
+        let mut owners = vec![NOT_SET; self.number_of_nodes() as usize];
+
+        fn intersect(dest: &mut Vec<Node>, other: &[Node]) {
+            let dest_len = dest.len();
+            let other_len = other.len();
+
+            if dest_len == 1 {
+                return;
+            }
+            if other_len == 1 {
+                dest[0] = other[0];
+                dest.truncate(1);
+                return;
+            }
+
+            let mut ptrw = 0usize;
+            let mut ptr1 = 0usize;
+            let mut ptr2 = 0usize;
+
+            while ptr1 < dest_len && ptr2 < other_len {
+                let item1 = dest[ptr1];
+                let item2 = other[ptr2];
+
+                // Avoid branching
+                ptr1 += (item1 <= item2) as usize;
+                ptr2 += (item1 >= item2) as usize;
+
+                dest[ptrw] = item1;
+                ptrw += (item1 == item2) as usize;
+            }
+
+            dest.truncate(ptrw);
+        }
+
+        for u in 0..self.number_of_nodes() {
+            let NodeInformation {
+                tree_len, data_len, ..
+            } = node!(self, u);
+            if !self.data[u][..(data_len as usize)].is_sorted() {
+                return Err(IntersectionForestError::UnsortedData(u));
+            }
+
+            for i in 0..tree_len {
+                let v = self.forest[u][i as usize];
+                if Self::is_free_node(v) {
+                    continue;
+                }
+
+                if i > 0 {
+                    let p = (i - 1) >> 1;
+                    if Self::is_free_node(self.forest[u][p as usize]) {
+                        return Err(IntersectionForestError::FreedParent(v, u));
+                    }
+                } else if !self.data[v][..(node!(self, v).data_len as usize)].contains(&u) {
+                    return Err(IntersectionForestError::OwnerNotInRoot(u));
+                }
+
+                if owners[v as usize] != NOT_SET {
+                    return Err(IntersectionForestError::DoubleInserted(
+                        v,
+                        owners[v as usize],
+                        u,
+                    ));
+                }
+
+                if node!(self, v).tree_pos != i {
+                    return Err(IntersectionForestError::WrongPosition(
+                        u,
+                        v,
+                        i,
+                        node!(self, v).tree_pos,
+                    ));
+                }
+
+                let mut neighbors = self.data.default_values(v).to_vec();
+                let right_child_pos = (i << 1) + 2;
+                if right_child_pos < tree_len {
+                    let right_child = self.forest[u][right_child_pos as usize];
+                    if !Self::is_free_node(right_child) {
+                        intersect(
+                            &mut neighbors,
+                            &self.data[right_child][..node!(self, right_child).data_len as usize],
+                        );
+                    }
+                }
+                if right_child_pos <= tree_len {
+                    let left_child = self.forest[u][right_child_pos as usize - 1];
+                    if !Self::is_free_node(left_child) {
+                        intersect(
+                            &mut neighbors,
+                            &self.data[left_child][..node!(self, left_child).data_len as usize],
+                        );
+                    }
+                }
+
+                assert_eq!(neighbors, self.data[v][..node!(self, v).data_len as usize]);
+                if neighbors != self.data[v][..node!(self, v).data_len as usize] {
+                    return Err(IntersectionForestError::FaultyIntersection(u, v));
+                }
+
+                owners[v as usize] = u;
+            }
+        }
+
+        Ok(())
     }
 }
