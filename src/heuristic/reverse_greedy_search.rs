@@ -40,6 +40,11 @@ use crate::{
 /// (I2) Only nodes `u` with `num_covered[u] = 1` are inserted into the IntersectionForest
 /// (I3) `scores[u]` is equivalent to the number of IntersectionTrees where u is stored in the root (as an entry, not the node itself): excluded are dominating nodes
 /// (I4) if `scores[u] > 0`, u is inserted into the Sampler
+///
+///
+/// As this is a step-based algorithm, different members of this struct have certain BaseStates in
+/// which they must be at the beginning/end of each *round*. See BaseStateError down below for a
+/// description of these states.
 pub struct GreedyReverseSearch<
     'a,
     R,
@@ -534,6 +539,8 @@ pub enum BaseStateError {
     NodesToUpdate,
     #[error("in_nodes_to_update should be set to 00...00")]
     InNodesToUpdate,
+    #[error("redundant_nodes should be empty")]
+    RedundantNodes,
 }
 
 impl Debug for BaseStateError {
@@ -616,6 +623,12 @@ where
         if self.in_nodes_to_update.cardinality() > 0 {
             return Err(RevGreedyError::VariableBaseError(
                 BaseStateError::InNodesToUpdate,
+            ));
+        }
+
+        if !self.redundant_nodes.is_empty() {
+            return Err(RevGreedyError::VariableBaseError(
+                BaseStateError::RedundantNodes,
             ));
         }
 
