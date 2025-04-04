@@ -47,9 +47,6 @@ use crate::{
 /// As this is a step-based algorithm, different members of this struct have certain BaseStates in
 /// which they must be at the beginning/end of each *round*. See BaseStateError down below for a
 /// description of these states.
-///
-/// Below additional invariants for single members of this struct are stated that must be *true* if
-/// a `round` is finished.
 pub struct GreedyReverseSearch<
     'a,
     R,
@@ -64,11 +61,9 @@ pub struct GreedyReverseSearch<
     graph: &'a mut G,
 
     /// The current solution we operate on
-    /// (V1) current_solution is a valid DominatingSet
     current_solution: DominatingSet,
 
     /// The currently best known solution of the algorithm
-    /// (V2) |best_solution| <= |current_solution|
     best_solution: DominatingSet,
 
     /// Is the algorithm stuck in a (local) optimum?
@@ -76,7 +71,6 @@ pub struct GreedyReverseSearch<
     is_locally_optimal: bool,
 
     /// A sampler for sampling nodes with weights that are powers of 2.
-    /// (V3) Contains only nodes u with scores[u] > 0 (= (I4)).
     sampler: WeightedPow2Sampler<NUM_SAMPLER_BUCKETS>,
 
     /// RNG used for sampling
@@ -84,45 +78,22 @@ pub struct GreedyReverseSearch<
 
     /// List of all nodes that are either currently inserted into an IntersectionTree and need to
     /// be removed to maintain (I2) or need to be added to an IntersectionTree to maintain (I2)
-    /// (V4) nodes_to_update is empty
     nodes_to_update: Vec<Node>,
 
     /// Helper BitSet to easily identify if a node is pushed to `nodes_to_update`
-    /// (V5) in_nodes_to_update is set to 0...0
     in_nodes_to_update: BitSet,
 
-    /// Temp-List of all non-covered nodes in a force_removal subroutine
-    /// (V6) non_covered_nodes is empty
-    non_covered_nodes: Vec<Node>,
-
-    /// Helper BitSet to easily identify if a node is pushed to `non_covered_nodes`
-    /// (V7) in_non_covered_nodes is set to 0...0
-    in_non_covered_nodes: BitSet,
-
-    /// A helper BitSet
-    /// (V8) helper_bitset is set to 0...0
-    helper_bitset: BitSet,
-
     /// Number of incident dominating nodes
-    /// (I1) `Neighbors[u][..num_covered\[u\]]` is a subset of the current DomSet
     num_covered: Vec<NumNodes>,
 
     /// Number of nodes this (dominating) nodes covers uniquely (no other dominating node covers) (V9)
     uniquely_covered: Vec<NumNodes>,
 
     /// Nodes u that can possibly be removed from the DomSet as uniquely_covered[u] = 0
-    /// (V10) redundant_nodes is empty
     redundant_nodes: Vec<Node>,
 
     /// Number of appearances in entries of root nodes in the IntersectionForest
     scores: Vec<NumNodes>,
-
-    /// Number of uncovered neighbors of a node. Except inside a forced_removal subroutine, this
-    /// should always be [0,...,0].
-    /// (V11) every entry in num_uncovered_neighbors is 0  
-    ///
-    /// TODO: combine with self.scores such that scores = scores + CONSTANT * num_uncovered_neighbors
-    num_uncovered_neighbors: Vec<NumNodes>,
 
     /// Last time a node was added/removed from the DomSet
     age: Vec<u64>,
@@ -140,8 +111,6 @@ pub struct GreedyReverseSearch<
     ///
     /// Note that we only *really* consider neighbors that are not subset-dominated and thus can appear in any
     /// optimal DomSet without the possibility of directly replacing them.
-    ///
-    /// (V12) invariants of IntersectionForest are true
     pub intersection_forest: IntersectionForest,
 
     /// Keep track of all applied modifications to current_solution to also apply them to
@@ -151,6 +120,21 @@ pub struct GreedyReverseSearch<
     /// BitSet indicating all nodes that will never appear in an optimal solution and can be
     /// disregarded
     non_optimal_nodes: BitSet,
+
+    /// Temp-List of all non-covered nodes in a force_removal subroutine
+    non_covered_nodes: Vec<Node>,
+
+    /// Helper BitSet to easily identify if a node is pushed to `non_covered_nodes`
+    in_non_covered_nodes: BitSet,
+
+    /// Number of uncovered neighbors of a node. Except inside a forced_removal subroutine, this
+    /// should always be [0,...,0].
+    ///
+    /// TODO: combine with self.scores such that scores = scores + CONSTANT * num_uncovered_neighbors
+    num_uncovered_neighbors: Vec<NumNodes>,
+
+    /// A helper BitSet
+    helper_bitset: BitSet,
 }
 
 impl<'a, R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
@@ -161,8 +145,6 @@ where
 {
     /// Creates a new instance of the algorithm for a given graph and a starting DomSet which must be valid.
     /// Runs Subset-Reduction beforehand to further reduce the DomSet and removes redundant nodes afterwards.
-    ///
-    /// (V1) initial_solution is a valid DominatingSet
     pub fn new(graph: &'a mut G, mut initial_solution: DominatingSet, rng: &'a mut R) -> Self {
         assert!(initial_solution.is_valid(graph));
 
@@ -180,19 +162,19 @@ where
                 rng,
                 nodes_to_update: Vec::new(),
                 in_nodes_to_update: BitSet::new(1),
-                non_covered_nodes: Vec::new(),
-                in_non_covered_nodes: BitSet::new(1),
-                helper_bitset: BitSet::new(1),
                 num_covered: Vec::new(),
                 uniquely_covered: Vec::new(),
                 redundant_nodes: Vec::new(),
                 scores: Vec::new(),
-                num_uncovered_neighbors: Vec::new(),
                 age: Vec::new(),
                 intersection_forest: IntersectionForest::default(),
                 round: 1,
                 domset_modifications: Vec::new(),
                 non_optimal_nodes: BitSet::new(1),
+                non_covered_nodes: Vec::new(),
+                in_non_covered_nodes: BitSet::new(1),
+                num_uncovered_neighbors: Vec::new(),
+                helper_bitset: BitSet::new(1),
             };
         }
 
@@ -215,7 +197,6 @@ where
             }
         }
 
-        // (V9) Count number of uniquely covered neighbors
         let mut uniquely_covered: Vec<NumNodes> = vec![0; graph.len()];
         graph.vertices().for_each(|u| {
             if num_covered[u as usize] == 1 {
@@ -240,7 +221,6 @@ where
                 num_covered[v as usize] -= 1;
                 graph.swap_neighbors(v, graph.ith_cross_position(u, j), num_covered[v as usize]);
 
-                // Upholds (V9)
                 if num_covered[v as usize] == 1 {
                     uniquely_covered[graph.ith_neighbor(v, 0) as usize] += 1;
                 }
@@ -250,7 +230,6 @@ where
         // Instantiate sampler and IntersectionForest with reduced neighbor-set
         let mut sampler = WeightedPow2Sampler::new(n);
         let mut scores = vec![0; n];
-        let num_uncovered_neighbors = vec![0; n];
 
         // Fixed nodes will never appear in the IntersectionForest as they are fixed in the DomSet,
         // ie. no Tree-Owners, and will thus be never uniquely covered by another DomSet node nor
@@ -260,7 +239,6 @@ where
         let mut intersection_forest =
             IntersectionForest::new_unsorted(csr_repr, &fixed_nodes, &non_optimal_nodes);
 
-        // (V12) Insert uniquely covered neighbors of dominating nodes into IntersectionTrees & Sampler
         for u in initial_solution.iter_non_fixed() {
             for v in graph.neighbors_of(u) {
                 debug_assert!(num_covered[v as usize] > 0);
@@ -269,7 +247,6 @@ where
                 }
             }
 
-            // Upholds (V3)
             for &v in intersection_forest.get_root_nodes(u) {
                 if u != v {
                     scores[v as usize] += 1;
@@ -278,7 +255,6 @@ where
             }
         }
 
-        // (V1, V2)
         let current_solution = initial_solution.clone();
         let best_solution = initial_solution;
 
@@ -289,24 +265,21 @@ where
             is_locally_optimal: false,
             sampler,
             rng,
-            // (V4, V5, V6, V7, V8)
             nodes_to_update: Vec::with_capacity(n),
             in_nodes_to_update: BitSet::new(n as NumNodes),
-            non_covered_nodes: Vec::with_capacity(n),
-            in_non_covered_nodes: BitSet::new(n as NumNodes),
-            helper_bitset: BitSet::new(n as NumNodes),
             num_covered,
             uniquely_covered,
-            // (V10)
             redundant_nodes: Vec::with_capacity(n),
             scores,
-            // (V11)
-            num_uncovered_neighbors,
             age,
             intersection_forest,
             round: 1,
             domset_modifications: Vec::with_capacity(1 + n / 64),
             non_optimal_nodes,
+            non_covered_nodes: Vec::with_capacity(n),
+            in_non_covered_nodes: BitSet::new(n as NumNodes),
+            helper_bitset: BitSet::new(n as NumNodes),
+            num_uncovered_neighbors: vec![0; n],
         }
     }
 
@@ -414,7 +387,7 @@ where
             .domset_modifications
             .push_within_capacity(DomSetModification::Add(u));
 
-        // (I1)Update adjacency lists as well as (I2) num_covered/uniquely_covered
+        // (I1) Update adjacency lists as well as (I2) num_covered/uniquely_covered
         //
         // If a previously uniquely covered node is now not longer uniquely covered,
         // add it to nodes_to_update as we must later update its IntersectionTree-Appearance
@@ -427,18 +400,15 @@ where
             );
             self.num_covered[neighbor as usize] += 1;
 
-            // (V9)
             if self.num_covered[neighbor as usize] == 2 {
                 // (I1) the first neighbor must be a dominating node
                 let former_unique_covering_node = self.graph.ith_neighbor(neighbor, 0);
                 self.uniquely_covered[former_unique_covering_node as usize] -= 1;
-                // Breaks (V4, V5)
                 if !self.in_nodes_to_update.set_bit(neighbor) {
                     self.nodes_to_update.push(neighbor);
                 }
 
                 if self.uniquely_covered[former_unique_covering_node as usize] == 0 {
-                    // Breaks (V10)
                     self.redundant_nodes.push(former_unique_covering_node);
                 }
             }
@@ -450,12 +420,11 @@ where
     /// if MARKER is *true*, this is the first redundant node that gets removed and we can copy the
     /// IntersectionTree from `old_node` to `new_node` instead of deleting it (I2).
     fn remove_redundant_node<const MARKER: bool>(&mut self, old_node: Node, new_node: Node) {
-        // Upholds (V1)
         if self.uniquely_covered[old_node as usize] > 0 {
             return;
         }
 
-        // Breaks (I1) and possibly (V2)
+        // Breaks (I1)
         self.current_solution.remove_node(old_node);
         self.age[old_node as usize] = self.round;
 
@@ -473,7 +442,6 @@ where
                 self.num_covered[neighbor as usize],
             );
 
-            // (V10)
             if self.num_covered[neighbor as usize] == 1 {
                 let dominating_node = self.graph.ith_neighbor(neighbor, 0);
                 self.uniquely_covered[dominating_node as usize] += 1;
@@ -489,7 +457,6 @@ where
                     self.in_nodes_to_update.set_bit(neighbor)
                 };
 
-                // Breaks (V4, V5)
                 if !prev_bit {
                     self.nodes_to_update.push(neighbor);
                 }
@@ -499,9 +466,7 @@ where
         // Copy IntersectionTree in the first iteration as it should be a superset of the intended one for
         // new_node by (I3). This will later be further updated and corrected.
         if MARKER {
-            // Breaks (V12)
             self.intersection_forest.transfer_tree(old_node, new_node);
-            // Maintains (V3)
             self.scores[old_node as usize] = 1;
             self.sampler.add_entry(old_node, 1);
         } else {
@@ -513,7 +478,6 @@ where
                         .set_bucket(node, self.scores[node as usize] as usize);
                 }
             }
-            // Upholds (V12) for old_node
             self.intersection_forest.clear_tree(old_node);
         }
     }
@@ -523,9 +487,7 @@ where
     /// Remove nodes from the forest that are no longer uniquely covered
     /// or add nodes to the forest that are now uniquely covered
     fn update_forest_and_sampler(&mut self) {
-        // Restores (V4)
         for candidate in self.nodes_to_update.drain(..) {
-            // Restores (V5)
             if !self.in_nodes_to_update.clear_bit(candidate) {
                 continue;
             }
@@ -542,7 +504,7 @@ where
                         .set_bucket(node, self.scores[node as usize] as usize);
                 }
             }
-            // Update IntersectionTree[dominating_node]: Restores (V12)
+            // Update IntersectionTree[dominating_node]
             if self.num_covered[candidate as usize] == 1 {
                 self.intersection_forest
                     .add_entry(dominating_node, candidate);
@@ -563,7 +525,6 @@ where
     }
 
     /// Updates the best_solution to current_solution if better
-    /// Restores (V2)
     fn update_best_solution(&mut self) {
         if self.current_solution.len() >= self.best_solution.len() {
             return;
@@ -814,7 +775,6 @@ where
         // a tree that is no longer uniquely covered, we only need to consider nodes with
         // num_covered[u] = 1 that have to be updated.
         for candidate in self.nodes_to_update.drain(..) {
-            // Restores (V5)
             if !self.in_nodes_to_update.clear_bit(candidate)
                 || self.num_covered[candidate as usize] != 1
             {
@@ -836,7 +796,7 @@ where
                 }
             }
 
-            // Update IntersectionTree[dominating_node]: Restores (V12)
+            // Update IntersectionTree[dominating_node]
             self.intersection_forest
                 .add_entry(dominating_node, candidate);
 
@@ -1034,7 +994,7 @@ where
                             }
                         }
 
-                        // Update IntersectionTree[dominating_node]: Restores (V12)
+                        // Update IntersectionTree[dominating_node]
                         self.intersection_forest
                             .remove_entry(former_unique_covering_node, v);
 
@@ -1122,6 +1082,14 @@ pub enum BaseStateError {
     InNodesToUpdate,
     #[error("redundant_nodes should be empty")]
     RedundantNodes,
+    #[error("non_covered_nodes should be empty")]
+    NonCoveredNodes,
+    #[error("in_non_covered_nodes should be set to 00...00")]
+    InNonCoveredNodes,
+    #[error("num_uncovered_neighbors should be set to 0,0,...,0,0")]
+    NumUncoveredNeighbors,
+    #[error("helper_bitset should be set to 00...00")]
+    HelperBitset,
 }
 
 impl Debug for BaseStateError {
@@ -1210,6 +1178,32 @@ where
         if !self.redundant_nodes.is_empty() {
             return Err(RevGreedyError::VariableBaseError(
                 BaseStateError::RedundantNodes,
+            ));
+        }
+
+        if !self.non_covered_nodes.is_empty() {
+            return Err(RevGreedyError::VariableBaseError(
+                BaseStateError::NonCoveredNodes,
+            ));
+        }
+
+        if self.in_non_covered_nodes.cardinality() > 0 {
+            return Err(RevGreedyError::VariableBaseError(
+                BaseStateError::InNonCoveredNodes,
+            ));
+        }
+
+        for u in self.graph.vertices() {
+            if self.num_uncovered_neighbors[u as usize] > 0 {
+                return Err(RevGreedyError::VariableBaseError(
+                    BaseStateError::NumUncoveredNeighbors,
+                ));
+            }
+        }
+
+        if self.helper_bitset.cardinality() > 0 {
+            return Err(RevGreedyError::VariableBaseError(
+                BaseStateError::HelperBitset,
             ));
         }
 
