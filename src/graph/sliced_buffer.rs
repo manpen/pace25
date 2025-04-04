@@ -290,6 +290,18 @@ impl<T: Clone> SlicedBufferWithDefault<T> {
             }
         }
     }
+
+    #[inline(always)]
+    pub fn default_values(&self, node: Node) -> &[T] {
+        let end = self.offsets[node as usize + 1] as usize;
+        let start = self.offsets[node as usize] as usize;
+
+        // using unchecked here is safe, since we established in the
+        // constructor that all entries within `self.offsets`` are
+        //  (i) non-decreasing (i.e. produce a valid range) and
+        //  (ii) are within bounds of `self.default`
+        unsafe { self.default.get_unchecked(start..end) }
+    }
 }
 
 impl<T: Default + Clone> Index<Node> for SlicedBufferWithDefault<T> {
