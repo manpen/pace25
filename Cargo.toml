@@ -32,6 +32,7 @@ regex = "1.11.1"
 structopt = "0.3.26"
 smallvec = "1.13.2"
 thiserror = "2.0.12"
+russcip = { version = "0.7.1", features = ["bundled"] }
 
 [profile.release]
 lto="fat"
