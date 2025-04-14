@@ -69,7 +69,7 @@ fn main() -> anyhow::Result<()> {
             if o.scip {
                 SolverBackend::SCIP
             } else {
-                SolverBackend::GOODLP
+                SolverBackend::MAXSAT
             },
         )?,
     };

@@ -1,15 +1,16 @@
-use std::time::Instant;
+use std::process::{Command, Stdio};
 
 use crate::{
     kernelization::{rule1::Rule1, KernelizationRule},
     prelude::*,
 };
-use log::info;
+use tempfile::NamedTempFile;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum SolverBackend {
     SCIP,
     GOODLP,
+    MAXSAT,
 }
 
 pub fn solve(
@@ -25,94 +26,213 @@ pub fn solve(
 
     match backend {
         SolverBackend::SCIP => {
-            use russcip::prelude::*;
-
-            let mut model = Model::default().minimize();
-            model = model.set_int_param("display/verblevel", 0).unwrap();
-
-            let vars: Vec<_> = graph
-                .vertices_range()
-                .map(|u| (!redundant.get_bit(u)).then(|| model.add(var().bin().obj(1.0))))
-                .collect();
-
-            for u in graph.vertices() {
-                if covered.get_bit(u) {
-                    continue;
-                }
-
-                let mut expr = cons().ge(1.0);
-                for v in graph.neighbors_of(u) {
-                    if let Some(v) = vars[v as usize].as_ref() {
-                        expr = expr.coef(v, 1.0);
-                    }
-                }
-
-                model.add(expr);
-            }
-
-            let solved_model = model.solve();
-
-            let sol = solved_model.best_sol().unwrap();
-
-            domset.add_nodes(
-                vars.into_iter()
-                    .enumerate()
-                    .filter(|(_, var)| var.as_ref().is_some_and(|x| sol.val(x) > 0.5))
-                    .map(|(i, _)| i as Node),
-            );
+            #[cfg(feature = "scip")]
+            scip_solver(graph, &mut domset, redundant, &covered);
+            #[cfg(not(feature = "scip"))]
+            panic!("scip not supported");
         }
         SolverBackend::GOODLP => {
-            use good_lp::{
-                default_solver, variable, Expression, ProblemVariables, Solution, SolverModel,
-            };
-
-            let mut problem: ProblemVariables = ProblemVariables::new();
-
-            // TODO: if we use large partial_solutions, we can reduce the number of variables (only one for each uncovered node)
-            let vec = problem.add_vector(variable().binary(), graph.number_of_nodes() as usize);
-
-            let mut sum = Expression::from(vec[0]);
-            for x in &vec[1..] {
-                sum += x;
-            }
-
-            let mut model = problem.minimise(sum).using(default_solver);
-
-            info!("Invoke MinSAT solver");
-            info!(
-                "Previously covered: {}/{}",
-                covered.cardinality(),
-                graph.number_of_nodes()
-            );
-
-            for u in graph.vertices() {
-                if covered.get_bit(u) {
-                    continue;
-                }
-
-                let mut expr = Expression::with_capacity(graph.degree_of(u) as usize);
-                for v in graph.neighbors_of(u) {
-                    expr += vec[v as usize];
-                }
-
-                model = model.with(expr.geq(1));
-            }
-
-            model.set_parameter("log", "0");
-            let start_time = Instant::now();
-            let solution = model.solve()?;
-            info!("MinSat solver took {:?}", start_time.elapsed());
-
-            let size_before = domset.len();
-            domset.add_nodes(
-                vec.into_iter()
-                    .enumerate()
-                    .filter(|(_, var)| solution.value(*var) > 0.9)
-                    .map(|(i, _)| i as Node),
-            );
-            info!("Added {} nodes into DS", domset.len() - size_before);
+            #[cfg(feature = "goodlp")]
+            good_lp_solver(graph, &mut domset, covered)?;
+            #[cfg(not(feature = "goodlp"))]
+            panic!("goodlp not supported");
+        }
+        SolverBackend::MAXSAT => {
+            maxsat_solver(graph, &mut domset, covered, redundant)?;
         }
     }
 
     Ok(domset)
+}
+
+fn maxsat_solver(
+    graph: &(impl StaticGraph + SelfLoop),
+    domset: &mut DominatingSet,
+    covered: BitSet,
+    redundant: BitSet,
+) -> std::result::Result<(), anyhow::Error> {
+    let mut maxsat_file = NamedTempFile::new()?;
+
+    {
+        use std::io::Write;
+        // TODO: Add BufWriter!
+        //let mut writer = BufWriter::new(maxsat_file);
+        let mut writer = &mut maxsat_file;
+
+        // write a hard constraint for each uncovered node
+        for u in graph.vertices() {
+            if covered.get_bit(u) {
+                continue;
+            }
+
+            write!(&mut writer, "h ")?;
+            for v in graph.neighbors_of(u) {
+                if redundant.get_bit(v) {
+                    continue;
+                }
+
+                write!(&mut writer, "{} ", v + 1)?;
+            }
+            writeln!(&mut writer, "0")?;
+        }
+
+        // write a soft constraint for each non-redundant node
+        for u in graph.vertices() {
+            //if redundant.get_bit(u) || domset.is_in_domset(u) {
+            //    continue;
+            //}
+            writeln!(&mut writer, "1 -{} 0", u + 1)?; // "1" is weight, - indicated negation, 0 is end of clause
+        }
+
+        writer.flush()?;
+    }
+
+    let solution_path = maxsat_file.path().to_str().expect("Path");
+
+    // start solver
+    {
+        let process_output = Command::new("./EvalMaxSAT_bin")
+            .args(vec!["--TCT", "1800", solution_path])
+            .stdout(Stdio::piped())
+            .output()?;
+        let stdout_string = String::from_utf8(process_output.stdout)?;
+
+        let mut expected_size: Option<usize> = None;
+        let mut bits_set: Option<usize> = None;
+
+        for line in stdout_string.lines() {
+            let line: &str = line;
+            let mut parts = line.split(' ').filter(|t| !t.is_empty());
+
+            match parts.next() {
+                Some("s") => {
+                    if !line.contains("OPTIMUM FOUND") {
+                        anyhow::bail!("suboptimal solution");
+                    }
+                }
+
+                Some("o") => {
+                    expected_size = Some(parts.next().expect("Size info").parse()?);
+                }
+
+                Some("v") => {
+                    assert!(bits_set.is_none());
+
+                    let values_in_ascii: &str = parts.next().expect("Variable assignment");
+                    assert_eq!(values_in_ascii.len(), graph.number_of_nodes() as usize);
+
+                    let card_before = domset.len();
+                    domset.add_nodes(
+                        values_in_ascii
+                            .chars()
+                            .enumerate()
+                            .filter_map(|(i, c)| (c == '1').then_some(i as Node)),
+                    );
+
+                    bits_set = Some(domset.len() - card_before);
+                }
+
+                _ => {}
+            }
+        }
+
+        assert!(expected_size.is_some());
+        assert_eq!(expected_size, bits_set);
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "goodlp")]
+fn good_lp_solver(
+    graph: &(impl StaticGraph + SelfLoop),
+    domset: &mut DominatingSet,
+    covered: stream_bitset::prelude::BitSetImpl<u32>,
+) -> std::result::Result<(), anyhow::Error> {
+    use good_lp::{default_solver, variable, Expression, ProblemVariables, Solution, SolverModel};
+    use log::info;
+    use std::time::Instant;
+
+    let mut problem: ProblemVariables = ProblemVariables::new();
+    let vec = problem.add_vector(variable().binary(), graph.number_of_nodes() as usize);
+    let mut sum = Expression::from(vec[0]);
+    for x in &vec[1..] {
+        sum += x;
+    }
+    let mut model = problem.minimise(sum).using(default_solver);
+    info!("Invoke MinSAT solver");
+    info!(
+        "Previously covered: {}/{}",
+        covered.cardinality(),
+        graph.number_of_nodes()
+    );
+    for u in graph.vertices() {
+        if covered.get_bit(u) {
+            continue;
+        }
+
+        let mut expr = Expression::with_capacity(graph.degree_of(u) as usize);
+        for v in graph.neighbors_of(u) {
+            expr += vec[v as usize];
+        }
+
+        model = model.with(expr.geq(1));
+    }
+    model.set_parameter("log", "0");
+    let start_time = Instant::now();
+    let solution = model.solve()?;
+    info!("MinSat solver took {:?}", start_time.elapsed());
+    let size_before = domset.len();
+    domset.add_nodes(
+        vec.into_iter()
+            .enumerate()
+            .filter(|(_, var)| solution.value(*var) > 0.9)
+            .map(|(i, _)| i as Node),
+    );
+    info!("Added {} nodes into DS", domset.len() - size_before);
+    Ok(())
+}
+
+#[cfg(feature = "scip")]
+fn scip_solver(
+    graph: &(impl StaticGraph + SelfLoop),
+    domset: &mut DominatingSet,
+    redundant: stream_bitset::prelude::BitSetImpl<u32>,
+    covered: &stream_bitset::prelude::BitSetImpl<u32>,
+) {
+    use russcip::prelude::*;
+
+    let mut model = Model::default().minimize();
+    model = model.set_int_param("display/verblevel", 0).unwrap();
+
+    let vars: Vec<_> = graph
+        .vertices_range()
+        .map(|u| (!redundant.get_bit(u)).then(|| model.add(var().bin().obj(1.0))))
+        .collect();
+
+    for u in graph.vertices() {
+        if covered.get_bit(u) {
+            continue;
+        }
+
+        let mut expr = cons().ge(1.0);
+        for v in graph.neighbors_of(u) {
+            if let Some(v) = vars[v as usize].as_ref() {
+                expr = expr.coef(v, 1.0);
+            }
+        }
+
+        model.add(expr);
+    }
+
+    let solved_model = model.solve();
+
+    let sol = solved_model.best_sol().unwrap();
+
+    domset.add_nodes(
+        vars.into_iter()
+            .enumerate()
+            .filter(|(_, var)| var.as_ref().is_some_and(|x| sol.val(x) > 0.5))
+            .map(|(i, _)| i as Node),
+    );
 }
