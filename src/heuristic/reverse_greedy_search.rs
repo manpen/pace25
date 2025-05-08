@@ -135,6 +135,9 @@ pub struct GreedyReverseSearch<
 
     /// A helper BitSet
     helper_bitset: BitSet,
+
+    /// Which forced removal procedure to apply
+    forced_rule: ForcedRemovalRuleType,
 }
 
 impl<'a, R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
@@ -145,7 +148,12 @@ where
 {
     /// Creates a new instance of the algorithm for a given graph and a starting DomSet which must be valid.
     /// Runs Subset-Reduction beforehand to further reduce the DomSet and removes redundant nodes afterwards.
-    pub fn new(graph: &'a mut G, mut initial_solution: DominatingSet, rng: &'a mut R) -> Self {
+    pub fn new(
+        graph: &'a mut G,
+        mut initial_solution: DominatingSet,
+        rng: &'a mut R,
+        rule: ForcedRemovalRuleType,
+    ) -> Self {
         assert!(initial_solution.is_valid(graph));
 
         // If only fixed nodes cover the graph, this is optimal.
@@ -175,6 +183,7 @@ where
                 in_non_covered_nodes: BitSet::new(1),
                 num_uncovered_neighbors: Vec::new(),
                 helper_bitset: BitSet::new(1),
+                forced_rule: rule,
             };
         }
 
@@ -280,6 +289,7 @@ where
             in_non_covered_nodes: BitSet::new(n as NumNodes),
             helper_bitset: BitSet::new(n as NumNodes),
             num_uncovered_neighbors: vec![0; n],
+            forced_rule: rule,
         }
     }
 
@@ -296,10 +306,53 @@ where
         // Try to escape local minima every 1000 steps
         //
         // TODO: find better threshold
-        if self.round % 1000 == 0 {
-            let start_node = self.minimum_loss_node();
-            let bfs = self.bfs::<3>(start_node);
-            self.forced_removal_procedure(bfs.into_iter().map(ForcedRemovalNodeType::Fixed));
+        if self.round % 10000 == 0 {
+            match self.forced_rule {
+                ForcedRemovalRuleType::DMS => self.force_removal_dms(),
+                ForcedRemovalRuleType::BFS2 => {
+                    let start_node = self.minimum_loss_node();
+                    let bfs = self.bfs::<2>(start_node);
+                    self.forced_removal_procedure(
+                        bfs.into_iter().map(ForcedRemovalNodeType::Fixed),
+                    );
+                }
+                ForcedRemovalRuleType::BFS3 => {
+                    let start_node = self.minimum_loss_node();
+                    let bfs = self.bfs::<3>(start_node);
+                    self.forced_removal_procedure(
+                        bfs.into_iter().map(ForcedRemovalNodeType::Fixed),
+                    );
+                }
+                ForcedRemovalRuleType::BFS4 => {
+                    let start_node = self.minimum_loss_node();
+                    let bfs = self.bfs::<4>(start_node);
+                    self.forced_removal_procedure(
+                        bfs.into_iter().map(ForcedRemovalNodeType::Fixed),
+                    );
+                }
+                ForcedRemovalRuleType::BFSP2 => {
+                    let start_node = self.minimum_loss_node();
+                    let bfs = self.bfs_non_fixed_nodes::<2>(start_node);
+                    self.forced_removal_procedure(
+                        bfs.into_iter().map(ForcedRemovalNodeType::Fixed),
+                    );
+                }
+                ForcedRemovalRuleType::BFSP3 => {
+                    let start_node = self.minimum_loss_node();
+                    let bfs = self.bfs_non_fixed_nodes::<3>(start_node);
+                    self.forced_removal_procedure(
+                        bfs.into_iter().map(ForcedRemovalNodeType::Fixed),
+                    );
+                }
+                ForcedRemovalRuleType::BFSP4 => {
+                    let start_node = self.minimum_loss_node();
+                    let bfs = self.bfs_non_fixed_nodes::<4>(start_node);
+                    self.forced_removal_procedure(
+                        bfs.into_iter().map(ForcedRemovalNodeType::Fixed),
+                    );
+                }
+            };
+
             self.round += 1;
             return;
         }
@@ -1282,4 +1335,15 @@ where
 
         Ok(())
     }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ForcedRemovalRuleType {
+    DMS = 0,
+    BFS2 = 1,
+    BFS3 = 2,
+    BFS4 = 3,
+    BFSP2 = 4,
+    BFSP3 = 5,
+    BFSP4 = 6,
 }

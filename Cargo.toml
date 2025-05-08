@@ -57,3 +57,9 @@ name = "heuristic_bench"
 path = "src/bin/heuristic_solver_bench.rs"
 required-features = ["signal-handling"]
 test = false
+
+[[bin]]
+name = "heuristic_fr_bench"
+path = "src/bin/forced_removal_heuristic_bench.rs"
+required-features = ["signal-handling"]
+test = false
