@@ -84,17 +84,15 @@ def run_binary_with_files(
         while len(processes) < num_threads and file_stack:
             (rule_id, file_path) = file_stack.pop()
             cmd = [binary_path, "--path", file_path, "--forced", str(rule_id)]
-            with open(file_path, "r") as input_file:
-                process_start_time = time.time()
-                process = subprocess.Popen(
-                    cmd,
-                    stdin=input_file,
-                    stdout=subprocess.PIPE,
-                    preexec_fn=os.setsid,
-                )
-                processes.append(
-                    (process, file_path, rule_id, process_start_time, False)
-                )
+            process_start_time = time.time()
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                preexec_fn=os.setsid,
+            )
+            processes.append(
+                (process, file_path, rule_id, process_start_time, False)
+            )
 
         # Check timeout and terminate or kill processes
         for i in range(len(processes)):
@@ -209,8 +207,8 @@ if __name__ == "__main__":
         "-r",
         "--rules",
         type=int,
-        default=7,
-        help="Number of ForcedRemoval-Rules (default: 7)",
+        default=8,
+        help="Number of ForcedRemoval-Rules (default: 8)",
     )
     args = parser.parse_args()
     main(args)

@@ -54,6 +54,7 @@ fn main() -> anyhow::Result<()> {
         4 => ForcedRemovalRuleType::BFSP2,
         5 => ForcedRemovalRuleType::BFSP3,
         6 => ForcedRemovalRuleType::BFSP4,
+        7 => ForcedRemovalRuleType::None,
         _ => panic!("Only 7 forced rules are implemented"),
     };
     let mut search = GreedyReverseSearch::<_, _, 10, 10>::new(&mut graph, domset, &mut rng, rule);

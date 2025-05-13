@@ -351,6 +351,7 @@ where
                         bfs.into_iter().map(ForcedRemovalNodeType::Fixed),
                     );
                 }
+                _ => {},
             };
 
             self.round += 1;
@@ -1346,4 +1347,5 @@ pub enum ForcedRemovalRuleType {
     BFSP2 = 4,
     BFSP3 = 5,
     BFSP4 = 6,
+    None = 7,
 }
