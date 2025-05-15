@@ -36,6 +36,7 @@ tempfile = "3.19.1"
 
 [dev-dependencies]
 regex = "1.11.1"
+rayon={version= "1.6"}
 
 [profile.release]
 lto="fat"
