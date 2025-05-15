@@ -4,10 +4,7 @@ use dss::{exact::sat_solver::SolverBackend, prelude::*};
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
-pub struct SatSolverOpts {
-    #[structopt(short, long)]
-    scip: bool,
-}
+pub struct SatSolverOpts {}
 
 #[derive(StructOpt)]
 pub enum SatSolverOptsEnum {
@@ -63,15 +60,9 @@ fn main() -> anyhow::Result<()> {
     let graph = load_graph(&opt.instance)?;
 
     let result = match opt.cmd {
-        Commands::SatSolverEnum(SatSolverOptsEnum::Sat(o)) => dss::exact::sat_solver::solve(
-            &graph,
-            None,
-            if o.scip {
-                SolverBackend::SCIP
-            } else {
-                SolverBackend::MAXSAT
-            },
-        )?,
+        Commands::SatSolverEnum(SatSolverOptsEnum::Sat(_)) => {
+            dss::exact::sat_solver::solve(&graph, None, SolverBackend::MAXSAT)?
+        }
     };
 
     assert!(result.is_valid(&graph), "Produced DS is not valid");

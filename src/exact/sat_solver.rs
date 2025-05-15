@@ -8,7 +8,6 @@ use tempfile::NamedTempFile;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum SolverBackend {
-    SCIP,
     GOODLP,
     MAXSAT,
 }
@@ -25,12 +24,6 @@ pub fn solve(
     let covered = domset.compute_covered(graph);
 
     match backend {
-        SolverBackend::SCIP => {
-            #[cfg(feature = "scip")]
-            scip_solver(graph, &mut domset, redundant, &covered);
-            #[cfg(not(feature = "scip"))]
-            panic!("scip not supported");
-        }
         SolverBackend::GOODLP => {
             #[cfg(feature = "goodlp")]
             good_lp_solver(graph, &mut domset, covered)?;
@@ -191,48 +184,4 @@ fn good_lp_solver(
     );
     info!("Added {} nodes into DS", domset.len() - size_before);
     Ok(())
-}
-
-#[cfg(feature = "scip")]
-fn scip_solver(
-    graph: &(impl StaticGraph + SelfLoop),
-    domset: &mut DominatingSet,
-    redundant: stream_bitset::prelude::BitSetImpl<u32>,
-    covered: &stream_bitset::prelude::BitSetImpl<u32>,
-) {
-    use russcip::prelude::*;
-
-    let mut model = Model::default().minimize();
-    model = model.set_int_param("display/verblevel", 0).unwrap();
-
-    let vars: Vec<_> = graph
-        .vertices_range()
-        .map(|u| (!redundant.get_bit(u)).then(|| model.add(var().bin().obj(1.0))))
-        .collect();
-
-    for u in graph.vertices() {
-        if covered.get_bit(u) {
-            continue;
-        }
-
-        let mut expr = cons().ge(1.0);
-        for v in graph.neighbors_of(u) {
-            if let Some(v) = vars[v as usize].as_ref() {
-                expr = expr.coef(v, 1.0);
-            }
-        }
-
-        model.add(expr);
-    }
-
-    let solved_model = model.solve();
-
-    let sol = solved_model.best_sol().unwrap();
-
-    domset.add_nodes(
-        vars.into_iter()
-            .enumerate()
-            .filter(|(_, var)| var.as_ref().is_some_and(|x| sol.val(x) > 0.5))
-            .map(|(i, _)| i as Node),
-    );
 }
