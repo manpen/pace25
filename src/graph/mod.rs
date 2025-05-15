@@ -15,7 +15,6 @@ pub mod node_mapper;
 pub mod partition;
 pub mod subgraph;
 pub mod traversal;
-pub mod weisfeiler_lehman;
 
 pub use adj_array::*;
 pub use bipartite::*;
@@ -34,7 +33,6 @@ pub use node_mapper::*;
 pub use partition::*;
 pub use subgraph::*;
 pub use traversal::*;
-pub use weisfeiler_lehman::*;
 
 use itertools::Itertools;
 use std::{borrow::Borrow, ops::Range};
