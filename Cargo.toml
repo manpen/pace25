@@ -72,3 +72,9 @@ name = "heuristic_relabel_bench"
 path = "src/bin/heuristic_solver_relabel_bench.rs"
 required-features = ["signal-handling"]
 test = false
+
+[[bin]]
+name = "exact"
+path = "src/bin/exact_solver.rs"
+required-features = ["signal-handling", "par"]
+test = false
