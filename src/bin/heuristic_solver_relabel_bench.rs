@@ -1,7 +1,10 @@
 use std::{io::Write, time::Instant};
 
 use dss::{
-    graph::CsrGraph,
+    graph::{
+        relabel::cuthill_mckee, AdjArray, AdjacencyList, CsrGraph, Edge, GraphFromReader,
+        GraphNodeOrder,
+    },
     heuristic::{greedy_approximation, reverse_greedy_search::GreedyReverseSearch},
     io::GraphPaceReader,
     prelude::IterativeAlgorithm,
@@ -15,7 +18,15 @@ fn main() -> anyhow::Result<()> {
 
     let mut timer = Instant::now();
 
-    let mut graph = CsrGraph::try_read_pace(std::io::stdin().lock()).unwrap();
+    let orig_graph = AdjArray::try_read_pace(std::io::stdin().lock()).unwrap();
+    let labels = cuthill_mckee(&orig_graph);
+
+    let mut graph = CsrGraph::from_edges(
+        orig_graph.number_of_nodes(),
+        orig_graph
+            .edges(true)
+            .map(|Edge(u, v)| Edge(labels[u as usize], labels[v as usize])),
+    );
 
     let read_time = timer.elapsed().as_millis();
     timer = Instant::now();

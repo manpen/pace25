@@ -13,6 +13,7 @@ pub mod matrix;
 pub mod modules;
 pub mod node_mapper;
 pub mod partition;
+pub mod relabel;
 pub mod subgraph;
 pub mod traversal;
 
