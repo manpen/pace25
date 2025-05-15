@@ -1,7 +1,7 @@
 use std::process::{Command, Stdio};
 
 use crate::{
-    kernelization::{rule1::Rule1, KernelizationRule},
+    kernelization::{KernelizationRule, rule1::Rule1},
     prelude::*,
 };
 use tempfile::NamedTempFile;
@@ -149,7 +149,7 @@ fn good_lp_solver(
     domset: &mut DominatingSet,
     covered: stream_bitset::prelude::BitSetImpl<u32>,
 ) -> std::result::Result<(), anyhow::Error> {
-    use good_lp::{default_solver, variable, Expression, ProblemVariables, Solution, SolverModel};
+    use good_lp::{Expression, ProblemVariables, Solution, SolverModel, default_solver, variable};
     use log::info;
     use std::time::Instant;
 

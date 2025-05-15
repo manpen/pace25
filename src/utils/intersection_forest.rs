@@ -5,8 +5,8 @@ use thiserror::Error;
 use crate::{
     errors::InvariantCheck,
     graph::{
-        sliced_buffer::{SlicedBuffer, SlicedBufferWithDefault},
         BitSet, CsrEdges, Node, NumEdges, NumNodes,
+        sliced_buffer::{SlicedBuffer, SlicedBufferWithDefault},
     },
 };
 
@@ -764,9 +764,7 @@ pub enum IntersectionForestError {
     UnsortedData(Node),
     #[error("the parent node of {1} in the tree of {0} is a free node")]
     FreedParent(Node, Node),
-    #[error(
-        "data of {1} in the tree of {0} does not match the intersection of its childrens data"
-    )]
+    #[error("data of {1} in the tree of {0} does not match the intersection of its childrens data")]
     FaultyIntersection(Node, Node),
 }
 

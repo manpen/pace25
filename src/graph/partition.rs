@@ -115,11 +115,7 @@ impl Partition {
     pub fn class_of_edge(&self, u: Node, v: Node) -> Option<PartitionClass> {
         let cu = self.class_of_node(u)?;
         let cv = self.class_of_node(v)?;
-        if cu == cv {
-            Some(cu)
-        } else {
-            None
-        }
+        if cu == cv { Some(cu) } else { None }
     }
 
     /// Returns the number of unassigned nodes
@@ -181,11 +177,7 @@ impl Partition {
         let class_id = class_id + 1;
         assert!(self.class_sizes.len() > class_id as usize);
         self.classes.iter().enumerate().filter_map(move |(i, &c)| {
-            if c == class_id {
-                Some(i as Node)
-            } else {
-                None
-            }
+            if c == class_id { Some(i as Node) } else { None }
         })
     }
 

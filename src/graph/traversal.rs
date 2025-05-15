@@ -54,11 +54,7 @@ impl SequencedItem for PredecessorOfNode {
         self.1
     }
     fn predecessor(&self) -> Option<Node> {
-        if self.0 == self.1 {
-            None
-        } else {
-            Some(self.0)
-        }
+        if self.0 == self.1 { None } else { Some(self.0) }
     }
 }
 

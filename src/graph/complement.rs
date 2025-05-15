@@ -122,15 +122,19 @@ mod test {
                     );
 
                     // black edges do not exist
-                    assert!(graph
-                        .colored_edges(true)
-                        .filter(|&e| e.is_black())
-                        .all(|ColoredEdge(u, v, _)| !complement.has_edge(u, v)));
+                    assert!(
+                        graph
+                            .colored_edges(true)
+                            .filter(|&e| e.is_black())
+                            .all(|ColoredEdge(u, v, _)| !complement.has_edge(u, v))
+                    );
 
-                    assert!(complement
-                        .colored_edges(true)
-                        .filter(|&e| e.is_black())
-                        .all(|ColoredEdge(u, v, _)| !graph.has_edge(u, v)));
+                    assert!(
+                        complement
+                            .colored_edges(true)
+                            .filter(|&e| e.is_black())
+                            .all(|ColoredEdge(u, v, _)| !graph.has_edge(u, v))
+                    );
                 }
             }
         }

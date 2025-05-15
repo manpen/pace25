@@ -57,9 +57,11 @@ mod test {
             String::from_utf8(buffer).unwrap()
         };
 
-        assert!(Regex::new(r"p\sds\s4\s2")
-            .unwrap()
-            .is_match(output.as_str()));
+        assert!(
+            Regex::new(r"p\sds\s4\s2")
+                .unwrap()
+                .is_match(output.as_str())
+        );
         assert!(
             Regex::new(r"1\s2").unwrap().is_match(output.as_str()),
             "Output: {output}"

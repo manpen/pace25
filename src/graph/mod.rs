@@ -452,12 +452,12 @@ pub trait StaticGraph:
 }
 
 impl<
-        G: Clone
-            + IndexedAdjacencyList
-            + GraphEdgeOrder
-            + AdjacencyTest
-            + GraphFromReader
-            + ExtractCsrRepr,
-    > StaticGraph for G
+    G: Clone
+        + IndexedAdjacencyList
+        + GraphEdgeOrder
+        + AdjacencyTest
+        + GraphFromReader
+        + ExtractCsrRepr,
+> StaticGraph for G
 {
 }
