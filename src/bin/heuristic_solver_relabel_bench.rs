@@ -43,7 +43,7 @@ fn main() -> anyhow::Result<()> {
     timer = Instant::now();
 
     let mut counter = 1usize;
-    while !signal_handling::received_ctrl_c() && !search.is_completed() && counter < 50000 {
+    while !signal_handling::received_ctrl_c() && !search.is_completed() {
         counter += 1;
         search.step();
     }
