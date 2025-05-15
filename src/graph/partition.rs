@@ -224,7 +224,7 @@ impl Partition {
         }
 
         // Iterate over all edges incident to assigned nodes
-        for (u, &class_id) in self.classes.iter().enumerate().filter(|(_, &c)| c > 0) {
+        for (u, &class_id) in self.classes.iter().enumerate().filter(|&(_, &c)| c > 0) {
             let u = u as Node;
             let result_containg_u = &mut result[class_id as usize - 1];
 
