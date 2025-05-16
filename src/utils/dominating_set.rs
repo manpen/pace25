@@ -1,3 +1,5 @@
+use itertools::Itertools;
+
 use crate::prelude::*;
 use std::io::Write;
 
@@ -291,5 +293,13 @@ impl DominatingSet {
         sol2[num_fixed..].sort_unstable();
 
         sol1[num_fixed..] == sol2[num_fixed..]
+    }
+
+    pub fn complete_set(n: NumNodes) -> Self {
+        Self {
+            solution: (0..n).collect_vec(),
+            positions: (0..n).collect_vec(),
+            num_fixed: 0,
+        }
     }
 }
