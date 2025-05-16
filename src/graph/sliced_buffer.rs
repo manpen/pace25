@@ -158,6 +158,18 @@ impl<T> IndexMut<Node> for SlicedBuffer<T> {
     }
 }
 
+impl NeighborsSlice for SlicedBuffer<Node> {
+    #[inline(always)]
+    fn as_neighbors_slice(&self, u: Node) -> &[Node] {
+        self.index(u)
+    }
+
+    #[inline(always)]
+    fn as_neighbors_slice_mut(&mut self, u: Node) -> &mut [Node] {
+        self.index_mut(u)
+    }
+}
+
 // Extends on the core data structure of CSR (i.e. a data vector `buffer`
 // and an non-decreasing index vector offsets, where the start of the
 // i-th slice in `buffer` is stored at `offsets[i]`.
@@ -340,5 +352,17 @@ impl<T: Default + Clone> IndexMut<Node> for SlicedBufferWithDefault<T> {
         //  (i) non-decreasing (i.e. produce a valid range) and
         //  (ii) are within bounds of `self.buffer`
         unsafe { self.buffer.get_unchecked_mut(start..end) }
+    }
+}
+
+impl NeighborsSlice for SlicedBufferWithDefault<Node> {
+    #[inline(always)]
+    fn as_neighbors_slice(&self, u: Node) -> &[Node] {
+        self.index(u)
+    }
+
+    #[inline(always)]
+    fn as_neighbors_slice_mut(&mut self, u: Node) -> &mut [Node] {
+        self.index_mut(u)
     }
 }

@@ -6,7 +6,6 @@ use thiserror::Error;
 use crate::{
     errors::InvariantCheck,
     graph::*,
-    kernelization::{KernelizationRule, SubsetRule},
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
     utils::{
         DominatingSet,
@@ -112,6 +111,9 @@ pub struct GreedyReverseSearch<
     /// Keep track of all applied modifications to current_solution to also apply them to
     /// best_solution when new best solution is found
     domset_modifications: Vec<DomSetModification>,
+
+    /// BitSet indicating whether a node is permanently covered by a (removed) fixed node
+    is_perm_covered: BitSet,
 }
 
 impl<'a, R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
@@ -122,39 +124,22 @@ where
 {
     /// Creates a new instance of the algorithm for a given graph and a starting DomSet which must be valid.
     /// Runs Subset-Reduction beforehand to further reduce the DomSet and removes redundant nodes afterwards.
-    pub fn new(graph: &'a mut G, mut initial_solution: DominatingSet, rng: &'a mut R) -> Self {
+    pub fn new(
+        graph: &'a mut G,
+        mut initial_solution: DominatingSet,
+        is_perm_covered: BitSet,
+        non_optimal_nodes: BitSet,
+        rng: &'a mut R,
+    ) -> Self {
         assert!(initial_solution.is_valid(graph));
+        assert!(graph.len() > 0);
+        assert!(initial_solution.num_of_fixed_nodes() == 0);
 
-        // If only fixed nodes cover the graph, this is optimal.
-        // For API-purposes, we create an *empty* instance that holds the optimal solution
-        if initial_solution.all_fixed() {
-            return Self {
-                graph,
-                current_solution: initial_solution.clone(),
-                best_solution: initial_solution,
-                is_locally_optimal: true,
-                sampler: WeightedPow2Sampler::new(0),
-                rng,
-                nodes_to_update: Vec::new(),
-                in_nodes_to_update: BitSet::new(1),
-                num_covered: Vec::new(),
-                uniquely_covered: Vec::new(),
-                redundant_nodes: Vec::new(),
-                scores: Vec::new(),
-                age: Vec::new(),
-                intersection_forest: IntersectionForest::default(),
-                round: 1,
-                domset_modifications: Vec::new(),
-            };
-        }
+        let n = graph.len();
 
-        let n = graph.number_of_nodes() as usize;
-
-        // Run Subset-Reduction and create reduced edge set
-        let mut csr_repr = graph.extract_csr_repr();
-        let non_optimal_nodes = SubsetRule::apply_rule(&mut csr_repr, &mut initial_solution);
-
-        let mut num_covered = vec![0; n];
+        let mut num_covered: Vec<NumNodes> = (0..graph.number_of_nodes())
+            .map(|i| is_perm_covered.get_bit(i) as NumNodes)
+            .collect();
         let mut age = vec![0; n];
 
         // Reorder adjacency lists such that dominating nodes appear first
@@ -162,7 +147,11 @@ where
             age[u as usize] = 1;
             for i in 0..graph.degree_of(u) {
                 let v = graph.ith_neighbor(u, i);
-                graph.swap_neighbors(v, graph.ith_cross_position(u, i), num_covered[v as usize]);
+                graph.swap_neighbors(
+                    v,
+                    graph.ith_cross_position(u, i),
+                    num_covered[v as usize] - is_perm_covered.get_bit(v) as NumNodes,
+                );
                 num_covered[v as usize] += 1;
             }
         }
@@ -188,7 +177,11 @@ where
             for j in (0..graph.degree_of(u)).rev() {
                 let v = graph.ith_neighbor(u, j);
                 num_covered[v as usize] -= 1;
-                graph.swap_neighbors(v, graph.ith_cross_position(u, j), num_covered[v as usize]);
+                graph.swap_neighbors(
+                    v,
+                    graph.ith_cross_position(u, j),
+                    num_covered[v as usize] - is_perm_covered.get_bit(v) as NumNodes,
+                );
 
                 if num_covered[v as usize] == 1 {
                     uniquely_covered[graph.ith_neighbor(v, 0) as usize] += 1;
@@ -200,13 +193,8 @@ where
         let mut sampler = WeightedPow2Sampler::new(n);
         let mut scores = vec![0; n];
 
-        // Fixed nodes will never appear in the IntersectionForest as they are fixed in the DomSet,
-        // ie. no Tree-Owners, and will thus be never uniquely covered by another DomSet node nor
-        // will they be a neighbor to a uniquely covered node (of another DomSet node).
-        let fixed_nodes =
-            BitSet::new_with_bits_set(graph.number_of_nodes(), initial_solution.iter_fixed());
         let mut intersection_forest =
-            IntersectionForest::new_unsorted(csr_repr, fixed_nodes, non_optimal_nodes);
+            IntersectionForest::new_unsorted(graph.extract_csr_repr(), non_optimal_nodes);
 
         // Insert uniquely covered neighbors of dominating nodes into IntersectionTrees & Sampler
         for u in initial_solution.iter_non_fixed() {
@@ -245,6 +233,7 @@ where
             intersection_forest,
             round: 1,
             domset_modifications: Vec::with_capacity(1 + n / 64),
+            is_perm_covered,
         }
     }
 
@@ -349,11 +338,12 @@ where
             self.graph.swap_neighbors(
                 neighbor,
                 self.graph.ith_cross_position(u, i),
-                self.num_covered[neighbor as usize],
+                self.num_covered[neighbor as usize]
+                    - self.is_perm_covered.get_bit(neighbor) as NumNodes,
             );
             self.num_covered[neighbor as usize] += 1;
 
-            if self.num_covered[neighbor as usize] == 2 {
+            if self.num_covered[neighbor as usize] == 2 && !self.is_perm_covered.get_bit(neighbor) {
                 // (I1) the first neighbor must be a dominating node
                 let former_unique_covering_node = self.graph.ith_neighbor(neighbor, 0);
                 self.uniquely_covered[former_unique_covering_node as usize] -= 1;
@@ -391,10 +381,11 @@ where
             self.graph.swap_neighbors(
                 neighbor,
                 self.graph.ith_cross_position(old_node, i),
-                self.num_covered[neighbor as usize],
+                self.num_covered[neighbor as usize]
+                    - self.is_perm_covered.get_bit(neighbor) as NumNodes,
             );
 
-            if self.num_covered[neighbor as usize] == 1 {
+            if self.num_covered[neighbor as usize] == 1 && !self.is_perm_covered.get_bit(neighbor) {
                 let dominating_node = self.graph.ith_neighbor(neighbor, 0);
                 self.uniquely_covered[dominating_node as usize] += 1;
 
@@ -445,9 +436,6 @@ where
             }
 
             let dominating_node = self.graph.ith_neighbor(candidate, 0);
-            if self.current_solution.is_fixed_node(dominating_node) {
-                continue;
-            }
 
             // Remove entries of IntersectionTree[dominating_node] from sampler
             for &node in self.intersection_forest.get_root_nodes(dominating_node) {

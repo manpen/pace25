@@ -30,7 +30,7 @@ pub struct Rule1;
 
 const NOT_SET: Node = Node::MAX;
 
-impl<Graph: AdjacencyList + SelfLoop> KernelizationRule<&Graph> for Rule1 {
+impl<Graph: AdjacencyList> KernelizationRule<&Graph> for Rule1 {
     fn apply_rule(graph: &Graph, sol: &mut DominatingSet) -> BitSet {
         let n = graph.len();
         assert!(NOT_SET as usize >= n);
@@ -58,27 +58,29 @@ impl<Graph: AdjacencyList + SelfLoop> KernelizationRule<&Graph> for Rule1 {
 
         // (1) Compute first mapping and fix possible singletons
         for u in graph.vertices() {
-            let max_neighbor = graph
+            let (max_degree, max_neighbor) = graph
                 .neighbors_of(u)
                 .map(|u| (graph.degree_of(u), u))
                 .max()
-                .map(|(_, u)| u)
                 .unwrap();
-            if max_neighbor != u {
+            if max_degree > graph.degree_of(u)
+                || (max_degree == graph.degree_of(u) && max_neighbor > u)
+            {
                 inv_mappings[max_neighbor as usize].push(u);
-            } else if graph.degree_of(u) == 1 && !sol.is_fixed_node(u) {
+            } else if graph.degree_of(u) == 0 && !sol.is_fixed_node(u) {
                 sol.fix_node(u);
             }
         }
 
         // (1) Compute list of candidate-pairs based on mapping
         for u in graph.vertices() {
-            // Mark closed neighborhood N[u] of u (SelfLoop marker)
+            // Mark closed neighborhood N[u] of u
             for v in graph.neighbors_of(u) {
                 marked[v as usize] = u;
             }
+            marked[u as usize] = u;
 
-            // Check whether N[v] is a subset of N[u]
+            // Check whether N(v) is a subset of N[u] | v is ensured by definition of inv_mappings
             for v in inv_mappings[u as usize].drain(..) {
                 if graph.neighbors_of(v).all(|x| marked[x as usize] == u) {
                     parent[v as usize] = u;
@@ -96,18 +98,19 @@ impl<Graph: AdjacencyList + SelfLoop> KernelizationRule<&Graph> for Rule1 {
         for &(u, _) in &potential_type3_node {
             for v in graph.neighbors_of(u) {
                 // Only process each node once
-                if u == v || processed.get_bit(v) {
+                if processed.set_bit(v) {
                     continue;
                 }
 
-                // Mark closed neighborhood N[v] of v (SelfLoop marker)
+                // Mark closed neighborhood N[v] of v
                 for x in graph.neighbors_of(v) {
                     marked[x as usize] = v;
                 }
+                marked[v as usize] = v;
 
                 // Find minimum dominating node of neighbors in neighborhood of v
-                if let Some((_, min_node)) = graph
-                    .neighbors_of(v)
+                if let Some((_, min_node)) = std::iter::once(v)
+                    .chain(graph.neighbors_of(v))
                     .filter_map(|x| {
                         let pt = parent[x as usize];
                         (pt != NOT_SET && pt != v && marked[pt as usize] == v)
@@ -118,40 +121,53 @@ impl<Graph: AdjacencyList + SelfLoop> KernelizationRule<&Graph> for Rule1 {
                     // We drained inv_mappings earlier completely, so we can now reuse it
                     inv_mappings[min_node as usize].push(v);
                 }
-
-                processed.set_bit(v);
             }
         }
 
+        parent = vec![NOT_SET; n];
+
         // (3) Mark candidates as possible Type2-Nodes if their neighborhoods are subsets
         for u in graph.vertices() {
-            // Mark closed neighborhood N[u] of u (SelfLoop marker)
+            // Mark closed neighborhood N[u] of u
             for v in graph.neighbors_of(u) {
                 marked[v as usize] = u;
             }
+            marked[u as usize] = u;
+
+            for &v in &inv_mappings[u as usize] {
+                if graph.neighbors_of(v).all(|x| marked[x as usize] == u) {
+                    parent[v as usize] = u;
+                }
+            }
 
             for v in inv_mappings[u as usize].drain(..) {
-                if graph.neighbors_of(v).all(|x| marked[x as usize] == u) {
-                    type2_nodes.set_bit(v);
+                if graph
+                    .neighbors_of(v)
+                    .all(|x| parent[x as usize] == u || x == u)
+                {
+                    sol.fix_node(u);
+                    redundant.set_bit(v);
+                    break;
                 }
             }
         }
 
-        // (3) If all neighbors of a candidate are marked as Type2-Neighbors (except the dominating node),
-        // the candidate must be a Type3-Neighbor and we can fix a node and mark all remaining Type2-Neighbors as redundant.
-        for (u, v) in potential_type3_node {
-            if sol.is_fixed_node(v) {
-                // By assumption, u is not a Type1-Neighbor
-                redundant.set_bit(u);
-                continue;
+        processed.clear_all();
+        for u in sol.iter_fixed() {
+            for v in graph.neighbors_of(u) {
+                processed.set_bit(v);
             }
+        }
 
-            if graph
-                .neighbors_of(u)
-                .all(|x| type2_nodes.get_bit(x) || x == v)
+        for u in graph.vertices() {
+            if !sol.is_fixed_node(u)
+                && processed.get_bit(u)
+                && graph
+                    .neighbors_of(u)
+                    .filter(|x| !processed.get_bit(*x))
+                    .count()
+                    <= 1
             {
-                // By assumption, u is not a Type1-Neighbor
-                sol.fix_node(v);
                 redundant.set_bit(u);
             }
         }

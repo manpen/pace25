@@ -1,6 +1,5 @@
 use crate::{
     graph::*,
-    kernelization::{KernelizationRule, rule1::Rule1},
     utils::{dominating_set::DominatingSet, radix::NodeHeap},
 };
 
@@ -17,17 +16,18 @@ use crate::{
 ///
 /// Returns the solution
 pub fn greedy_approximation(
-    graph: &(impl AdjacencyList + AdjacencyTest + SelfLoop),
-) -> DominatingSet {
-    let mut solution = DominatingSet::new(graph.number_of_nodes());
-
-    // Apply Rule1
-    Rule1::apply_rule(graph, &mut solution);
-
+    graph: &(impl AdjacencyList + AdjacencyTest),
+    solution: &mut DominatingSet,
+    redundant: &BitSet,
+) {
     // Compute how many neighbors in the DomSet every node has
     let mut num_covered = vec![0usize; graph.number_of_nodes() as usize];
     let mut total_covered = 0;
     for u in solution.iter() {
+        num_covered[u as usize] += 1;
+        if num_covered[u as usize] == 1 {
+            total_covered += 1;
+        }
         for v in graph.neighbors_of(u) {
             num_covered[v as usize] += 1;
             if num_covered[v as usize] == 1 {
@@ -39,7 +39,7 @@ pub fn greedy_approximation(
     // Compute scores for non-fixed nodes
     let mut heap = NodeHeap::new(graph.number_of_nodes() as usize, 0);
     for u in graph.vertices() {
-        if solution.is_fixed_node(u) {
+        if solution.is_fixed_node(u) || redundant.get_bit(u) {
             continue;
         }
 
@@ -91,6 +91,4 @@ pub fn greedy_approximation(
 
         index += 1;
     }
-
-    solution
 }

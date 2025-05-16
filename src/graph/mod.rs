@@ -426,6 +426,11 @@ pub trait ExtractCsrRepr {
     fn extract_csr_repr(&self) -> CsrEdges;
 }
 
+pub trait NeighborsSlice {
+    fn as_neighbors_slice(&self, u: Node) -> &[Node];
+    fn as_neighbors_slice_mut(&mut self, u: Node) -> &mut [Node];
+}
+
 /// A marker trait indicating that *u* is considered a neighbor of *u*
 pub trait SelfLoop {}
 
