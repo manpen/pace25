@@ -2,8 +2,8 @@ use std::{io::Write, time::Instant};
 
 use dss::{
     graph::{
-        relabel::cuthill_mckee, AdjArray, AdjacencyList, CsrGraph, Edge, GraphFromReader,
-        GraphNodeOrder,
+        AdjArray, AdjacencyList, CsrGraph, Edge, Getter, GraphFromReader, GraphNodeOrder,
+        relabel::cuthill_mckee,
     },
     heuristic::{greedy_approximation, reverse_greedy_search::GreedyReverseSearch},
     io::GraphPaceReader,
@@ -19,13 +19,13 @@ fn main() -> anyhow::Result<()> {
     let mut timer = Instant::now();
 
     let orig_graph = AdjArray::try_read_pace(std::io::stdin().lock()).unwrap();
-    let labels = cuthill_mckee(&orig_graph);
+    let mapping = cuthill_mckee(&orig_graph);
 
     let mut graph = CsrGraph::from_edges(
         orig_graph.number_of_nodes(),
         orig_graph
             .edges(true)
-            .map(|Edge(u, v)| Edge(labels[u as usize], labels[v as usize])),
+            .map(|Edge(u, v)| Edge(mapping.new_id_of(u).unwrap(), mapping.new_id_of(v).unwrap())),
     );
 
     let read_time = timer.elapsed().as_millis();

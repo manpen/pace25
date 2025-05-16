@@ -2,9 +2,9 @@ use itertools::Itertools;
 
 use crate::utils::DominatingSet;
 
-use super::{AdjacencyList, Node};
+use super::{AdjacencyList, IndexMapper, Node};
 
-pub fn cuthill_mckee<G: AdjacencyList>(graph: &G) -> Vec<Node> {
+pub fn cuthill_mckee<G: AdjacencyList>(graph: &G) -> IndexMapper {
     let mut mapping = vec![Node::MAX; graph.len()];
     let mut queue = Vec::with_capacity(graph.len());
 
@@ -65,5 +65,5 @@ pub fn cuthill_mckee<G: AdjacencyList>(graph: &G) -> Vec<Node> {
         i += 1;
     }
 
-    mapping
+    IndexMapper::from_vecs(mapping, queue)
 }

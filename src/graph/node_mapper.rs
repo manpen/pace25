@@ -301,6 +301,43 @@ impl fmt::Debug for NodeMapper {
     }
 }
 
+#[derive(Clone)]
+pub struct IndexMapper {
+    new_to_old: Vec<Node>,
+    old_to_new: Vec<Node>,
+}
+
+impl IndexMapper {
+    pub fn from_vecs(old_to_new: Vec<Node>, new_to_old: Vec<Node>) -> Self {
+        Self {
+            old_to_new,
+            new_to_old,
+        }
+    }
+}
+
+impl Getter for IndexMapper {
+    fn new_id_of(&self, old: Node) -> Option<Node> {
+        if (old as usize) < self.old_to_new.len() {
+            Some(self.old_to_new[old as usize])
+        } else {
+            None
+        }
+    }
+
+    fn old_id_of(&self, new: Node) -> Option<Node> {
+        if (new as usize) < self.new_to_old.len() {
+            Some(self.new_to_old[new as usize])
+        } else {
+            None
+        }
+    }
+
+    fn len(&self) -> Node {
+        self.new_to_old.len() as Node
+    }
+}
+
 /// The [`RankingForwardMapper`] is less powerful than [`NodeMapper`] (e.g. it is lacking a
 /// [`Setter`] interface and cannot deal with missing mappings) but is much more efficient for
 /// the cases where it is applicable.
