@@ -8,7 +8,6 @@ pub fn received_ctrl_c() -> bool {
 }
 
 pub fn initialize() {
-    #[cfg(feature = "signal-handling")]
     ctrlc::set_handler(|| {
         SIGINT.store(true, Ordering::SeqCst);
     })

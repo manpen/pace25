@@ -9,9 +9,9 @@ use crate::{
     kernelization::{KernelizationRule, SubsetRule},
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
     utils::{
+        DominatingSet,
         intersection_forest::{IntersectionForest, IntersectionForestError},
         sampler::{SamplerError, WeightedPow2Sampler},
-        DominatingSet,
     },
 };
 

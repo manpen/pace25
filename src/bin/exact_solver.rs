@@ -1,6 +1,6 @@
 use std::{fs::File, path::PathBuf};
 
-use dss::prelude::*;
+use dss::{exact::sat_solver::SolverBackend, prelude::*};
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
@@ -30,14 +30,14 @@ struct Opts {
     cmd: Commands,
 }
 
-fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<AdjMatrix> {
+fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<CsrGraph> {
     use dss::prelude::*;
 
     if let Some(path) = path {
-        Ok(AdjMatrix::try_read_pace_file(path)?)
+        Ok(CsrGraph::try_read_pace_file(path)?)
     } else {
         let stdin = std::io::stdin().lock();
-        Ok(AdjMatrix::try_read_pace(stdin)?)
+        Ok(CsrGraph::try_read_pace(stdin)?)
     }
 }
 
@@ -60,7 +60,9 @@ fn main() -> anyhow::Result<()> {
     let graph = load_graph(&opt.instance)?;
 
     let result = match opt.cmd {
-        Commands::SatSolverEnum(_) => dss::exact::sat_solver::solve(&graph, None)?,
+        Commands::SatSolverEnum(SatSolverOptsEnum::Sat(_)) => {
+            dss::exact::sat_solver::solve(&graph, None, SolverBackend::MAXSAT)?
+        }
     };
 
     assert!(result.is_valid(&graph), "Produced DS is not valid");

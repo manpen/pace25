@@ -1,6 +1,6 @@
 use crate::{
     graph::*,
-    kernelization::{rule1::Rule1, KernelizationRule},
+    kernelization::{KernelizationRule, rule1::Rule1},
     utils::{dominating_set::DominatingSet, radix::NodeHeap},
 };
 

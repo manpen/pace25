@@ -231,7 +231,7 @@ impl DominatingSet {
 
     /// Computes the set of nodes covered by the dominating set.
     pub fn compute_covered(&self, graph: &impl AdjacencyList) -> BitSet {
-        let mut covered = BitSet::new(graph.number_of_nodes());
+        let mut covered = graph.vertex_bitset_unset();
 
         for &u in &self.solution {
             covered.set_bits(graph.neighbors_of(u));

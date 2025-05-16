@@ -48,6 +48,15 @@ impl<T> SlicedBuffer<T> {
         unsafe { self.offsets.len().unchecked_sub(1) as NumNodes }
     }
 
+    pub fn vertex_bitset_unset(&self) -> BitSet {
+        BitSet::new(self.number_of_nodes())
+    }
+
+    /// Returns empty bitset with one entry per node
+    pub fn edge_bitset_unset(&self) -> BitSet {
+        BitSet::new(self.number_of_edges())
+    }
+
     #[inline(always)]
     pub fn number_of_edges(&self) -> NumEdges {
         self.buffer.len() as NumEdges
