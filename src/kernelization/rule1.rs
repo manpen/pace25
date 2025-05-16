@@ -48,13 +48,13 @@ impl<Graph: AdjacencyList + SelfLoop> KernelizationRule<&Graph> for Rule1 {
         let mut potential_type3_node: Vec<(Node, Node)> = Vec::new();
 
         // BitSet indicating that a node is a Type(2 or 3)-Candidate (not confirmed yet)
-        let mut type2_nodes: BitSet = BitSet::new(graph.number_of_nodes());
+        let mut type2_nodes: BitSet = graph.vertex_bitset_unset();
 
         // Helper-BitSet to ensure we only process each node once later
-        let mut processed: BitSet = BitSet::new(graph.number_of_nodes());
+        let mut processed: BitSet = graph.vertex_bitset_unset();
 
         // BitSet indicating redundant nodes -> returned at the end
-        let mut redundant = BitSet::new(graph.number_of_nodes());
+        let mut redundant = graph.vertex_bitset_unset();
 
         // (1) Compute first mapping and fix possible singletons
         for u in graph.vertices() {
@@ -168,8 +168,8 @@ mod tests {
 
     // The standard Rule implementation with runtime O(n * D * D) where D is the maximum degree in the graph.
     fn naive_rule1_impl(graph: &(impl AdjacencyList + SelfLoop), sol: &mut DominatingSet) {
-        let mut marked = BitSet::new(graph.number_of_nodes());
-        let mut type2_nodes = BitSet::new(graph.number_of_nodes());
+        let mut marked = graph.vertex_bitset_unset();
+        let mut type2_nodes = graph.vertex_bitset_unset();
         for u in graph.vertices() {
             if graph.degree_of(u) == 1 {
                 sol.fix_node(u);

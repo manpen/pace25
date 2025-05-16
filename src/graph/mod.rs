@@ -63,6 +63,11 @@ pub trait GraphNodeOrder {
     /// Returns an iterator over V.
     fn vertices(&self) -> Self::VertexIter<'_>;
 
+    /// Returns empty bitset with one entry per node
+    fn vertex_bitset_unset(&self) -> BitSet {
+        BitSet::new(self.number_of_nodes())
+    }
+
     /// Returns a range of vertices possibly including deleted vertices
     /// In contrast to self.vertices(), the range returned by self.vertices_ranges() does
     /// not borrow self and hence may be used where additional mutable references of self are needed
@@ -83,6 +88,11 @@ pub trait GraphNodeOrder {
 pub trait GraphEdgeOrder {
     /// Returns the number of edges of the graph
     fn number_of_edges(&self) -> NumEdges;
+
+    /// Returns empty bitset with one entry per node
+    fn edge_bitset_unset(&self) -> BitSet {
+        BitSet::new(self.number_of_edges())
+    }
 }
 
 #[macro_export]
@@ -160,7 +170,7 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
     fn neighbors_of_as_stream(&self, u: Node) -> Self::NeighborsStream<'_>;
 
     fn closed_two_neighborhood_of(&self, u: Node) -> BitSet {
-        let mut ns = BitSet::new(self.number_of_nodes());
+        let mut ns = self.vertex_bitset_unset();
         ns.set_bit(u);
         for v in self.neighbors_of(u) {
             ns.set_bit(v);
@@ -170,7 +180,7 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
     }
 
     fn closed_three_neighborhood_of(&self, u: Node) -> BitSet {
-        let mut ns = BitSet::new(self.number_of_nodes());
+        let mut ns = self.vertex_bitset_unset();
         ns.set_bit(u);
         for v in self.closed_two_neighborhood_of(u).iter_set_bits() {
             ns.set_bit(v);

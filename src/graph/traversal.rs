@@ -175,7 +175,7 @@ impl<G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> Iterator
 
 impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> TraversalSearch<'a, G, S, I> {
     pub fn new(graph: &'a G, start: Node) -> Self {
-        let mut visited = BitSet::new(graph.number_of_nodes());
+        let mut visited = graph.vertex_bitset_unset();
         visited.set_bit(start);
         Self {
             graph,

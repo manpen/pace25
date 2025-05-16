@@ -11,11 +11,11 @@ pub struct SubsetRule;
 impl KernelizationRule<&mut CsrEdges> for SubsetRule {
     fn apply_rule(graph: &mut CsrEdges, sol: &mut DominatingSet) -> BitSet {
         let n = graph.number_of_nodes();
-        let mut is_subset_dominated = BitSet::new(n);
+        let mut is_subset_dominated = graph.vertex_bitset_unset();
 
         // Compute permanently covered nodes and degrees
         let mut non_perm_degree: Vec<NumNodes> = (0..n).map(|u| graph.degree_of(u)).collect();
-        let mut is_perm_covered = BitSet::new(n);
+        let mut is_perm_covered = graph.vertex_bitset_unset();
         for u in sol.iter_fixed() {
             for &v in &graph[u] {
                 if !is_perm_covered.set_bit(v) {
