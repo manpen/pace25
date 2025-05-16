@@ -1,7 +1,9 @@
 pub mod long_path;
 pub mod rule1;
+pub mod rule_one_reduction;
 pub mod subsets;
 pub use long_path::LongPathReduction;
+pub use rule_one_reduction::RuleOneReduction;
 pub use subsets::*;
 
 use crate::{graph::BitSet, utils::DominatingSet};
@@ -31,5 +33,7 @@ pub trait ReductionRule<Graph>: Sized {
     /// computed by the solver.
     /// In general, post_processing needs to happen in the reverse order
     /// the rules where applied.
-    fn post_process(self, solution: &mut DominatingSet, covered: &mut BitSet);
+    fn post_process(self, _solution: &mut DominatingSet, _covered: &mut BitSet) {
+        unreachable!("This is a single stage rule without post processing"); // most rules are
+    }
 }

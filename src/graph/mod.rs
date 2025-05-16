@@ -125,6 +125,10 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
     /// ** Panics if the v >= n **
     fn neighbors_of(&self, u: Node) -> Self::NeighborIter<'_>;
 
+    fn closed_neighbors_of(&self, u: Node) -> impl Iterator<Item = Node> + '_ {
+        std::iter::once(u).chain(self.neighbors_of(u))
+    }
+
     /// If v has degree two (i.e. neighbors [u, w]), this function continues
     /// the walk `u`, `v`, `w` and returns `Some(w)`. Otherwise it returns `None`.
     fn continue_path(&self, u: Node, v: Node) -> Option<Node> {

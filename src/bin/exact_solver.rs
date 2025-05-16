@@ -2,7 +2,7 @@ use std::{fs::File, path::PathBuf};
 
 use dss::{
     exact::sat_solver::SolverBackend,
-    kernelization::{LongPathReduction, ReductionRule},
+    kernelization::{LongPathReduction, ReductionRule, RuleOneReduction},
     log::build_pace_logger_for_level,
     prelude::*,
 };
@@ -69,7 +69,12 @@ fn main() -> anyhow::Result<()> {
     let mut covered = graph.vertex_bitset_unset();
     let mut solution = DominatingSet::new(graph.number_of_nodes());
 
+    // singleton nodes need to be fixed
+    solution.fix_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
+
     let (_, long_path_pp) = LongPathReduction::apply_rule(&mut graph, &mut solution, &mut covered);
+    RuleOneReduction::apply_rule(&mut graph, &mut solution, &mut covered);
+
     let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
 
     let mut result = match opt.cmd {
