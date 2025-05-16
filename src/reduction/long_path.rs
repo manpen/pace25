@@ -1,7 +1,6 @@
 use super::*;
 use crate::graph::*;
 use itertools::Itertools;
-use log::info;
 use std::marker::PhantomData;
 
 #[must_use] // this rule has a post-processing step and may cause invalid results if not applied
@@ -14,12 +13,14 @@ pub struct LongPathReduction<G> {
 /// This reduction rule shortens paths of lengths at least 5 by removing groups of three nodes
 /// until as long as at least 2 nodes remain. It is a two-staged rule that requires post-processing
 /// once a domset for the modified graph was computed.
-impl<G: AdjacencyList + GraphEdgeEditing> ReductionRule<G> for LongPathReduction<G> {
+impl<G: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<G> for LongPathReduction<G> {
+    const NAME: &str = "LongPathReduction";
+
     fn apply_rule(
         graph: &mut G,
         _solution: &mut DominatingSet,
         covered: &mut BitSet,
-    ) -> (bool, Option<Self>) {
+    ) -> (bool, Option<Box<dyn Postprocessor<G>>>) {
         let long_paths = graph.path_iter_with_atleast_path_nodes(5).collect_vec();
         if long_paths.is_empty() {
             return (false, None);
@@ -38,20 +39,20 @@ impl<G: AdjacencyList + GraphEdgeEditing> ReductionRule<G> for LongPathReduction
             graph.add_edge(path[1], path[2 + nodes_to_remove], EdgeColor::Black);
         }
 
-        info!("LongPathReduction removed {total_nodes_deleted} nodes");
-
         (
             true,
-            Some(Self {
+            Some(Box::new(Self {
                 removed_paths: long_paths,
                 total_nodes_deleted,
                 _graph: Default::default(),
-            }),
+            })),
         )
     }
+}
 
-    fn post_process(self, solution: &mut DominatingSet, covered: &mut BitSet) {
-        for path in self.removed_paths {
+impl<G: AdjacencyList + GraphEdgeEditing> Postprocessor<G> for LongPathReduction<G> {
+    fn post_process(&mut self, _graph: &mut G, solution: &mut DominatingSet, covered: &mut BitSet) {
+        for path in self.removed_paths.drain(..) {
             for (i, &u) in path.iter().enumerate() {
                 if covered.set_bit(u) {
                     continue;

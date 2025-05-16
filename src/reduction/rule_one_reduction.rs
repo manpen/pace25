@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use super::*;
 use crate::{graph::*, utils::DominatingSet};
 
@@ -25,16 +27,22 @@ use smallvec::SmallVec;
 /// Here, we break ties in the opposite direction and prefer dominating nodes with smaller degrees.
 /// (3) We iterate over each candidate-pair (u,v) and confirm whether u is truly a Type3-Neighbor
 /// for u. If true, we mark u as redundant and fix v as a dominating node.
-pub struct RuleOneReduction;
+pub struct RuleOneReduction<G> {
+    _graph: PhantomData<G>,
+}
 
 const NOT_SET: Node = Node::MAX;
 
-impl<Graph: AdjacencyList + GraphEdgeEditing> ReductionRule<Graph> for RuleOneReduction {
+impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
+    for RuleOneReduction<Graph>
+{
+    const NAME: &str = "RuleOne";
+
     fn apply_rule(
         graph: &mut Graph,
         domset: &mut DominatingSet,
         covered: &mut BitSet,
-    ) -> (bool, Option<Self>) {
+    ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
         let n = graph.len();
         assert!(NOT_SET as usize >= n);
 
@@ -196,7 +204,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing> ReductionRule<Graph> for RuleOneRe
             neighbors_to_remove.clear();
         }
 
-        (modified, None)
+        (modified, None::<Box<dyn Postprocessor<Graph>>>)
     }
 }
 

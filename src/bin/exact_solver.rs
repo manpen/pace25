@@ -2,9 +2,9 @@ use std::{fs::File, path::PathBuf};
 
 use dss::{
     exact::sat_solver::SolverBackend,
-    kernelization::{LongPathReduction, ReductionRule, RuleOneReduction},
     log::build_pace_logger_for_level,
     prelude::*,
+    reduction::{LongPathReduction, Reducer, RuleOneReduction},
 };
 use structopt::StructOpt;
 
@@ -72,27 +72,27 @@ fn main() -> anyhow::Result<()> {
     // singleton nodes need to be fixed
     solution.fix_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
 
-    let (_, long_path_pp) = LongPathReduction::apply_rule(&mut graph, &mut solution, &mut covered);
-    RuleOneReduction::apply_rule(&mut graph, &mut solution, &mut covered);
+    let mut reducer = Reducer::new();
+    reducer.apply_rule::<RuleOneReduction<_>>(&mut graph, &mut solution, &mut covered);
+    reducer.apply_rule::<LongPathReduction<_>>(&mut graph, &mut solution, &mut covered);
 
-    let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
-
-    let mut result = match opt.cmd {
-        Commands::SatSolverEnum(SatSolverOptsEnum::Sat(_)) => dss::exact::sat_solver::solve(
-            &csr_graph,
-            covered,
-            Some(solution),
-            SolverBackend::MAXSAT,
-        )?,
+    let mut solution = {
+        let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
+        match opt.cmd {
+            Commands::SatSolverEnum(SatSolverOptsEnum::Sat(_)) => dss::exact::sat_solver::solve(
+                &csr_graph,
+                covered,
+                Some(solution),
+                SolverBackend::MAXSAT,
+            )?,
+        }
     };
 
-    let mut covered = result.compute_covered(&org_graph);
-    if let Some(pp) = long_path_pp {
-        pp.post_process(&mut result, &mut covered);
-    }
+    let mut covered = solution.compute_covered(&org_graph);
+    reducer.post_process(&mut graph, &mut solution, &mut covered);
 
-    assert!(result.is_valid(&org_graph), "Produced DS is not valid");
-    write_solution(&result, &opt.output)?;
+    assert!(solution.is_valid(&org_graph), "Produced DS is not valid");
+    write_solution(&solution, &opt.output)?;
 
     Ok(())
 }
