@@ -13,6 +13,7 @@ pub mod matrix;
 pub mod modules;
 pub mod node_mapper;
 pub mod partition;
+pub mod path_iterator;
 pub mod relabel;
 pub mod subgraph;
 pub mod traversal;
@@ -32,6 +33,7 @@ pub use matrix::*;
 pub use modules::Modules;
 pub use node_mapper::*;
 pub use partition::*;
+pub use path_iterator::*;
 pub use subgraph::*;
 pub use traversal::*;
 
