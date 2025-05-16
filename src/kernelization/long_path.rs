@@ -1,6 +1,7 @@
 use super::*;
 use crate::graph::*;
 use itertools::Itertools;
+use log::info;
 use std::marker::PhantomData;
 
 #[must_use] // this rule has a post-processing step and may cause invalid results if not applied
@@ -19,7 +20,7 @@ impl<G: AdjacencyList + GraphEdgeEditing> ReductionRule<G> for LongPathReduction
         _solution: &mut DominatingSet,
         covered: &mut BitSet,
     ) -> (bool, Option<Self>) {
-        let long_paths = graph.path_iter().filter(|p| p.len() >= 7).collect_vec();
+        let long_paths = graph.path_iter_with_atleast_path_nodes(5).collect_vec();
         if long_paths.is_empty() {
             return (false, None);
         }
@@ -36,6 +37,8 @@ impl<G: AdjacencyList + GraphEdgeEditing> ReductionRule<G> for LongPathReduction
             total_nodes_deleted += nodes_to_remove as NumNodes;
             graph.add_edge(path[1], path[2 + nodes_to_remove], EdgeColor::Black);
         }
+
+        info!("LongPathReduction removed {total_nodes_deleted} nodes");
 
         (
             true,

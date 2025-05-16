@@ -6,16 +6,33 @@ pub trait PathIterator: AdjacencyList {
     /// A path is returned as a Vec where the first and last elements are the endpoints,
     /// which are of degree 2 iff the path is an induced cycle.
     fn path_iter(&self) -> Paths<'_, Self>;
+
+    /// Same as `path_iter`, but does not return paths with less than
+    /// `min_length` path nodes; i.e. excluding the end pointer.
+    /// In other words: if a path is returned, the vector has length
+    /// at leasat `min_length + 2`
+    fn path_iter_with_atleast_path_nodes(&self, min_path_nodes: NumNodes) -> Paths<'_, Self>;
 }
 
 impl<G: AdjacencyList> PathIterator for G {
     fn path_iter(&self) -> Paths<'_, Self> {
         Paths::new(self)
     }
+
+    /// Same as `path_iter`, but does not return paths with less than
+    /// `min_length` path nodes; i.e. excluding the end pointer.
+    /// In other words: if a path is returned, the vector has length
+    /// at leasat `min_length + 2`
+    fn path_iter_with_atleast_path_nodes(&self, min_path_nodes: NumNodes) -> Paths<'_, Self> {
+        let mut paths = Paths::new(self);
+        paths.set_min_path_nodes(min_path_nodes);
+        paths
+    }
 }
 
 pub struct Paths<'a, G: AdjacencyList> {
     graph: &'a G,
+    min_length: NumNodes,
     visited: BitSet,
     search_at: Node,
 }
@@ -24,9 +41,17 @@ impl<'a, G: AdjacencyList> Paths<'a, G> {
     fn new(graph: &'a G) -> Self {
         Self {
             graph,
+            min_length: 0,
             visited: graph.vertex_bitset_unset(),
             search_at: 0,
         }
+    }
+
+    /// Does not return paths with less than `min_length` path nodes;
+    /// i.e. excluding the end pointer. In other words: if a path is
+    /// returned, the vector has length at least `min_length + 2`
+    fn set_min_path_nodes(&mut self, min_length: NumNodes) {
+        self.min_length = min_length;
     }
 
     fn complete_path(&mut self, u: Node, parent: Node, path: &mut Vec<Node>) {
@@ -47,11 +72,11 @@ impl<'a, G: AdjacencyList> Paths<'a, G> {
     }
 }
 
-impl<'a, G: AdjacencyList> Iterator for Paths<'a, G> {
+impl<G: AdjacencyList> Iterator for Paths<'_, G> {
     type Item = Vec<Node>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut path = Vec::with_capacity(32);
+        let mut path = Vec::with_capacity(2 + self.min_length as usize);
         while self.search_at < self.graph.number_of_nodes() {
             let start_node = self.search_at;
             self.search_at += 1;
@@ -68,6 +93,11 @@ impl<'a, G: AdjacencyList> Iterator for Paths<'a, G> {
             if path.len() == 1 || path[0] != start_node {
                 // we need the check to properly deal with circles
                 self.complete_path(n2, start_node, &mut path);
+            }
+
+            if 2 + self.min_length as usize > path.len() {
+                path.clear();
+                continue;
             }
 
             return Some(path);

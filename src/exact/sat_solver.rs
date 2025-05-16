@@ -11,16 +11,15 @@ pub enum SolverBackend {
 
 pub fn solve(
     graph: &(impl StaticGraph + SelfLoop),
-    mut covered: BitSet,
+    covered: BitSet,
     partial_solution: Option<DominatingSet>,
     backend: SolverBackend,
 ) -> anyhow::Result<DominatingSet> {
     let mut domset =
         partial_solution.unwrap_or_else(|| DominatingSet::new(graph.number_of_nodes()));
 
-    //let redundant = Rule1::apply_rule(graph, &mut domset);
+    // TODO: compute redundant nodes
     let redundant = graph.vertex_bitset_unset();
-    covered |= &domset.compute_covered(graph);
 
     match backend {
         SolverBackend::GOODLP => {

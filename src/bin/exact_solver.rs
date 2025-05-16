@@ -3,6 +3,7 @@ use std::{fs::File, path::PathBuf};
 use dss::{
     exact::sat_solver::SolverBackend,
     kernelization::{LongPathReduction, ReductionRule},
+    log::build_pace_logger_for_level,
     prelude::*,
 };
 use structopt::StructOpt;
@@ -59,6 +60,7 @@ fn write_solution(ds: &DominatingSet, path: &Option<PathBuf>) -> anyhow::Result<
 }
 
 fn main() -> anyhow::Result<()> {
+    build_pace_logger_for_level(log::LevelFilter::Info);
     let opt = Opts::from_args();
 
     let mut graph = load_graph(&opt.instance)?;
@@ -68,10 +70,6 @@ fn main() -> anyhow::Result<()> {
     let mut solution = DominatingSet::new(graph.number_of_nodes());
 
     let (_, long_path_pp) = LongPathReduction::apply_rule(&mut graph, &mut solution, &mut covered);
-    if let Some(pp) = &long_path_pp {
-        println!("c path rule deleted: {}", pp.total_nodes_deleted());
-    }
-
     let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
 
     let mut result = match opt.cmd {
