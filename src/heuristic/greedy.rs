@@ -18,7 +18,7 @@ use crate::{
 pub fn greedy_approximation(
     graph: &(impl AdjacencyList + AdjacencyTest),
     solution: &mut DominatingSet,
-    redundant: &BitSet,
+    never_select: &BitSet,
 ) {
     // Compute how many neighbors in the DomSet every node has
     let mut num_covered = vec![0usize; graph.number_of_nodes() as usize];
@@ -39,7 +39,7 @@ pub fn greedy_approximation(
     // Compute scores for non-fixed nodes
     let mut heap = NodeHeap::new(graph.number_of_nodes() as usize, 0);
     for u in graph.vertices() {
-        if solution.is_fixed_node(u) || redundant.get_bit(u) {
+        if solution.is_fixed_node(u) || never_select.get_bit(u) {
             continue;
         }
 
@@ -65,7 +65,7 @@ pub fn greedy_approximation(
             if num_covered[u as usize] == 1 {
                 total_covered += 1;
                 for v in graph.neighbors_of(u) {
-                    if v != node {
+                    if v != node && !never_select.get_bit(v) {
                         let current_score = heap.remove(v);
                         heap.push(current_score + 1, v);
                     }
