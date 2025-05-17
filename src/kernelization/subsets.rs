@@ -8,8 +8,10 @@ use super::KernelizationRule;
 /// are left out of consideration.
 pub struct SubsetRule;
 
-impl KernelizationRule<&mut CsrEdges> for SubsetRule {
-    fn apply_rule(graph: &mut CsrEdges, sol: &mut DominatingSet) -> BitSet {
+impl<Graph: NeighborsSlice + GraphNodeOrder + AdjacencyList> KernelizationRule<&mut Graph>
+    for SubsetRule
+{
+    fn apply_rule(graph: &mut Graph, sol: &mut DominatingSet) -> BitSet {
         let n = graph.number_of_nodes();
         let mut is_subset_dominated = graph.vertex_bitset_unset();
 
@@ -17,9 +19,9 @@ impl KernelizationRule<&mut CsrEdges> for SubsetRule {
         let mut non_perm_degree: Vec<NumNodes> = (0..n).map(|u| graph.degree_of(u)).collect();
         let mut is_perm_covered = graph.vertex_bitset_unset();
         for u in sol.iter_fixed() {
-            for &v in &graph[u] {
+            for &v in graph.as_neighbors_slice(u) {
                 if !is_perm_covered.set_bit(v) {
-                    for &w in &graph[v] {
+                    for &w in graph.as_neighbors_slice(v) {
                         non_perm_degree[w as usize] -= 1;
                     }
                 }
@@ -28,7 +30,7 @@ impl KernelizationRule<&mut CsrEdges> for SubsetRule {
 
         // Sort adjacency lists to allow binary searching later on
         for u in 0..n {
-            graph[u].sort_unstable();
+            graph.as_neighbors_slice_mut(u).sort_unstable();
         }
 
         let mut candidates = Vec::new();
@@ -40,12 +42,13 @@ impl KernelizationRule<&mut CsrEdges> for SubsetRule {
 
             // If every neighbor (including u) is permanently covered, skip this node
             // Otherwise pick node with maximum number of non-permanently covered neighbors
-            if let Some(node) = graph[u]
+            if let Some(node) = graph
+                .as_neighbors_slice(u)
                 .iter()
                 .filter(|&&v| !is_perm_covered.get_bit(v))
                 .min_by_key(|&&v| non_perm_degree[v as usize])
             {
-                for &v in &graph[*node] {
+                for &v in graph.as_neighbors_slice(*node) {
                     if v == u {
                         continue;
                     }
@@ -58,14 +61,16 @@ impl KernelizationRule<&mut CsrEdges> for SubsetRule {
             }
 
             // Only consider candidates that are adjacent to all non-permanently covered neighbors of u
-            for &v in &graph[u] {
+            for &v in graph.as_neighbors_slice(u) {
                 if is_perm_covered.get_bit(v) {
                     continue;
                 }
 
                 for i in (0..candidates.len()).rev() {
                     let candidate = candidates[i];
-                    if let Ok(index) = &graph[candidate][offsets[i]..].binary_search(&v) {
+                    if let Ok(index) =
+                        graph.as_neighbors_slice(candidate)[offsets[i]..].binary_search(&v)
+                    {
                         // Since edge-lists are sorted, v is increasing and we can use offsets[i] to
                         // allow for faster binary searches in later iterations
                         offsets[i] += index;
