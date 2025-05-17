@@ -1,7 +1,7 @@
 use dss::{
     graph::{
         AdjArray, AdjacencyList, BitSet, CsrGraph, CuthillMcKee, Edge, EdgeOps, Getter,
-        GraphEdgeOrder, GraphFromReader, GraphNodeOrder, NumNodes,
+        GraphEdgeOrder, GraphFromReader, GraphNodeOrder, NodeMapper, NumNodes,
     },
     heuristic::{greedy_approximation, reverse_greedy_search::GreedyReverseSearch},
     kernelization::{KernelizationRule, SubsetRule},
@@ -9,7 +9,7 @@ use dss::{
     reduction::{LongPathReduction, Reducer, RuleOneReduction},
     utils::{DominatingSet, signal_handling},
 };
-use rand::SeedableRng;
+use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64Mcg;
 use std::{path::PathBuf, time::Duration};
 use structopt::{StructOpt, clap};
@@ -34,19 +34,14 @@ fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<AdjArray> {
     }
 }
 
-fn main() -> anyhow::Result<()> {
-    signal_handling::initialize();
+struct State<G> {
+    graph: G,
+    domset: DominatingSet,
+    covered: BitSet,
+    redundant: BitSet,
+}
 
-    // while I love to have an error message here, this clashes with optil.io
-    // hence, we ignore parsing errors and only terminate if the user explictly asks for help
-    let opts = match Opts::from_args_safe() {
-        Ok(x) => x,
-        Err(e) if e.kind == clap::ErrorKind::HelpDisplayed => return Ok(()),
-        _ => Default::default(),
-    };
-
-    let input_graph = load_graph(&opts.input).unwrap();
-    let mut graph = input_graph.clone();
+fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjArray>) {
     let mut covered = graph.vertex_bitset_unset();
     let mut domset = DominatingSet::new(graph.number_of_nodes());
 
@@ -58,12 +53,21 @@ fn main() -> anyhow::Result<()> {
     reducer.apply_rule::<LongPathReduction<_>>(&mut graph, &mut domset, &mut covered);
     let redundant = SubsetRule::apply_rule(&mut graph, &mut domset);
 
-    let mapping = graph.cuthill_mckee();
-    let orig_graph = graph;
+    (
+        State {
+            graph,
+            domset,
+            covered,
+            redundant,
+        },
+        reducer,
+    )
+}
 
-    let mut graph_mapped = CsrGraph::from_edges(
+fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGraph> {
+    let graph = CsrGraph::from_edges(
         mapping.len() as NumNodes,
-        orig_graph.edges(true).map(|Edge(u, v)| {
+        org_state.graph.edges(true).map(|Edge(u, v)| {
             // new id exist since the mapping only drops vertices of degree zero, which
             // by definition do not appear as endpoints of edges!
             let edge =
@@ -75,36 +79,51 @@ fn main() -> anyhow::Result<()> {
 
     // ensure that we did not miss any nodes / edges
     assert_eq!(
-        graph_mapped.number_of_nodes(),
-        orig_graph.vertices_with_neighbors().count() as NumNodes
+        graph.number_of_nodes(),
+        org_state.graph.vertices_with_neighbors().count() as NumNodes
     );
-    assert_eq!(graph_mapped.number_of_edges(), orig_graph.number_of_edges(),);
+    assert_eq!(graph.number_of_edges(), org_state.graph.number_of_edges(),);
 
-    let redundant_mapped = BitSet::new_with_bits_set(
-        graph_mapped.number_of_nodes(),
-        redundant
+    // remap bitsets
+    let redundant = BitSet::new_with_bits_set(
+        graph.number_of_nodes(),
+        org_state
+            .redundant
             .iter_set_bits()
             .filter_map(|u| mapping.new_id_of(u)),
     );
 
-    let is_perm_covered = BitSet::new_with_bits_set(
-        graph_mapped.number_of_nodes(),
-        covered.iter_set_bits().filter_map(|u| mapping.new_id_of(u)),
+    let covered = BitSet::new_with_bits_set(
+        graph.number_of_nodes(),
+        org_state
+            .covered
+            .iter_set_bits()
+            .filter_map(|u| mapping.new_id_of(u)),
     );
 
-    let mut domset_mapped = DominatingSet::new(graph_mapped.number_of_nodes());
-    greedy_approximation(&graph_mapped, &mut domset_mapped, &redundant_mapped);
+    let domset = DominatingSet::new(graph.number_of_nodes());
 
-    let mut rng = Pcg64Mcg::seed_from_u64(123u64);
-    let mut search = GreedyReverseSearch::<_, _, 10, 10>::new(
-        &mut graph_mapped,
-        domset_mapped,
-        is_perm_covered,
-        redundant_mapped.clone(),
-        &mut rng,
-    );
+    State {
+        graph,
+        domset,
+        covered,
+        redundant,
+    }
+}
 
-    let domset_mapped = if let Some(seconds) = opts.timeout {
+fn run_search(rng: &mut impl Rng, mapped: State<CsrGraph>, timeout: Option<f64>) -> DominatingSet {
+    let State {
+        mut graph,
+        domset,
+        covered,
+        redundant,
+    } = mapped;
+
+    let red = redundant.clone();
+    let mut search =
+        GreedyReverseSearch::<_, _, 10, 10>::new(&mut graph, domset, covered, red, rng);
+
+    let domset = if let Some(seconds) = timeout {
         search.run_until_timeout(Duration::from_secs_f64(seconds));
         search.best_known_solution()
     } else {
@@ -112,18 +131,45 @@ fn main() -> anyhow::Result<()> {
     }
     .unwrap();
 
-    assert!(
-        redundant_mapped
-            .iter_set_bits()
-            .all(|u| !domset.is_in_domset(u))
-    );
+    assert!(redundant.iter_set_bits().all(|u| !domset.is_in_domset(u)));
 
-    domset.add_nodes(mapping.get_old_ids(domset_mapped.iter()));
-    let mut covered = domset.compute_covered(&input_graph);
-    reducer.post_process(&mut input_graph.clone(), &mut domset, &mut covered);
+    domset
+}
 
-    assert!(domset.is_valid(&input_graph));
-    domset.write(std::io::stdout())?;
+fn main() -> anyhow::Result<()> {
+    signal_handling::initialize();
+
+    // while I love to have an error message here, this clashes with optil.io
+    // hence, we ignore parsing errors and only terminate if the user explictly asks for help
+    let opts = match Opts::from_args_safe() {
+        Ok(x) => x,
+        Err(e) if e.kind == clap::ErrorKind::HelpDisplayed => return Ok(()),
+        _ => Default::default(),
+    };
+
+    let mut rng = Pcg64Mcg::seed_from_u64(123u64);
+
+    let input_graph = load_graph(&opts.input).unwrap();
+
+    let (mut state, mut reducer) = apply_reduction_rules(input_graph.clone());
+
+    let mapping = state.graph.cuthill_mckee();
+    if mapping.len() > 0 {
+        // if the reduction rules are VERY successful, no nodes remain
+        let mut mapped = remap_state(&state, &mapping);
+        greedy_approximation(&mapped.graph, &mut mapped.domset, &mapped.redundant);
+        let domset_mapped = run_search(&mut rng, mapped, opts.timeout);
+
+        state
+            .domset
+            .add_nodes(mapping.get_old_ids(domset_mapped.iter()));
+    }
+
+    let mut covered = state.domset.compute_covered(&input_graph);
+    reducer.post_process(&mut input_graph.clone(), &mut state.domset, &mut covered);
+
+    assert!(state.domset.is_valid(&input_graph));
+    state.domset.write(std::io::stdout())?;
 
     Ok(())
 }
