@@ -1,3 +1,5 @@
+use num::Integer;
+
 use crate::impl_static_graph_tests;
 
 use super::{sliced_buffer::SlicedBuffer, *};
@@ -32,7 +34,9 @@ impl GraphNodeOrder for CsrGraph {
 
 impl GraphEdgeOrder for CsrGraph {
     fn number_of_edges(&self) -> NumEdges {
-        self.neighborhoods.number_of_edges() - self.number_of_nodes() as NumEdges
+        let degree_sum = self.neighborhoods.number_of_edges() - self.number_of_nodes() as NumEdges;
+        debug_assert!(degree_sum.is_even());
+        degree_sum / 2
     }
 }
 
@@ -121,7 +125,8 @@ impl GraphFromReader for CsrGraph {
         let temp_edges: Vec<Edge> = edges
             .into_iter()
             .map(|edge| {
-                let Edge(u, v) = edge.into();
+                let Edge(u, v) = edge.into().normalized();
+                debug_assert_ne!(u, v);
 
                 num_of_neighbors[u as usize] += 1;
                 num_of_neighbors[v as usize] += 1;
@@ -129,6 +134,14 @@ impl GraphFromReader for CsrGraph {
                 Edge(u, v)
             })
             .collect();
+
+        // ensure there are no duplicates in the input
+        debug_assert_eq!(temp_edges.len(), {
+            let mut copy_edge = temp_edges.clone();
+            copy_edge.sort_unstable();
+            copy_edge.dedup();
+            copy_edge.len()
+        });
 
         let m = temp_edges.len() * 2 + n;
 
