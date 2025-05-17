@@ -1,11 +1,12 @@
 use dss::{
     graph::{
-        AdjArray, AdjacencyList, BitSet, CsrGraph, Edge, Getter, GraphFromReader, GraphNodeOrder,
-        relabel::cuthill_mckee,
+        AdjArray, AdjacencyList, BitSet, CsrGraph, CuthillMcKee, Edge, EdgeOps, Getter,
+        GraphEdgeOrder, GraphFromReader, GraphNodeOrder, NumNodes,
     },
     heuristic::{greedy_approximation, reverse_greedy_search::GreedyReverseSearch},
-    kernelization::{KernelizationRule, SubsetRule, rule1::Rule1},
+    kernelization::{KernelizationRule, SubsetRule},
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
+    reduction::{LongPathReduction, Reducer, RuleOneReduction},
     utils::{DominatingSet, signal_handling},
 };
 use rand::SeedableRng;
@@ -44,76 +45,85 @@ fn main() -> anyhow::Result<()> {
         _ => Default::default(),
     };
 
-    let mut graph = load_graph(&opts.input).unwrap();
-
-    // PreProcessing
-    // (1) Run Rule1 (x times?)
-    // (2) TBD: Run Path-Rule
-    // (3) Run SubsetRule
-    // (4) Collect set of fixed nodes, deletable nodes, deletable edges
-    // (5) Mark non-deletable nodes with fixed neighbor in is_perm_covered
-    // (6) Compact graph (without relabeling)
-    // (7) Relabel graph
-    // (8) Convert to CsrGraph
-    // (9) Run heuristics
+    let input_graph = load_graph(&opts.input).unwrap();
+    let mut graph = input_graph.clone();
+    let mut covered = graph.vertex_bitset_unset();
     let mut domset = DominatingSet::new(graph.number_of_nodes());
 
-    // (1)
-    let _rule1_deletable = Rule1::apply_rule(&graph, &mut domset);
+    // singleton nodes need to be fixed
+    domset.fix_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
 
-    // (2) TBD
-
-    // (3)
+    let mut reducer = Reducer::new();
+    reducer.apply_rule::<RuleOneReduction<_>>(&mut graph, &mut domset, &mut covered);
+    reducer.apply_rule::<LongPathReduction<_>>(&mut graph, &mut domset, &mut covered);
     let redundant = SubsetRule::apply_rule(&mut graph, &mut domset);
 
-    // (4-6)
-
-    // (7-8)
+    let mapping = graph.cuthill_mckee();
     let orig_graph = graph;
-    let mapping = cuthill_mckee(&orig_graph);
-    let mut graph = CsrGraph::from_edges(
-        orig_graph.number_of_nodes(),
-        orig_graph
-            .edges(true)
-            .map(|Edge(u, v)| Edge(mapping.new_id_of(u).unwrap(), mapping.new_id_of(v).unwrap())),
-    );
 
-    let redundant_mapped = BitSet::new_with_bits_set(
-        graph.number_of_nodes(),
-        redundant
-            .iter_set_bits()
-            .map(|u| mapping.new_id_of(u).unwrap()),
-    );
-
-    let is_perm_covered = BitSet::new_with_bits_set(
-        graph.number_of_nodes(),
-        graph.vertices().filter(|&u| {
-            let orig_u = mapping.old_id_of(u).unwrap();
-            orig_graph
-                .neighbors_of(orig_u)
-                .any(|v| domset.is_fixed_node(v))
+    let mut graph_mapped = CsrGraph::from_edges(
+        mapping.len() as NumNodes,
+        orig_graph.edges(true).map(|Edge(u, v)| {
+            // new id exist since the mapping only drops vertices of degree zero, which
+            // by definition do not appear as endpoints of edges!
+            let edge =
+                Edge(mapping.new_id_of(u).unwrap(), mapping.new_id_of(v).unwrap()).normalized();
+            debug_assert!(!edge.is_loop());
+            edge
         }),
     );
 
-    greedy_approximation(&graph, &mut domset, &redundant_mapped);
+    // ensure that we did not miss any nodes / edges
+    assert_eq!(
+        graph_mapped.number_of_nodes(),
+        orig_graph.vertices_with_neighbors().count() as NumNodes
+    );
+    assert_eq!(graph_mapped.number_of_edges(), orig_graph.number_of_edges(),);
+
+    let redundant_mapped = BitSet::new_with_bits_set(
+        graph_mapped.number_of_nodes(),
+        redundant
+            .iter_set_bits()
+            .filter_map(|u| mapping.new_id_of(u)),
+    );
+
+    let is_perm_covered = BitSet::new_with_bits_set(
+        graph_mapped.number_of_nodes(),
+        covered.iter_set_bits().filter_map(|u| mapping.new_id_of(u)),
+    );
+
+    let mut domset_mapped = DominatingSet::new(graph_mapped.number_of_nodes());
+    greedy_approximation(&graph_mapped, &mut domset_mapped, &redundant_mapped);
 
     let mut rng = Pcg64Mcg::seed_from_u64(123u64);
     let mut search = GreedyReverseSearch::<_, _, 10, 10>::new(
-        &mut graph,
-        domset,
+        &mut graph_mapped,
+        domset_mapped,
         is_perm_covered,
-        redundant_mapped,
+        redundant_mapped.clone(),
         &mut rng,
     );
 
-    let solution = if let Some(seconds) = opts.timeout {
+    let domset_mapped = if let Some(seconds) = opts.timeout {
         search.run_until_timeout(Duration::from_secs_f64(seconds));
         search.best_known_solution()
     } else {
         search.run_to_completion()
     }
     .unwrap();
-    solution.write(std::io::stdout())?;
+
+    assert!(
+        redundant_mapped
+            .iter_set_bits()
+            .all(|u| !domset.is_in_domset(u))
+    );
+
+    domset.add_nodes(mapping.get_old_ids(domset_mapped.iter()));
+    let mut covered = domset.compute_covered(&input_graph);
+    reducer.post_process(&mut input_graph.clone(), &mut domset, &mut covered);
+
+    assert!(domset.is_valid(&input_graph));
+    domset.write(std::io::stdout())?;
 
     Ok(())
 }

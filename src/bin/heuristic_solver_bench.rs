@@ -2,12 +2,12 @@ use std::{io::Write, time::Instant};
 
 use dss::{
     graph::{
-        AdjArray, AdjacencyList, BitSet, CsrGraph, Edge, Getter, GraphFromReader, GraphNodeOrder,
-        relabel::cuthill_mckee,
+        AdjArray, AdjacencyList, BitSet, CsrGraph, CuthillMcKee, Edge, Getter, GraphFromReader,
+        GraphNodeOrder,
     },
     heuristic::{greedy_approximation, reverse_greedy_search::GreedyReverseSearch},
     io::GraphPaceReader,
-    kernelization::{KernelizationRule, SubsetRule, rule1::Rule1},
+    kernelization::{KernelizationRule, SubsetRule},
     prelude::IterativeAlgorithm,
     utils::{DominatingSet, signal_handling},
 };
@@ -37,7 +37,7 @@ fn main() -> anyhow::Result<()> {
     let mut domset = DominatingSet::new(graph.number_of_nodes());
 
     // (1)
-    let _rule1_deletable = Rule1::apply_rule(&graph, &mut domset);
+    //let _rule1_deletable = Rule1::apply_rule(&graph, &mut domset);
 
     // (2) TBD
 
@@ -48,7 +48,7 @@ fn main() -> anyhow::Result<()> {
 
     // (7-8)
     let orig_graph = graph;
-    let mapping = cuthill_mckee(&orig_graph);
+    let mapping = orig_graph.cuthill_mckee();
     let mut graph = CsrGraph::from_edges(
         orig_graph.number_of_nodes(),
         orig_graph
