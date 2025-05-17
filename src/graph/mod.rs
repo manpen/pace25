@@ -14,7 +14,7 @@ pub mod modules;
 pub mod node_mapper;
 pub mod partition;
 pub mod path_iterator;
-pub mod relabel;
+pub mod cuthill_mckee;
 pub mod subgraph;
 pub mod traversal;
 
@@ -34,6 +34,7 @@ pub use modules::Modules;
 pub use node_mapper::*;
 pub use partition::*;
 pub use path_iterator::*;
+pub use cuthill_mckee::CuthillMcKee;
 pub use subgraph::*;
 pub use traversal::*;
 
