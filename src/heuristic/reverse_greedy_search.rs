@@ -137,8 +137,9 @@ where
 
         let n = graph.len();
 
+        // Initialize NumCovered with 2 for permanently covered nodes to prevent unique-checks
         let mut num_covered: Vec<NumNodes> = (0..graph.number_of_nodes())
-            .map(|i| is_perm_covered.get_bit(i) as NumNodes)
+            .map(|i| is_perm_covered.get_bit(i) as NumNodes * 2)
             .collect();
         let mut age = vec![0; n];
 
@@ -150,7 +151,7 @@ where
                 graph.swap_neighbors(
                     v,
                     graph.ith_cross_position(u, i),
-                    num_covered[v as usize] - is_perm_covered.get_bit(v) as NumNodes,
+                    num_covered[v as usize] - (is_perm_covered.get_bit(v) as NumNodes * 2),
                 );
                 num_covered[v as usize] += 1;
             }
@@ -180,7 +181,7 @@ where
                 graph.swap_neighbors(
                     v,
                     graph.ith_cross_position(u, j),
-                    num_covered[v as usize] - is_perm_covered.get_bit(v) as NumNodes,
+                    num_covered[v as usize] - (is_perm_covered.get_bit(v) as NumNodes * 2),
                 );
 
                 if num_covered[v as usize] == 1 {
@@ -339,11 +340,12 @@ where
                 neighbor,
                 self.graph.ith_cross_position(u, i),
                 self.num_covered[neighbor as usize]
-                    - self.is_perm_covered.get_bit(neighbor) as NumNodes,
+                    - (self.is_perm_covered.get_bit(neighbor) as NumNodes * 2),
             );
             self.num_covered[neighbor as usize] += 1;
 
-            if self.num_covered[neighbor as usize] == 2 && !self.is_perm_covered.get_bit(neighbor) {
+            // If self.is_perm_covered is true, NumCovered must now be at least 3
+            if self.num_covered[neighbor as usize] == 2 {
                 // (I1) the first neighbor must be a dominating node
                 let former_unique_covering_node = self.graph.ith_neighbor(neighbor, 0);
                 self.uniquely_covered[former_unique_covering_node as usize] -= 1;
@@ -382,10 +384,11 @@ where
                 neighbor,
                 self.graph.ith_cross_position(old_node, i),
                 self.num_covered[neighbor as usize]
-                    - self.is_perm_covered.get_bit(neighbor) as NumNodes,
+                    - (self.is_perm_covered.get_bit(neighbor) as NumNodes * 2),
             );
 
-            if self.num_covered[neighbor as usize] == 1 && !self.is_perm_covered.get_bit(neighbor) {
+            // If self.is_perm_covered is true, NumCovered is at least 2
+            if self.num_covered[neighbor as usize] == 1 {
                 let dominating_node = self.graph.ith_neighbor(neighbor, 0);
                 self.uniquely_covered[dominating_node as usize] += 1;
 
@@ -628,7 +631,9 @@ where
                 return Err(RevGreedyError::NotCovered(u));
             }
 
-            for i in 0..self.num_covered[u as usize] {
+            for i in 0..(self.num_covered[u as usize]
+                - (self.is_perm_covered.get_bit(u) as NumNodes * 2))
+            {
                 if !self
                     .current_solution
                     .is_in_domset(self.graph.ith_neighbor(u, i))
@@ -637,7 +642,10 @@ where
                 }
             }
 
-            for i in self.num_covered[u as usize]..self.graph.degree_of(u) {
+            for i in (self.num_covered[u as usize]
+                - (self.is_perm_covered.get_bit(u) as NumNodes * 2))
+                ..self.graph.degree_of(u)
+            {
                 if self
                     .current_solution
                     .is_in_domset(self.graph.ith_neighbor(u, i))
@@ -646,7 +654,7 @@ where
                 }
             }
 
-            if self.num_covered[u as usize] == 1 {
+            if self.num_covered[u as usize] == 1 && !self.is_perm_covered.get_bit(u) {
                 let dom = self.graph.ith_neighbor(u, 0);
                 unique[dom as usize] += 1;
                 if !self.current_solution.is_fixed_node(dom)
@@ -785,7 +793,7 @@ mod tests {
                 let mut algo = GreedyReverseSearch::<_, _, 10, 10>::new(
                     &mut csr_graph,
                     initial_domset,
-                    perm_covered,
+                    perm_covered.clone(),
                     non_opt_nodes.clone(),
                     &mut rng,
                 );
@@ -797,7 +805,7 @@ mod tests {
                 algo.best_known_solution().unwrap()
             };
 
-            assert!(domset.is_valid(&graph));
+            assert!(domset.is_valid_given_previous_cover(&graph, &perm_covered));
             for non_opt in non_opt_nodes.iter_set_bits() {
                 assert!(!domset.is_in_domset(non_opt));
             }
