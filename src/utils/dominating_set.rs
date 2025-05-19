@@ -249,6 +249,17 @@ impl DominatingSet {
         covered.are_all_set()
     }
 
+    /// Returns true if the dominating set is valid, ie. it covers all nodes.
+    pub fn is_valid_given_previous_cover(
+        &self,
+        graph: &impl AdjacencyList,
+        previous_cover: &BitSet,
+    ) -> bool {
+        let mut covered = self.compute_covered(graph);
+        covered |= previous_cover;
+        covered.are_all_set()
+    }
+
     /// Writes the dominating set to a writer using 1-based indexing,
     /// as required by the PACE competition.
     ///

@@ -131,7 +131,7 @@ where
         non_optimal_nodes: BitSet,
         rng: &'a mut R,
     ) -> Self {
-        assert!(initial_solution.is_valid(graph));
+        assert!(initial_solution.is_valid_given_previous_cover(graph, &is_perm_covered));
         assert!(graph.len() > 0);
         assert!(initial_solution.num_of_fixed_nodes() == 0);
 
