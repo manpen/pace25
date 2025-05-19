@@ -78,23 +78,29 @@ fn naive_solver_impl<G: Clone + AdjacencyList + GraphEdgeEditing>(
     let mut covered_with = covered.clone();
     covered_with.set_bits(graph.closed_neighbors_of(*candidate));
 
-    work_domset.push(*candidate);
-    let size_with = naive_solver_impl(
-        graph,
-        best_domset,
-        work_domset,
-        candidates,
-        &covered_with,
-        upper_bound_incl,
-    );
-    work_domset.pop();
+    let size_with = if covered_with.cardinality() != covered.cardinality() {
+        work_domset.push(*candidate);
+        let size_with = naive_solver_impl(
+            graph,
+            best_domset,
+            work_domset,
+            candidates,
+            &covered_with,
+            upper_bound_incl,
+        );
+        work_domset.pop();
 
-    if let Some(x) = size_with.as_ref() {
-        if upper_bound_incl == 1 {
-            return None;
+        if let Some(x) = size_with.as_ref() {
+            if *x == 1 {
+                return Some(1);
+            }
+            upper_bound_incl = x - 1;
         }
-        upper_bound_incl = x - 1;
-    }
+
+        size_with
+    } else {
+        None
+    };
 
     let size_without = naive_solver_impl(
         graph,
