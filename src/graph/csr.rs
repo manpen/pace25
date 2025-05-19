@@ -63,6 +63,11 @@ impl AdjacencyList for CsrGraph {
         self.neighborhoods[u].iter().map(|x| x.node)
     }
 
+    #[inline(always)]
+    fn closed_neighbors_of(&self, u: Node) -> impl Iterator<Item = Node> + '_ {
+        self.neighbors_of(u)
+    }
+
     fn degree_of(&self, u: Node) -> NumNodes {
         self.neighborhoods.degree_of(u)
     }

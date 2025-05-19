@@ -236,7 +236,7 @@ impl DominatingSet {
         let mut covered = graph.vertex_bitset_unset();
 
         for &u in &self.solution {
-            covered.set_bits(graph.neighbors_of(u));
+            covered.set_bits(graph.closed_neighbors_of(u));
             covered.set_bit(u);
         }
 

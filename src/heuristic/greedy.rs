@@ -24,7 +24,6 @@ pub fn greedy_approximation(
     // FIXME: this should be 0 going forward
     let prev_dom_nodes = solution.len();
 
-    // FIXME: account for permanently covered nodes
     // Compute how many neighbors in the DomSet every node has
     let mut num_covered = vec![0usize; graph.number_of_nodes() as usize];
     covered_nodes
@@ -73,7 +72,7 @@ pub fn greedy_approximation(
             num_covered[u as usize] += 1;
             if num_covered[u as usize] == 1 {
                 total_covered += 1;
-                for v in graph.neighbors_of(u) {
+                for v in graph.closed_neighbors_of(u) {
                     if v != node && !never_select.get_bit(v) {
                         let current_score = heap.remove(v);
                         heap.push(current_score + 1, v);
@@ -87,19 +86,16 @@ pub fn greedy_approximation(
     let mut index = prev_dom_nodes;
     while index < solution.len() {
         let node = solution.ith_node(index);
-        if num_covered[node as usize] > 1
-            && graph
-                .neighbors_of(node)
-                .all(|u| num_covered[u as usize] > 1)
+        if graph
+            .closed_neighbors_of(node)
+            .all(|u| num_covered[u as usize] > 1)
         {
-            for u in graph.neighbors_of(node) {
+            for u in graph.closed_neighbors_of(node) {
                 num_covered[u as usize] -= 1;
             }
-            num_covered[node as usize] -= 1;
             solution.remove_node(node);
             continue;
         }
-
         index += 1;
     }
 }
