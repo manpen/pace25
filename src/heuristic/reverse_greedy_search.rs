@@ -696,3 +696,157 @@ where
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use itertools::Itertools;
+    use rand::{Rng, SeedableRng, seq::SliceRandom};
+    use rand_pcg::Pcg64Mcg;
+
+    use super::*;
+
+    fn random_initial_solution(rng: &mut impl Rng, graph: &impl AdjacencyList) -> DominatingSet {
+        let mut covered = graph.vertex_bitset_unset();
+        let mut node_order = graph.vertices_range().collect_vec();
+        node_order.shuffle(rng);
+        let mut domset = DominatingSet::new(graph.number_of_nodes());
+        while let Some(u) = node_order.pop() {
+            if graph.closed_neighbors_of(u).any(|v| !covered.get_bit(v)) {
+                domset.add_node(u);
+                covered.set_bits(graph.closed_neighbors_of(u));
+                if covered.are_all_set() {
+                    break;
+                }
+            }
+        }
+        domset
+    }
+
+    #[test]
+    /// Randomly generate G(n,p) graphs and check that the algorithm produces a feasible solution
+    fn full_graph() {
+        let mut rng = Pcg64Mcg::seed_from_u64(123456);
+        for _ in 0..500 {
+            let graph = AdjArray::random_black_gnp(&mut rng, 100, 0.03);
+            let initial_domset = random_initial_solution(&mut rng, &graph);
+
+            let domset = {
+                let mut csr_graph =
+                    CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
+                let mut algo = GreedyReverseSearch::<_, _, 10, 10>::new(
+                    &mut csr_graph,
+                    initial_domset,
+                    graph.vertex_bitset_unset(),
+                    graph.vertex_bitset_unset(),
+                    &mut rng,
+                );
+
+                for _ in 0..50 {
+                    algo.step()
+                }
+
+                algo.best_known_solution().unwrap()
+            };
+
+            assert!(domset.is_valid(&graph));
+        }
+    }
+
+    #[test]
+    /// Randomly generate G(n,p) graphs and check that the algorithm produces a feasible solution,
+    /// even if we delete some nodes selected by the initial solution
+    fn with_deleted_nodes() {
+        let mut rng = Pcg64Mcg::seed_from_u64(123456);
+        for _ in 0..500 {
+            let org_graph = AdjArray::random_black_gnp(&mut rng, 100, 0.03);
+            let mut graph = org_graph.clone();
+            let mut initial_domset = random_initial_solution(&mut rng, &graph);
+
+            let mut perm_covered = graph.vertex_bitset_unset();
+            {
+                let mut in_sol = initial_domset.iter().collect_vec();
+                let (to_be_fixed, _) = in_sol.partial_shuffle(&mut rng, 5);
+                for u in to_be_fixed {
+                    initial_domset.remove_node(*u);
+                    initial_domset.fix_node(*u);
+                    perm_covered.set_bits(graph.closed_neighbors_of(*u));
+                    graph.remove_edges_at_node(*u);
+                }
+            }
+
+            // select first 10 nodes which are perm covered (since its a gnp graph that sufficiently random)
+            let non_opt_nodes = BitSet::new_with_bits_set(
+                graph.number_of_nodes(),
+                perm_covered.iter_set_bits().take(10),
+            );
+
+            let domset = {
+                let mut csr_graph =
+                    CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
+                let mut algo = GreedyReverseSearch::<_, _, 10, 10>::new(
+                    &mut csr_graph,
+                    initial_domset,
+                    perm_covered,
+                    non_opt_nodes.clone(),
+                    &mut rng,
+                );
+
+                for _ in 0..50 {
+                    algo.step()
+                }
+
+                algo.best_known_solution().unwrap()
+            };
+
+            assert!(domset.is_valid(&graph));
+            for non_opt in non_opt_nodes.iter_set_bits() {
+                assert!(!domset.is_in_domset(non_opt));
+            }
+        }
+    }
+
+    #[test]
+    /// Randomly generate G(n,p) graphs and check that the algorithm produces a feasible solution,
+    /// without selecting `forbidden` (= non_optimal) nodes
+    fn non_opt_nodes() {
+        let mut rng = Pcg64Mcg::seed_from_u64(123456);
+        for _ in 0..500 {
+            let org_graph = AdjArray::random_black_gnp(&mut rng, 100, 0.03);
+            let graph = org_graph.clone();
+            let initial_domset = random_initial_solution(&mut rng, &graph);
+
+            let mut non_opt_nodes = graph.vertex_bitset_unset();
+            while non_opt_nodes.cardinality() < 5 {
+                let u = rng.gen_range(graph.vertices_range());
+                if initial_domset.is_in_domset(u) {
+                    continue;
+                }
+                non_opt_nodes.set_bit(u);
+            }
+
+            let domset = {
+                let mut csr_graph =
+                    CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
+                let mut algo = GreedyReverseSearch::<_, _, 10, 10>::new(
+                    &mut csr_graph,
+                    initial_domset,
+                    graph.vertex_bitset_unset(),
+                    non_opt_nodes.clone(),
+                    &mut rng,
+                );
+
+                for _ in 0..50 {
+                    algo.step()
+                }
+
+                algo.best_known_solution().unwrap()
+            };
+
+            assert!(domset.is_valid(&graph));
+
+            for non_opt in non_opt_nodes.iter_set_bits() {
+                assert!(!domset.is_in_domset(non_opt));
+            }
+        }
+    }
+}
