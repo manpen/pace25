@@ -38,8 +38,11 @@ impl<G: GraphEdgeOrder + AdjacencyList> Reducer<G> {
         let before_in_domset = solution.len();
         let before_covered = covered.cardinality();
 
+        debug_assert!(solution.iter().all(|u| graph.degree_of(u) == 0));
+
         let (changed, post) = R::apply_rule(graph, solution, covered);
         assert!(changed || post.is_none());
+        debug_assert!(solution.iter().all(|u| graph.degree_of(u) == 0));
 
         let delta_nodes = before_nodes - graph.vertices_with_neighbors().count();
         let delta_edges = before_edges - graph.number_of_edges();

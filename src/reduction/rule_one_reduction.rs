@@ -63,7 +63,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
 
         // (1) Compute first mapping and fix possible singletons
         for u in graph.vertices() {
-            if graph.degree_of(u) == 0 || covered.get_bit(u) {
+            if graph.degree_of(u) == 0 {
                 continue;
             }
 
@@ -154,6 +154,9 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
             }
 
             for v in inv_mappings[u as usize].drain(..) {
+                if covered.get_bit(v) {
+                    continue;
+                }
                 if graph
                     .closed_neighbors_of(v)
                     .all(|x| parent[x as usize] == u || x == u)
@@ -161,6 +164,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
                     domset.fix_node(u);
                     covered.set_bits(graph.closed_neighbors_of(u));
                     removable_nodes.set_bit(v);
+                    removable_nodes.set_bit(u);
                     break;
                 }
             }
@@ -191,16 +195,20 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
             graph.remove_edges_at_node(u);
         }
 
-        processed.clear_bits(domset.iter_fixed());
-
         let mut neighbors_to_remove = Vec::new();
+        processed -= &removable_nodes;
+
         for u in processed.iter_set_bits() {
             // TODO: We want to have a drain_neighbors function in graph!
             neighbors_to_remove.extend(graph.neighbors_of(u).filter(|&v| processed.get_bit(v)));
+            if neighbors_to_remove.is_empty() {
+                continue;
+            }
+
             for &v in &neighbors_to_remove {
                 graph.remove_edge(u, v);
             }
-            modified |= !neighbors_to_remove.is_empty();
+            modified = true;
             neighbors_to_remove.clear();
         }
 
