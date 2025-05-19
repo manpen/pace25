@@ -760,25 +760,24 @@ mod tests {
         for _ in 0..500 {
             let org_graph = AdjArray::random_black_gnp(&mut rng, 100, 0.03);
             let mut graph = org_graph.clone();
-            let mut initial_domset = random_initial_solution(&mut rng, &graph);
+            let initial_domset = random_initial_solution(&mut rng, &graph);
 
             let mut perm_covered = graph.vertex_bitset_unset();
             {
                 let mut in_sol = initial_domset.iter().collect_vec();
                 let (to_be_fixed, _) = in_sol.partial_shuffle(&mut rng, 5);
                 for u in to_be_fixed {
-                    initial_domset.remove_node(*u);
-                    initial_domset.fix_node(*u);
                     perm_covered.set_bits(graph.closed_neighbors_of(*u));
                     graph.remove_edges_at_node(*u);
                 }
             }
 
             // select first 10 nodes which are perm covered (since its a gnp graph that sufficiently random)
-            let non_opt_nodes = BitSet::new_with_bits_set(
+            let mut non_opt_nodes = BitSet::new_with_bits_set(
                 graph.number_of_nodes(),
                 perm_covered.iter_set_bits().take(10),
             );
+            non_opt_nodes -= &perm_covered;
 
             let domset = {
                 let mut csr_graph =
