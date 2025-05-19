@@ -20,6 +20,10 @@ pub fn greedy_approximation(
     solution: &mut DominatingSet,
     never_select: &BitSet,
 ) {
+    // FIXME: this should be 0 going forward
+    let prev_dom_nodes = solution.len();
+
+    // FIXME: account for permanently covered nodes
     // Compute how many neighbors in the DomSet every node has
     let mut num_covered = vec![0usize; graph.number_of_nodes() as usize];
     let mut total_covered = 0;
@@ -39,16 +43,17 @@ pub fn greedy_approximation(
     // Compute scores for non-fixed nodes
     let mut heap = NodeHeap::new(graph.number_of_nodes() as usize, 0);
     for u in graph.vertices() {
-        if solution.is_fixed_node(u) || never_select.get_bit(u) {
+        if solution.is_in_domset(u) || never_select.get_bit(u) {
             continue;
         }
 
-        let mut node_score = graph.max_degree();
+        // Neighborhood no longer closed
+        let mut node_score = graph.max_degree() + (num_covered[u as usize] > 0) as NumNodes;
         for v in graph.neighbors_of(u) {
             node_score -= (num_covered[v as usize] == 0) as NumNodes;
         }
 
-        if node_score == graph.max_degree() {
+        if node_score == graph.max_degree() + 1 {
             continue;
         }
 
@@ -60,7 +65,7 @@ pub fn greedy_approximation(
         let (_, node) = heap.pop().unwrap();
         solution.add_node(node);
 
-        for u in graph.neighbors_of(node) {
+        for u in std::iter::once(node).chain(graph.neighbors_of(node)) {
             num_covered[u as usize] += 1;
             if num_covered[u as usize] == 1 {
                 total_covered += 1;
@@ -75,16 +80,18 @@ pub fn greedy_approximation(
     }
 
     // Remove redundant nodes from DomSet
-    let mut index = solution.num_of_fixed_nodes();
+    let mut index = prev_dom_nodes;
     while index < solution.len() {
         let node = solution.ith_node(index);
-        if graph
-            .neighbors_of(node)
-            .all(|u| num_covered[u as usize] > 1)
+        if num_covered[node as usize] > 1
+            && graph
+                .neighbors_of(node)
+                .all(|u| num_covered[u as usize] > 1)
         {
             for u in graph.neighbors_of(node) {
                 num_covered[u as usize] -= 1;
             }
+            num_covered[node as usize] -= 1;
             solution.remove_node(node);
             continue;
         }
