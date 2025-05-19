@@ -16,7 +16,7 @@ use crate::{
 ///
 /// Returns the solution
 pub fn greedy_approximation(
-    graph: &(impl AdjacencyList + AdjacencyTest + SelfLoop),
+    graph: &(impl AdjacencyList + AdjacencyTest),
     solution: &mut DominatingSet,
     covered_nodes: &BitSet,
     never_select: &BitSet,
@@ -51,12 +51,12 @@ pub fn greedy_approximation(
         }
 
         // Neighborhood no longer closed
-        let mut node_score = graph.max_degree();
+        let mut node_score = graph.max_degree() + (num_covered[u as usize] > 0) as NumNodes;
         for v in graph.neighbors_of(u) {
             node_score -= (num_covered[v as usize] == 0) as NumNodes;
         }
 
-        if node_score == graph.max_degree() {
+        if node_score == graph.max_degree() + 1 {
             continue;
         }
 
@@ -68,11 +68,11 @@ pub fn greedy_approximation(
         let (_, node) = heap.pop().unwrap();
         solution.add_node(node);
 
-        for u in graph.neighbors_of(node) {
+        for u in graph.closed_neighbors_of(node) {
             num_covered[u as usize] += 1;
             if num_covered[u as usize] == 1 {
                 total_covered += 1;
-                for v in graph.neighbors_of(u) {
+                for v in graph.closed_neighbors_of(u) {
                     if v != node && !never_select.get_bit(v) {
                         let current_score = heap.remove(v);
                         heap.push(current_score + 1, v);
@@ -87,7 +87,7 @@ pub fn greedy_approximation(
     while index < solution.len() {
         let node = solution.ith_node(index);
         if graph
-            .neighbors_of(node)
+            .closed_neighbors_of(node)
             .all(|u| num_covered[u as usize] > 1)
         {
             for u in graph.closed_neighbors_of(node) {
@@ -113,7 +113,6 @@ mod tests {
         let mut rng = Pcg64Mcg::seed_from_u64(123456);
         for _ in 0..1000 {
             let graph = AdjArray::random_black_gnp(&mut rng, 100, 0.03);
-            let graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
             let mut domset = DominatingSet::new(graph.number_of_nodes());
             super::greedy_approximation(
                 &graph,
@@ -131,8 +130,6 @@ mod tests {
         let mut rng = Pcg64Mcg::seed_from_u64(123456);
         for i in 0..1000 {
             let org_graph = AdjArray::random_black_gnp(&mut rng, 100, 0.03);
-            let org_graph =
-                CsrGraph::from_edges(org_graph.number_of_nodes(), org_graph.edges(true));
             let graph = org_graph.clone(); // TODO: this should be mut
             let mut domset = DominatingSet::new(graph.number_of_nodes());
 
