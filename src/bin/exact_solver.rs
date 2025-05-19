@@ -88,6 +88,7 @@ fn main() -> anyhow::Result<()> {
     reducer.apply_rule_exhaustively::<RuleOneReduction<_>>(&mut graph, &mut solution, &mut covered);
     reducer.apply_rule::<LongPathReduction<_>>(&mut graph, &mut solution, &mut covered);
     reducer.apply_rule::<RuleSmallExactReduction<_>>(&mut graph, &mut solution, &mut covered);
+    let redundant = graph.vertex_bitset_unset(); // TODO: Add SubsetRule
 
     let mut solution = {
         let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
@@ -99,8 +100,7 @@ fn main() -> anyhow::Result<()> {
                 SolverBackend::MAXSAT,
             )?,
             Commands::NaiveSolverEnum(_) => {
-                let local_sol =
-                    naive_solver(&graph, &covered, &graph.vertex_bitset_unset(), None).unwrap();
+                let local_sol = naive_solver(&graph, &covered, &redundant, None).unwrap();
                 solution.add_nodes(local_sol.iter());
                 solution
             }
