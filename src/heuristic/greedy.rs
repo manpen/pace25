@@ -69,7 +69,7 @@ pub fn greedy_approximation(
         let (_, node) = heap.pop().unwrap();
         solution.add_node(node);
 
-        for u in std::iter::once(node).chain(graph.neighbors_of(node)) {
+        for u in graph.closed_neighbors_of(node) {
             num_covered[u as usize] += 1;
             if num_covered[u as usize] == 1 {
                 total_covered += 1;
