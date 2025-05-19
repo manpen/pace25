@@ -1,10 +1,10 @@
 use std::{fs::File, path::PathBuf};
 
 use dss::{
-    exact::sat_solver::SolverBackend,
+    exact::{naive::naive_solver, sat_solver::SolverBackend},
     log::build_pace_logger_for_level,
     prelude::*,
-    reduction::{LongPathReduction, Reducer, RuleOneReduction},
+    reduction::{LongPathReduction, Reducer, RuleOneReduction, RuleSmallExactReduction},
 };
 use structopt::StructOpt;
 
@@ -17,10 +17,21 @@ pub enum SatSolverOptsEnum {
 }
 
 #[derive(StructOpt)]
+pub struct NaiveSolver {}
+
+#[derive(StructOpt)]
+
+pub enum NaiveSolverOptsEnum {
+    Naive,
+}
+
+#[derive(StructOpt)]
 #[allow(clippy::enum_variant_names)]
 pub enum Commands {
     #[structopt(flatten)]
     SatSolverEnum(SatSolverOptsEnum),
+    #[structopt(flatten)]
+    NaiveSolverEnum(NaiveSolverOptsEnum),
 }
 
 #[derive(StructOpt)]
@@ -76,6 +87,7 @@ fn main() -> anyhow::Result<()> {
 
     reducer.apply_rule_exhaustively::<RuleOneReduction<_>>(&mut graph, &mut solution, &mut covered);
     reducer.apply_rule::<LongPathReduction<_>>(&mut graph, &mut solution, &mut covered);
+    reducer.apply_rule::<RuleSmallExactReduction<_>>(&mut graph, &mut solution, &mut covered);
 
     let mut solution = {
         let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
@@ -86,6 +98,12 @@ fn main() -> anyhow::Result<()> {
                 Some(solution),
                 SolverBackend::MAXSAT,
             )?,
+            Commands::NaiveSolverEnum(_) => {
+                let local_sol =
+                    naive_solver(&graph, &covered, &graph.vertex_bitset_unset(), None).unwrap();
+                solution.add_nodes(local_sol.iter());
+                solution
+            }
         }
     };
 
