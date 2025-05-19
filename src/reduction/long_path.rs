@@ -30,6 +30,15 @@ impl<G: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<G> for LongPat
         for path in &long_paths {
             // we can remove groups of three as long as at least four nodes remain
             let nodes_to_remove = ((path.len() - 4) / 3) * 3;
+
+            if path[2..2 + nodes_to_remove]
+                .iter()
+                .any(|&u| !covered.get_bit(u))
+            {
+                // TODO: Fix me
+                continue;
+            }
+
             for &u in &path[2..2 + nodes_to_remove] {
                 graph.remove_edges_at_node(u);
                 covered.set_bit(u);

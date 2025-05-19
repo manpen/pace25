@@ -73,7 +73,8 @@ fn main() -> anyhow::Result<()> {
     solution.fix_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
 
     let mut reducer = Reducer::new();
-    reducer.apply_rule::<RuleOneReduction<_>>(&mut graph, &mut solution, &mut covered);
+
+    reducer.apply_rule_exhaustively::<RuleOneReduction<_>>(&mut graph, &mut solution, &mut covered);
     reducer.apply_rule::<LongPathReduction<_>>(&mut graph, &mut solution, &mut covered);
 
     let mut solution = {

@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use log::info;
 
-use crate::graph::{AdjacencyList, GraphEdgeOrder};
+use crate::graph::{AdjacencyList, GraphEdgeOrder, NumNodes};
 
 use super::*;
 
@@ -25,6 +25,8 @@ impl<G: GraphEdgeOrder + AdjacencyList> Reducer<G> {
         Default::default()
     }
 
+    /// Apply the rule `R` once and print out some statistics.
+    /// Returns `true` iff the rule reported that it applied some change
     pub fn apply_rule<R: ReductionRule<G>>(
         &mut self,
         graph: &mut G,
@@ -54,6 +56,24 @@ impl<G: GraphEdgeOrder + AdjacencyList> Reducer<G> {
         }
 
         changed
+    }
+
+    /// Apply the rule `R` until it reports that no more change is possible.
+    /// Returns the number of applications of the rule
+    pub fn apply_rule_exhaustively<R: ReductionRule<G>>(
+        &mut self,
+        graph: &mut G,
+        solution: &mut DominatingSet,
+        covered: &mut BitSet,
+    ) -> NumNodes {
+        let mut iters = 1;
+
+        while self.apply_rule::<R>(graph, solution, covered) {
+            iters += 1;
+        }
+
+        info!("{} applied exhaustively {iters} times", R::NAME);
+        iters
     }
 
     pub fn post_process(

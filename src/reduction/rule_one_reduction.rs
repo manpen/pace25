@@ -63,7 +63,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
 
         // (1) Compute first mapping and fix possible singletons
         for u in graph.vertices() {
-            if graph.degree_of(u) == 0 {
+            if graph.degree_of(u) == 0 || covered.get_bit(u) {
                 continue;
             }
 
