@@ -157,7 +157,12 @@ fn main() -> anyhow::Result<()> {
     if mapping.len() > 0 {
         // if the reduction rules are VERY successful, no nodes remain
         let mut mapped = remap_state(&state, &mapping);
-        greedy_approximation(&mapped.graph, &mut mapped.domset, &mapped.redundant);
+        greedy_approximation(
+            &mapped.graph,
+            &mut mapped.domset,
+            &mapped.redundant,
+            &mapped.redundant,
+        );
         let domset_mapped = run_search(&mut rng, mapped, opts.timeout);
 
         state

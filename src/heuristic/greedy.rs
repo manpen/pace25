@@ -18,6 +18,7 @@ use crate::{
 pub fn greedy_approximation(
     graph: &(impl AdjacencyList + AdjacencyTest),
     solution: &mut DominatingSet,
+    covered_nodes: &BitSet,
     never_select: &BitSet,
 ) {
     // FIXME: this should be 0 going forward
@@ -26,7 +27,10 @@ pub fn greedy_approximation(
     // FIXME: account for permanently covered nodes
     // Compute how many neighbors in the DomSet every node has
     let mut num_covered = vec![0usize; graph.number_of_nodes() as usize];
-    let mut total_covered = 0;
+    covered_nodes
+        .iter_set_bits()
+        .for_each(|u| num_covered[u as usize] = 1);
+    let mut total_covered = covered_nodes.cardinality();
     for u in solution.iter() {
         num_covered[u as usize] += 1;
         if num_covered[u as usize] == 1 {
@@ -114,7 +118,12 @@ mod tests {
         for _ in 0..1000 {
             let graph = AdjArray::random_black_gnp(&mut rng, 100, 0.03);
             let mut domset = DominatingSet::new(graph.number_of_nodes());
-            super::greedy_approximation(&graph, &mut domset, &graph.vertex_bitset_unset());
+            super::greedy_approximation(
+                &graph,
+                &mut domset,
+                &graph.vertex_bitset_unset(),
+                &graph.vertex_bitset_unset(),
+            );
             assert!(domset.is_valid(&graph));
         }
     }
@@ -138,7 +147,12 @@ mod tests {
                 // TODO: We want to delete the node from the graph, but currently the interface does not allow it
             }
 
-            super::greedy_approximation(&graph, &mut domset, &graph.vertex_bitset_unset());
+            super::greedy_approximation(
+                &graph,
+                &mut domset,
+                &graph.vertex_bitset_unset(),
+                &graph.vertex_bitset_unset(),
+            );
             assert!(domset.is_valid(&org_graph));
         }
     }
