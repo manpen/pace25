@@ -1,9 +1,6 @@
 use std::process::{Command, Stdio};
 
-use crate::{
-    kernelization::{KernelizationRule, rule1::Rule1},
-    prelude::*,
-};
+use crate::prelude::*;
 use tempfile::NamedTempFile;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
@@ -14,14 +11,15 @@ pub enum SolverBackend {
 
 pub fn solve(
     graph: &(impl StaticGraph + SelfLoop),
+    covered: BitSet,
     partial_solution: Option<DominatingSet>,
     backend: SolverBackend,
 ) -> anyhow::Result<DominatingSet> {
     let mut domset =
         partial_solution.unwrap_or_else(|| DominatingSet::new(graph.number_of_nodes()));
 
-    let redundant = Rule1::apply_rule(graph, &mut domset);
-    let covered = domset.compute_covered(graph);
+    // TODO: compute redundant nodes
+    let redundant = graph.vertex_bitset_unset();
 
     match backend {
         SolverBackend::GOODLP => {

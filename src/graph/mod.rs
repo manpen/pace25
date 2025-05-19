@@ -5,6 +5,7 @@ pub mod complement;
 pub mod connectivity;
 pub mod csr;
 pub mod cut_vertex;
+pub mod cuthill_mckee;
 pub mod distance_two_pairs;
 pub mod edge;
 pub mod gnp;
@@ -13,7 +14,7 @@ pub mod matrix;
 pub mod modules;
 pub mod node_mapper;
 pub mod partition;
-pub mod relabel;
+pub mod path_iterator;
 pub mod subgraph;
 pub mod traversal;
 
@@ -24,6 +25,7 @@ pub use complement::*;
 pub use connectivity::*;
 pub use csr::*;
 pub use cut_vertex::*;
+pub use cuthill_mckee::CuthillMcKee;
 pub use distance_two_pairs::*;
 pub use edge::*;
 pub use gnp::*;
@@ -32,6 +34,7 @@ pub use matrix::*;
 pub use modules::Modules;
 pub use node_mapper::*;
 pub use partition::*;
+pub use path_iterator::*;
 pub use subgraph::*;
 pub use traversal::*;
 
@@ -122,6 +125,10 @@ pub trait AdjacencyList: GraphNodeOrder + Sized {
     /// Returns a slice of neighbors of a given vertex.
     /// ** Panics if the v >= n **
     fn neighbors_of(&self, u: Node) -> Self::NeighborIter<'_>;
+
+    fn closed_neighbors_of(&self, u: Node) -> impl Iterator<Item = Node> + '_ {
+        std::iter::once(u).chain(self.neighbors_of(u))
+    }
 
     /// If v has degree two (i.e. neighbors [u, w]), this function continues
     /// the walk `u`, `v`, `w` and returns `Some(w)`. Otherwise it returns `None`.
@@ -424,6 +431,11 @@ pub trait ExtractCsrRepr {
     /// source and a list of offsets indicating where the neighbors of u begin to appear in this
     /// edge list.
     fn extract_csr_repr(&self) -> CsrEdges;
+}
+
+pub trait NeighborsSlice {
+    fn as_neighbors_slice(&self, u: Node) -> &[Node];
+    fn as_neighbors_slice_mut(&mut self, u: Node) -> &mut [Node];
 }
 
 /// A marker trait indicating that *u* is considered a neighbor of *u*

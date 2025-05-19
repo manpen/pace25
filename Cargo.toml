@@ -62,11 +62,6 @@ path = "src/bin/heuristic_solver_bench.rs"
 test = false
 
 [[bin]]
-name = "heuristic_relabel_bench"
-path = "src/bin/heuristic_solver_relabel_bench.rs"
-test = false
-
-[[bin]]
 name = "exact"
 path = "src/bin/exact_solver.rs"
 required-features = ["par"]

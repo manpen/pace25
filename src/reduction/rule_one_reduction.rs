@@ -1,8 +1,9 @@
-use smallvec::SmallVec;
+use std::marker::PhantomData;
 
+use super::*;
 use crate::{graph::*, utils::DominatingSet};
 
-use super::KernelizationRule;
+use smallvec::SmallVec;
 
 /// Rule1
 ///
@@ -26,12 +27,22 @@ use super::KernelizationRule;
 /// Here, we break ties in the opposite direction and prefer dominating nodes with smaller degrees.
 /// (3) We iterate over each candidate-pair (u,v) and confirm whether u is truly a Type3-Neighbor
 /// for u. If true, we mark u as redundant and fix v as a dominating node.
-pub struct Rule1;
+pub struct RuleOneReduction<G> {
+    _graph: PhantomData<G>,
+}
 
 const NOT_SET: Node = Node::MAX;
 
-impl<Graph: AdjacencyList + SelfLoop> KernelizationRule<&Graph> for Rule1 {
-    fn apply_rule(graph: &Graph, sol: &mut DominatingSet) -> BitSet {
+impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
+    for RuleOneReduction<Graph>
+{
+    const NAME: &str = "RuleOne";
+
+    fn apply_rule(
+        graph: &mut Graph,
+        domset: &mut DominatingSet,
+        covered: &mut BitSet,
+    ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
         let n = graph.len();
         assert!(NOT_SET as usize >= n);
 
@@ -44,46 +55,44 @@ impl<Graph: AdjacencyList + SelfLoop> KernelizationRule<&Graph> for Rule1 {
         // Used for confirming whether neighborhoods of nodes are subsets of other neighborhoods.
         let mut marked: Vec<Node> = vec![NOT_SET; n];
 
-        // List of all possible candidate-pairs
-        let mut potential_type3_node: Vec<(Node, Node)> = Vec::new();
-
         // BitSet indicating that a node is a Type(2 or 3)-Candidate (not confirmed yet)
         let mut type2_nodes: BitSet = graph.vertex_bitset_unset();
 
         // Helper-BitSet to ensure we only process each node once later
         let mut processed: BitSet = graph.vertex_bitset_unset();
 
-        // BitSet indicating redundant nodes -> returned at the end
-        let mut redundant = graph.vertex_bitset_unset();
-
         // (1) Compute first mapping and fix possible singletons
         for u in graph.vertices() {
+            if graph.degree_of(u) == 0 {
+                continue;
+            }
+
             let max_neighbor = graph
-                .neighbors_of(u)
+                .closed_neighbors_of(u)
                 .map(|u| (graph.degree_of(u), u))
                 .max()
                 .map(|(_, u)| u)
                 .unwrap();
+
             if max_neighbor != u {
                 inv_mappings[max_neighbor as usize].push(u);
-            } else if graph.degree_of(u) == 1 && !sol.is_fixed_node(u) {
-                sol.fix_node(u);
             }
         }
 
         // (1) Compute list of candidate-pairs based on mapping
         for u in graph.vertices() {
             // Mark closed neighborhood N[u] of u (SelfLoop marker)
-            for v in graph.neighbors_of(u) {
+            for v in graph.closed_neighbors_of(u) {
                 marked[v as usize] = u;
             }
 
             // Check whether N[v] is a subset of N[u]
             for v in inv_mappings[u as usize].drain(..) {
-                if graph.neighbors_of(v).all(|x| marked[x as usize] == u) {
+                if graph
+                    .closed_neighbors_of(v)
+                    .all(|x| marked[x as usize] == u)
+                {
                     parent[v as usize] = u;
-                    potential_type3_node.push((v, u));
-
                     type2_nodes.set_bit(v);
                 }
             }
@@ -93,21 +102,21 @@ impl<Graph: AdjacencyList + SelfLoop> KernelizationRule<&Graph> for Rule1 {
         debug_assert!(inv_mappings.iter().all(|vec| vec.is_empty()));
 
         // (2) Compute second mapping from list of candidate-pairs
-        for &(u, _) in &potential_type3_node {
-            for v in graph.neighbors_of(u) {
+        for u in type2_nodes.iter_set_bits() {
+            for v in graph.closed_neighbors_of(u) {
                 // Only process each node once
-                if u == v || processed.get_bit(v) {
+                if processed.set_bit(v) {
                     continue;
                 }
 
                 // Mark closed neighborhood N[v] of v (SelfLoop marker)
-                for x in graph.neighbors_of(v) {
+                for x in graph.closed_neighbors_of(v) {
                     marked[x as usize] = v;
                 }
 
                 // Find minimum dominating node of neighbors in neighborhood of v
                 if let Some((_, min_node)) = graph
-                    .neighbors_of(v)
+                    .closed_neighbors_of(v)
                     .filter_map(|x| {
                         let pt = parent[x as usize];
                         (pt != NOT_SET && pt != v && marked[pt as usize] == v)
@@ -118,45 +127,92 @@ impl<Graph: AdjacencyList + SelfLoop> KernelizationRule<&Graph> for Rule1 {
                     // We drained inv_mappings earlier completely, so we can now reuse it
                     inv_mappings[min_node as usize].push(v);
                 }
-
-                processed.set_bit(v);
             }
         }
 
+        parent = vec![NOT_SET; n];
+        let mut removable_nodes = graph.vertex_bitset_unset();
+
         // (3) Mark candidates as possible Type2-Nodes if their neighborhoods are subsets
         for u in graph.vertices() {
+            if inv_mappings[u as usize].is_empty() {
+                continue;
+            }
+
             // Mark closed neighborhood N[u] of u (SelfLoop marker)
-            for v in graph.neighbors_of(u) {
+            for v in graph.closed_neighbors_of(u) {
                 marked[v as usize] = u;
             }
 
+            for &v in &inv_mappings[u as usize] {
+                if graph
+                    .closed_neighbors_of(v)
+                    .all(|x| marked[x as usize] == u)
+                {
+                    parent[v as usize] = u;
+                }
+            }
+
             for v in inv_mappings[u as usize].drain(..) {
-                if graph.neighbors_of(v).all(|x| marked[x as usize] == u) {
-                    type2_nodes.set_bit(v);
+                if covered.get_bit(v) {
+                    continue;
+                }
+                if graph
+                    .closed_neighbors_of(v)
+                    .all(|x| parent[x as usize] == u || x == u)
+                {
+                    domset.fix_node(u);
+                    covered.set_bits(graph.closed_neighbors_of(u));
+                    removable_nodes.set_bit(v);
+                    removable_nodes.set_bit(u);
+                    break;
                 }
             }
         }
 
-        // (3) If all neighbors of a candidate are marked as Type2-Neighbors (except the dominating node),
-        // the candidate must be a Type3-Neighbor and we can fix a node and mark all remaining Type2-Neighbors as redundant.
-        for (u, v) in potential_type3_node {
-            if sol.is_fixed_node(v) {
-                // By assumption, u is not a Type1-Neighbor
-                redundant.set_bit(u);
-                continue;
-            }
+        processed.clear_all();
+        for u in domset.iter_fixed() {
+            processed.set_bits(graph.closed_neighbors_of(u));
+        }
 
-            if graph
-                .neighbors_of(u)
-                .all(|x| type2_nodes.get_bit(x) || x == v)
+        for u in graph.vertices() {
+            if processed.get_bit(u)
+                && !domset.is_fixed_node(u)
+                && graph
+                    .neighbors_of(u)
+                    .filter(|x| !processed.get_bit(*x))
+                    .count()
+                    <= 1
             {
-                // By assumption, u is not a Type1-Neighbor
-                sol.fix_node(v);
-                redundant.set_bit(u);
+                removable_nodes.set_bit(u);
             }
         }
 
-        redundant
+        let mut modified = removable_nodes.cardinality() > 0;
+
+        *covered |= &removable_nodes;
+        for u in removable_nodes.iter_set_bits() {
+            graph.remove_edges_at_node(u);
+        }
+
+        let mut neighbors_to_remove = Vec::new();
+        processed -= &removable_nodes;
+
+        for u in processed.iter_set_bits() {
+            // TODO: We want to have a drain_neighbors function in graph!
+            neighbors_to_remove.extend(graph.neighbors_of(u).filter(|&v| processed.get_bit(v)));
+            if neighbors_to_remove.is_empty() {
+                continue;
+            }
+
+            for &v in &neighbors_to_remove {
+                graph.remove_edge(u, v);
+            }
+            modified = true;
+            neighbors_to_remove.clear();
+        }
+
+        (modified, None::<Box<dyn Postprocessor<Graph>>>)
     }
 }
 
@@ -167,9 +223,14 @@ mod tests {
     use super::*;
 
     // The standard Rule implementation with runtime O(n * D * D) where D is the maximum degree in the graph.
-    fn naive_rule1_impl(graph: &(impl AdjacencyList + SelfLoop), sol: &mut DominatingSet) {
-        let mut marked = graph.vertex_bitset_unset();
-        let mut type2_nodes = graph.vertex_bitset_unset();
+    fn naive_rule1_impl(
+        graph: &(impl AdjacencyList + SelfLoop),
+        sol: &mut DominatingSet,
+    ) -> BitSet {
+        let mut marked = BitSet::new(graph.number_of_nodes());
+        let mut type2_nodes = BitSet::new(graph.number_of_nodes());
+
+        let mut redundant = BitSet::new(graph.number_of_nodes());
         for u in graph.vertices() {
             if graph.degree_of(u) == 1 {
                 sol.fix_node(u);
@@ -210,11 +271,14 @@ mod tests {
 
             if type3 {
                 sol.fix_node(u);
+                redundant.set_bits(type2_nodes.iter_set_bits());
             }
         }
+
+        redundant
     }
 
-    fn get_random_graph(rng: &mut impl Rng, n: NumNodes, m: NumEdges) -> CsrGraph {
+    fn get_random_graph(rng: &mut impl Rng, n: NumNodes, m: NumEdges) -> (AdjArray, CsrGraph) {
         let mut set = BitSet::new(n * n);
         let mut edges: Vec<Edge> = Vec::with_capacity(m as usize);
         while edges.len() < m as usize {
@@ -229,26 +293,40 @@ mod tests {
             }
         }
 
-        CsrGraph::from_edges(n, edges)
+        (
+            AdjArray::from_edges(n, &edges),
+            CsrGraph::from_edges(n, &edges),
+        )
     }
 
     #[test]
     fn compare_rule1_implementations() {
         let rng = &mut rand::thread_rng();
 
-        for _ in 0..100 {
+        for _ in 0..1000 {
             let n = rng.gen_range(5..50);
             let m = rng.gen_range(1..(n * (n - 1) / 4)) as NumEdges;
 
-            let graph = get_random_graph(rng, n, m);
+            let (mut adj_graph, csr_graph) = get_random_graph(rng, n, m);
 
             let mut sol1 = DominatingSet::new(n);
-            let mut sol2 = sol1.clone();
+            let mut sol2 = DominatingSet::new(n);
 
-            Rule1::apply_rule(&graph, &mut sol1);
-            naive_rule1_impl(&graph, &mut sol2);
+            {
+                let mut covered = adj_graph.vertex_bitset_unset();
 
-            assert!(sol1.equals(&sol2));
+                // Rule One does not fix singleton nodes anymore
+                for u in adj_graph.vertices() {
+                    if adj_graph.degree_of(u) == 0 {
+                        sol1.fix_node(u);
+                    }
+                }
+
+                let _ = RuleOneReduction::apply_rule(&mut adj_graph, &mut sol1, &mut covered);
+            }
+            naive_rule1_impl(&csr_graph, &mut sol2);
+
+            assert!(sol1.equals(&sol2), "Test: {sol1:?}\nRef:  {sol2:?}");
         }
     }
 }

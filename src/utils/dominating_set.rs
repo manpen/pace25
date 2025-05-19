@@ -236,7 +236,7 @@ impl DominatingSet {
         let mut covered = graph.vertex_bitset_unset();
 
         for &u in &self.solution {
-            covered.set_bits(graph.neighbors_of(u));
+            covered.set_bits(graph.closed_neighbors_of(u));
             covered.set_bit(u);
         }
 
@@ -246,6 +246,17 @@ impl DominatingSet {
     /// Returns true if the dominating set is valid, ie. it covers all nodes.
     pub fn is_valid(&self, graph: &impl AdjacencyList) -> bool {
         let covered = self.compute_covered(graph);
+        covered.are_all_set()
+    }
+
+    /// Returns true if the dominating set is valid, ie. it covers all nodes.
+    pub fn is_valid_given_previous_cover(
+        &self,
+        graph: &impl AdjacencyList,
+        previous_cover: &BitSet,
+    ) -> bool {
+        let mut covered = self.compute_covered(graph);
+        covered |= previous_cover;
         covered.are_all_set()
     }
 

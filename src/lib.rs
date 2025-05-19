@@ -13,6 +13,7 @@ pub mod heuristic;
 pub mod io;
 pub mod kernelization;
 pub mod log;
+pub mod reduction;
 pub mod utils;
 
 pub mod prelude {

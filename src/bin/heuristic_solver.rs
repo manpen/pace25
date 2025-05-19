@@ -1,10 +1,14 @@
 use dss::{
-    graph::CsrGraph,
+    graph::{
+        AdjArray, AdjacencyList, BitSet, CsrGraph, CuthillMcKee, Edge, EdgeOps, Getter,
+        GraphEdgeOrder, GraphFromReader, GraphNodeOrder, NodeMapper, NumNodes,
+    },
     heuristic::{greedy_approximation, reverse_greedy_search::GreedyReverseSearch},
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
-    utils::signal_handling,
+    reduction::{LongPathReduction, Reducer, RuleOneReduction, RuleSmallExactReduction},
+    utils::{DominatingSet, signal_handling},
 };
-use rand::SeedableRng;
+use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64Mcg;
 use std::{path::PathBuf, time::Duration};
 use structopt::{StructOpt, clap};
@@ -18,15 +22,113 @@ struct Opts {
     timeout: Option<f64>,
 }
 
-fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<CsrGraph> {
+fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<AdjArray> {
     use dss::prelude::*;
 
     if let Some(path) = path {
-        Ok(CsrGraph::try_read_pace_file(path)?)
+        Ok(AdjArray::try_read_pace_file(path)?)
     } else {
         let stdin = std::io::stdin().lock();
-        Ok(CsrGraph::try_read_pace(stdin)?)
+        Ok(AdjArray::try_read_pace(stdin)?)
     }
+}
+
+struct State<G> {
+    graph: G,
+    domset: DominatingSet,
+    covered: BitSet,
+    redundant: BitSet,
+}
+
+fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjArray>) {
+    let mut covered = graph.vertex_bitset_unset();
+    let mut domset = DominatingSet::new(graph.number_of_nodes());
+
+    // singleton nodes need to be fixed
+    domset.fix_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
+
+    let mut reducer = Reducer::new();
+    reducer.apply_rule_exhaustively::<RuleOneReduction<_>>(&mut graph, &mut domset, &mut covered);
+    reducer.apply_rule::<LongPathReduction<_>>(&mut graph, &mut domset, &mut covered);
+    reducer.apply_rule::<RuleSmallExactReduction<_>>(&mut graph, &mut domset, &mut covered);
+    let redundant = graph.vertex_bitset_unset(); // TODO: Add SubsetRule
+
+    (
+        State {
+            graph,
+            domset,
+            covered,
+            redundant,
+        },
+        reducer,
+    )
+}
+
+fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGraph> {
+    let graph = CsrGraph::from_edges(
+        mapping.len() as NumNodes,
+        org_state.graph.edges(true).map(|Edge(u, v)| {
+            // new id exist since the mapping only drops vertices of degree zero, which
+            // by definition do not appear as endpoints of edges!
+            let edge =
+                Edge(mapping.new_id_of(u).unwrap(), mapping.new_id_of(v).unwrap()).normalized();
+            debug_assert!(!edge.is_loop());
+            edge
+        }),
+    );
+
+    // ensure that we did not miss any nodes / edges
+    assert_eq!(
+        graph.number_of_nodes(),
+        org_state.graph.vertices_with_neighbors().count() as NumNodes
+    );
+    assert_eq!(graph.number_of_edges(), org_state.graph.number_of_edges(),);
+
+    // remap bitsets
+    let redundant = BitSet::new_with_bits_set(
+        graph.number_of_nodes(),
+        mapping.get_filtered_new_ids(org_state.redundant.iter_set_bits()),
+    );
+
+    let covered = BitSet::new_with_bits_set(
+        graph.number_of_nodes(),
+        mapping.get_filtered_new_ids(org_state.covered.iter_set_bits()),
+    );
+
+    let domset = DominatingSet::new(graph.number_of_nodes());
+
+    State {
+        graph,
+        domset,
+        covered,
+        redundant,
+    }
+}
+
+fn run_search(rng: &mut impl Rng, mapped: State<CsrGraph>, timeout: Option<f64>) -> DominatingSet {
+    let State {
+        mut graph,
+        domset,
+        covered,
+        redundant,
+    } = mapped;
+
+    let red = redundant.clone();
+    let mut search =
+        GreedyReverseSearch::<_, _, 10, 10>::new(&mut graph, domset, covered.clone(), red, rng);
+
+    let domset = if let Some(seconds) = timeout {
+        search.run_until_timeout(Duration::from_secs_f64(seconds));
+        search.best_known_solution()
+    } else {
+        search.run_to_completion()
+    }
+    .unwrap();
+
+    assert!(redundant.iter_set_bits().all(|u| !domset.is_in_domset(u)));
+    assert!(domset.is_valid_given_previous_cover(&graph, &covered));
+
+    domset
 }
 
 fn main() -> anyhow::Result<()> {
@@ -40,21 +142,36 @@ fn main() -> anyhow::Result<()> {
         _ => Default::default(),
     };
 
-    let mut graph = load_graph(&opts.input).unwrap();
-
     let mut rng = Pcg64Mcg::seed_from_u64(123u64);
-    let domset = greedy_approximation(&graph);
 
-    let mut search = GreedyReverseSearch::<_, _, 8, 10>::new(&mut graph, domset, &mut rng);
+    let input_graph = load_graph(&opts.input).unwrap();
 
-    let solution = if let Some(seconds) = opts.timeout {
-        search.run_until_timeout(Duration::from_secs_f64(seconds));
-        search.best_known_solution()
-    } else {
-        search.run_to_completion()
+    let (mut state, mut reducer) = apply_reduction_rules(input_graph.clone());
+
+    let mapping = state.graph.cuthill_mckee();
+    if mapping.len() > 0 {
+        // if the reduction rules are VERY successful, no nodes remain
+        let mut mapped = remap_state(&state, &mapping);
+        greedy_approximation(
+            &mapped.graph,
+            &mut mapped.domset,
+            &mapped.covered,
+            &mapped.redundant,
+        );
+        let domset_mapped = run_search(&mut rng, mapped, opts.timeout);
+
+        let size_before = state.domset.len();
+        state
+            .domset
+            .add_nodes(mapping.get_filtered_old_ids(domset_mapped.iter()));
+        assert_eq!(size_before + domset_mapped.len(), state.domset.len());
     }
-    .unwrap();
-    solution.write(std::io::stdout())?;
+
+    let mut covered = state.domset.compute_covered(&input_graph);
+    reducer.post_process(&mut input_graph.clone(), &mut state.domset, &mut covered);
+
+    assert!(state.domset.is_valid(&input_graph));
+    state.domset.write(std::io::stdout())?;
 
     Ok(())
 }

@@ -1,4 +1,3 @@
-pub mod rule1;
 pub mod subsets;
 pub use subsets::*;
 

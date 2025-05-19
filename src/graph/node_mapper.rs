@@ -226,8 +226,8 @@ impl Setter for NodeMapper {
 
     fn map_node_to(&mut self, old: Node, new: Node) {
         assert!(!self.is_identity);
-        let success =
-            self.old_to_new.insert(old, new).is_none() & self.new_to_old.insert(new, old).is_none();
+        let success = self.old_to_new.insert(old, new).is_none()
+            && self.new_to_old.insert(new, old).is_none();
         assert!(success);
     }
 }

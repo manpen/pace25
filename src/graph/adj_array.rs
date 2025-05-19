@@ -377,4 +377,16 @@ impl fmt::Debug for AdjArray {
     }
 }
 
+impl NeighborsSlice for AdjArray {
+    #[inline(always)]
+    fn as_neighbors_slice(&self, u: Node) -> &[Node] {
+        &self.adj[u as usize].nodes
+    }
+
+    #[inline(always)]
+    fn as_neighbors_slice_mut(&mut self, u: Node) -> &mut [Node] {
+        &mut self.adj[u as usize].nodes
+    }
+}
+
 super::graph_tests::impl_graph_tests!(AdjArray);
