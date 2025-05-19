@@ -73,7 +73,12 @@ fn main() -> anyhow::Result<()> {
         }),
     );
 
-    greedy_approximation(&graph, &mut domset, &redundant_mapped);
+    greedy_approximation(
+        &graph,
+        &mut domset,
+        &graph.vertex_bitset_unset(),
+        &redundant_mapped,
+    );
     let greedy_time = timer.elapsed().as_millis();
     timer = Instant::now();
 
