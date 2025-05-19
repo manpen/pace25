@@ -160,7 +160,7 @@ fn main() -> anyhow::Result<()> {
         greedy_approximation(
             &mapped.graph,
             &mut mapped.domset,
-            &mapped.redundant,
+            &mapped.covered,
             &mapped.redundant,
         );
         let domset_mapped = run_search(&mut rng, mapped, opts.timeout);
