@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use super::*;
 use crate::{graph::*, utils::DominatingSet};
 
+use log::info;
 use smallvec::SmallVec;
 
 /// Rule1
@@ -62,7 +63,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         let mut processed: BitSet = graph.vertex_bitset_unset();
 
         // (1) Compute first mapping and fix possible singletons
-        for u in graph.vertices() {
+        for u in covered.iter_cleared_bits() {
             if graph.degree_of(u) == 0 {
                 continue;
             }
@@ -133,6 +134,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         parent = vec![NOT_SET; n];
         let mut removable_nodes = graph.vertex_bitset_unset();
 
+        let mut selected = Vec::with_capacity(128);
         // (3) Mark candidates as possible Type2-Nodes if their neighborhoods are subsets
         for u in graph.vertices() {
             if inv_mappings[u as usize].is_empty() {
@@ -162,35 +164,41 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
                     .all(|x| parent[x as usize] == u || x == u)
                 {
                     domset.fix_node(u);
+                    selected.push(u);
                     covered.set_bits(graph.closed_neighbors_of(u));
-                    removable_nodes.set_bit(v);
-                    removable_nodes.set_bit(u);
                     break;
                 }
             }
         }
 
         processed.clear_all();
-        for u in domset.iter_fixed() {
+        for &u in &selected {
             processed.set_bits(graph.closed_neighbors_of(u));
         }
 
         for u in graph.vertices() {
             if processed.get_bit(u)
-                && !domset.is_fixed_node(u)
+                && !domset.is_in_domset(u)
                 && graph
                     .neighbors_of(u)
                     .filter(|x| !processed.get_bit(*x))
                     .count()
-                    <= 1
+                    == 0
+            // TODO: Why is 1 wrong?
             {
                 removable_nodes.set_bit(u);
             }
         }
 
-        let mut modified = removable_nodes.cardinality() > 0;
+        let mut modified = !selected.is_empty() || removable_nodes.cardinality() > 0;
 
-        *covered |= &removable_nodes;
+        assert!(removable_nodes.cardinality() >= selected.len() as NumNodes);
+        info!(
+            "RuleOne removeable nodes: {}",
+            removable_nodes.cardinality()
+        );
+        debug_assert!(removable_nodes.iter_set_bits().all(|u| covered.get_bit(u)));
+
         for u in removable_nodes.iter_set_bits() {
             graph.remove_edges_at_node(u);
         }
@@ -210,6 +218,10 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
             }
             modified = true;
             neighbors_to_remove.clear();
+        }
+
+        for u in selected {
+            graph.remove_edges_at_node(u);
         }
 
         (modified, None::<Box<dyn Postprocessor<Graph>>>)

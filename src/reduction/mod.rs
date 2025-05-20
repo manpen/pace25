@@ -6,6 +6,8 @@ pub mod small_exact;
 pub use small_exact::RuleSmallExactReduction;
 pub mod reducer;
 pub use reducer::Reducer;
+pub mod subset;
+pub use subset::RuleSubsetReduction;
 
 use crate::{graph::BitSet, utils::DominatingSet};
 

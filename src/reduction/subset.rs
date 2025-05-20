@@ -1,30 +1,28 @@
 use crate::{graph::*, utils::DominatingSet};
 
-use super::KernelizationRule;
-
 /// # Subset-Rule
 /// A node is subset-dominated by another node, if its neighborhood is a subset of the others neighborhood.
 /// Here, we only consider the restricted neighborhoods in which nodes that are always covered by fixed nodes
 /// are left out of consideration.
-pub struct SubsetRule;
+pub struct RuleSubsetReduction;
 
-impl<Graph: NeighborsSlice + GraphNodeOrder + AdjacencyList> KernelizationRule<&mut Graph>
-    for SubsetRule
-{
-    fn apply_rule(graph: &mut Graph, sol: &mut DominatingSet) -> BitSet {
+impl RuleSubsetReduction {
+    // Observe that we do NOT implement the standard traits, as this rule returns
+    // redundant nodes, and does not fit the remainder of the infrastructure
+    pub fn apply_rule(
+        mut graph: CsrEdges,
+        is_perm_covered: &BitSet,
+        sol: &mut DominatingSet, // TODO: we probably do not want to have this mut
+    ) -> BitSet {
         let n = graph.number_of_nodes();
         let mut is_subset_dominated = graph.vertex_bitset_unset();
 
         // Compute permanently covered nodes and degrees
         let mut non_perm_degree: Vec<NumNodes> = (0..n).map(|u| graph.degree_of(u)).collect();
-        let mut is_perm_covered = graph.vertex_bitset_unset();
-        for u in sol.iter_fixed() {
-            for &v in graph.as_neighbors_slice(u) {
-                if !is_perm_covered.set_bit(v) {
-                    for &w in graph.as_neighbors_slice(v) {
-                        non_perm_degree[w as usize] -= 1;
-                    }
-                }
+
+        for u in is_perm_covered.iter_set_bits() {
+            for &v in &graph[u] {
+                non_perm_degree[v as usize] -= 1;
             }
         }
 

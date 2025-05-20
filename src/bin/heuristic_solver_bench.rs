@@ -7,7 +7,6 @@ use dss::{
     },
     heuristic::{greedy_approximation, reverse_greedy_search::GreedyReverseSearch},
     io::GraphPaceReader,
-    kernelization::{KernelizationRule, SubsetRule},
     prelude::IterativeAlgorithm,
     utils::{DominatingSet, signal_handling},
 };
@@ -19,7 +18,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut timer = Instant::now();
 
-    let mut graph = AdjArray::try_read_pace(std::io::stdin().lock()).unwrap();
+    let graph = AdjArray::try_read_pace(std::io::stdin().lock()).unwrap();
 
     let read_time = timer.elapsed().as_millis();
     timer = Instant::now();
@@ -42,7 +41,7 @@ fn main() -> anyhow::Result<()> {
     // (2) TBD
 
     // (3)
-    let redundant = SubsetRule::apply_rule(&mut graph, &mut domset);
+    let redundant = graph.vertex_bitset_unset(); // TODO: Use subset rule!
 
     // (4-6)
 

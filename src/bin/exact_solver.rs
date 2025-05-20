@@ -4,7 +4,9 @@ use dss::{
     exact::{naive::naive_solver, sat_solver::SolverBackend},
     log::build_pace_logger_for_level,
     prelude::*,
-    reduction::{LongPathReduction, Reducer, RuleOneReduction, RuleSmallExactReduction},
+    reduction::{
+        LongPathReduction, Reducer, RuleOneReduction, RuleSmallExactReduction, RuleSubsetReduction,
+    },
 };
 use structopt::StructOpt;
 
@@ -88,7 +90,12 @@ fn main() -> anyhow::Result<()> {
     reducer.apply_rule_exhaustively::<RuleOneReduction<_>>(&mut graph, &mut solution, &mut covered);
     reducer.apply_rule::<LongPathReduction<_>>(&mut graph, &mut solution, &mut covered);
     reducer.apply_rule::<RuleSmallExactReduction<_>>(&mut graph, &mut solution, &mut covered);
-    let redundant = graph.vertex_bitset_unset(); // TODO: Add SubsetRule
+
+    let redundant = {
+        let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
+        let csr_edges = csr_graph.extract_csr_repr();
+        RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut solution)
+    };
 
     let mut solution = {
         let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
