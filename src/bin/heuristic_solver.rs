@@ -1,7 +1,7 @@
 use dss::{
     graph::{
         AdjArray, AdjacencyList, BitSet, CsrGraph, CuthillMcKee, Edge, EdgeOps, ExtractCsrRepr,
-        Getter, GraphEdgeOrder, GraphFromReader, GraphNodeOrder, NodeMapper, NumNodes,
+        Getter, GraphFromReader, GraphNodeOrder, NodeMapper, NumNodes,
     },
     heuristic::{greedy_approximation, reverse_greedy_search::GreedyReverseSearch},
     log::build_pace_logger_for_level,
@@ -11,6 +11,7 @@ use dss::{
     },
     utils::{DominatingSet, signal_handling},
 };
+use log::info;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64Mcg;
 use std::{path::PathBuf, time::Duration};
@@ -54,7 +55,8 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
     reducer.apply_rule_exhaustively::<RuleOneReduction<_>>(&mut graph, &mut domset, &mut covered);
     reducer.apply_rule::<LongPathReduction<_>>(&mut graph, &mut domset, &mut covered);
     reducer.apply_rule::<RuleSmallExactReduction<_>>(&mut graph, &mut domset, &mut covered);
-    let redundant = graph.vertex_bitset_unset(); // TODO: Add SubsetRule
+    let redundant = graph.vertex_bitset_unset();
+    info!("Preprocessing completed");
 
     (
         State {
@@ -73,7 +75,7 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
         org_state.graph.edges(true).filter_map(|Edge(u, v)| {
             // usually edges between covered nodes should have been removed by reduction rules,
             // but let's make sure
-            if !org_state.covered.get_bit(u) && !org_state.covered.get_bit(v) {
+            if org_state.covered.get_bit(u) && org_state.covered.get_bit(v) {
                 return None;
             }
 
@@ -92,7 +94,6 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
         graph.number_of_nodes(),
         org_state.graph.vertices_with_neighbors().count() as NumNodes
     );
-    assert_eq!(graph.number_of_edges(), org_state.graph.number_of_edges(),);
 
     // remap bitsets
     assert_eq!(
@@ -172,6 +173,7 @@ fn main() -> anyhow::Result<()> {
 
     let mapping = state.graph.cuthill_mckee();
     if mapping.len() > 0 {
+        info!("Start greedy");
         // if the reduction rules are VERY successful, no nodes remain
         let mut mapped = remap_state(&state, &mapping);
         greedy_approximation(
@@ -180,7 +182,11 @@ fn main() -> anyhow::Result<()> {
             &mapped.covered,
             &mapped.redundant,
         );
+        info!("Greedy found solution size {}", mapped.domset.len());
+
+        info!("Start local search");
         let domset_mapped = run_search(&mut rng, mapped, opts.timeout);
+        info!("Local search found solution size {}", domset_mapped.len());
 
         let size_before = state.domset.len();
         state
