@@ -18,8 +18,13 @@ impl RuleSubsetReduction {
         let mut is_subset_dominated = graph.vertex_bitset_unset();
 
         // Compute permanently covered nodes and degrees
-        // TODO: If I do understand correctly, we do not need this vector any more!
-        let non_perm_degree: Vec<NumNodes> = (0..n).map(|u| graph.degree_of(u)).collect();
+        let mut non_perm_degree: Vec<NumNodes> = (0..n).map(|u| graph.degree_of(u)).collect();
+
+        for u in is_perm_covered.iter_set_bits() {
+            for &v in &graph[u] {
+                non_perm_degree[v as usize] -= 1;
+            }
+        }
 
         // Sort adjacency lists to allow binary searching later on
         for u in 0..n {
