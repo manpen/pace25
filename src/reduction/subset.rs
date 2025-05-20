@@ -9,8 +9,8 @@ pub struct RuleSubsetReduction;
 impl RuleSubsetReduction {
     // Observe that we do NOT implement the standard traits, as this rule returns
     // redundant nodes, and does not fit the remainder of the infrastructure
-    pub fn apply_rule<Graph: NeighborsSlice + GraphNodeOrder + AdjacencyList>(
-        graph: &mut Graph,
+    pub fn apply_rule(
+        mut graph: CsrEdges,
         is_perm_covered: &BitSet,
         sol: &mut DominatingSet, // TODO: we probably do not want to have this mut
     ) -> BitSet {

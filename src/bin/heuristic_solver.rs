@@ -1,11 +1,14 @@
 use dss::{
     graph::{
-        AdjArray, AdjacencyList, BitSet, CsrGraph, CuthillMcKee, Edge, EdgeOps, Getter,
-        GraphEdgeOrder, GraphFromReader, GraphNodeOrder, NodeMapper, NumNodes,
+        AdjArray, AdjacencyList, BitSet, CsrGraph, CuthillMcKee, Edge, EdgeOps, ExtractCsrRepr,
+        Getter, GraphEdgeOrder, GraphFromReader, GraphNodeOrder, NodeMapper, NumNodes,
     },
     heuristic::{greedy_approximation, reverse_greedy_search::GreedyReverseSearch},
+    log::build_pace_logger_for_level,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
-    reduction::{LongPathReduction, Reducer, RuleOneReduction, RuleSmallExactReduction},
+    reduction::{
+        LongPathReduction, Reducer, RuleOneReduction, RuleSmallExactReduction, RuleSubsetReduction,
+    },
     utils::{DominatingSet, signal_handling},
 };
 use rand::{Rng, SeedableRng};
@@ -108,14 +111,24 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
 fn run_search(rng: &mut impl Rng, mapped: State<CsrGraph>, timeout: Option<f64>) -> DominatingSet {
     let State {
         mut graph,
-        domset,
+        mut domset,
         covered,
         redundant,
     } = mapped;
 
-    let red = redundant.clone();
-    let mut search =
-        GreedyReverseSearch::<_, _, 10, 10>::new(&mut graph, domset, covered.clone(), red, rng);
+    assert!(redundant.are_all_unset()); // Remove redundant?
+    let redundant = {
+        let csr_edges = graph.extract_csr_repr();
+        RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut domset)
+    };
+
+    let mut search = GreedyReverseSearch::<_, _, 10, 10>::new(
+        &mut graph,
+        domset,
+        covered.clone(),
+        redundant.clone(),
+        rng,
+    );
 
     let domset = if let Some(seconds) = timeout {
         search.run_until_timeout(Duration::from_secs_f64(seconds));
@@ -132,6 +145,7 @@ fn run_search(rng: &mut impl Rng, mapped: State<CsrGraph>, timeout: Option<f64>)
 }
 
 fn main() -> anyhow::Result<()> {
+    build_pace_logger_for_level(log::LevelFilter::Info);
     signal_handling::initialize();
 
     // while I love to have an error message here, this clashes with optil.io
