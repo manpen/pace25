@@ -8,6 +8,7 @@ use dss::{
         LongPathReduction, Reducer, RuleOneReduction, RuleSmallExactReduction, RuleSubsetReduction,
     },
 };
+use itertools::Itertools;
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
@@ -90,8 +91,17 @@ fn main() -> anyhow::Result<()> {
     reducer.apply_rule_exhaustively::<RuleOneReduction<_>>(&mut graph, &mut solution, &mut covered);
     reducer.apply_rule::<LongPathReduction<_>>(&mut graph, &mut solution, &mut covered);
     reducer.apply_rule::<RuleSmallExactReduction<_>>(&mut graph, &mut solution, &mut covered);
-    let redundant = RuleSubsetReduction::apply_rule(&mut graph, &covered, &mut solution);
 
+    let redundant = {
+        let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
+        let csr_edges = csr_graph.extract_csr_repr();
+        RuleSubsetReduction::apply_rule( csr_edges, &covered, &mut solution)
+    };
+
+    println!("c covered: {:?}", covered.iter_set_bits().collect_vec());
+    println!("c red: {:?}", redundant.iter_set_bits().collect_vec());
+    println!("c graph: {graph:?}");
+    
     let mut solution = {
         let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
         match opt.cmd {
