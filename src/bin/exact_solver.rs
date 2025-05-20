@@ -8,7 +8,6 @@ use dss::{
         LongPathReduction, Reducer, RuleOneReduction, RuleSmallExactReduction, RuleSubsetReduction,
     },
 };
-use itertools::Itertools;
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
