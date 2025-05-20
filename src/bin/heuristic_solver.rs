@@ -70,13 +70,20 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
 fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGraph> {
     let graph = CsrGraph::from_edges(
         mapping.len() as NumNodes,
-        org_state.graph.edges(true).map(|Edge(u, v)| {
+        org_state.graph.edges(true).filter_map(|Edge(u, v)| {
+            // usually edges between covered nodes should have been removed by reduction rules,
+            // but let's make sure
+            if !org_state.covered.get_bit(u) && !org_state.covered.get_bit(v) {
+                return None;
+            }
+
             // new id exist since the mapping only drops vertices of degree zero, which
             // by definition do not appear as endpoints of edges!
             let edge =
                 Edge(mapping.new_id_of(u).unwrap(), mapping.new_id_of(v).unwrap()).normalized();
+
             debug_assert!(!edge.is_loop());
-            edge
+            Some(edge)
         }),
     );
 
@@ -88,9 +95,11 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
     assert_eq!(graph.number_of_edges(), org_state.graph.number_of_edges(),);
 
     // remap bitsets
-    let redundant = BitSet::new_with_bits_set(
-        graph.number_of_nodes(),
-        mapping.get_filtered_new_ids(org_state.redundant.iter_set_bits()),
+    assert_eq!(
+        mapping
+            .get_filtered_new_ids(org_state.redundant.iter_set_bits())
+            .count(),
+        0
     );
 
     let covered = BitSet::new_with_bits_set(
@@ -98,7 +107,12 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
         mapping.get_filtered_new_ids(org_state.covered.iter_set_bits()),
     );
 
-    let domset = DominatingSet::new(graph.number_of_nodes());
+    let mut domset = DominatingSet::new(graph.number_of_nodes());
+
+    let redundant = {
+        let csr_edges = graph.extract_csr_repr();
+        RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut domset)
+    };
 
     State {
         graph,
@@ -111,16 +125,10 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
 fn run_search(rng: &mut impl Rng, mapped: State<CsrGraph>, timeout: Option<f64>) -> DominatingSet {
     let State {
         mut graph,
-        mut domset,
+        domset,
         covered,
         redundant,
     } = mapped;
-
-    assert!(redundant.are_all_unset()); // Remove redundant?
-    let redundant = {
-        let csr_edges = graph.extract_csr_repr();
-        RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut domset)
-    };
 
     let mut search = GreedyReverseSearch::<_, _, 10, 10>::new(
         &mut graph,
