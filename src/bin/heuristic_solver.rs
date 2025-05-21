@@ -1,10 +1,11 @@
 use dss::{
     graph::{
-        AdjArray, AdjacencyList, BitSet, CsrGraph, CuthillMcKee, Edge, EdgeOps, ExtractCsrRepr,
-        Getter, GraphEdgeEditing, GraphEdgeOrder, GraphFromReader, GraphNodeOrder, NodeMapper,
-        NumNodes,
+        AdjArray, AdjacencyList, BitSet, Connectivity as _, CsrGraph, CuthillMcKee, Edge, EdgeOps,
+        ExtractCsrRepr, Getter, GraphEdgeEditing, GraphEdgeOrder, GraphFromReader, GraphNodeOrder,
+        NodeMapper, NumNodes,
     },
     heuristic::{greedy_approximation, reverse_greedy_search::GreedyReverseSearch},
+    io::PaceWriter as _,
     log::build_pace_logger_for_level,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
     reduction::{
@@ -29,6 +30,12 @@ struct Opts {
 
     #[structopt(short = "q")]
     no_output: bool,
+
+    #[structopt(short = "c")]
+    dump_ccs_lower_size: Option<NumNodes>,
+
+    #[structopt(short = "C")]
+    dump_ccs_upper_size: Option<NumNodes>,
 }
 
 fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<AdjArray> {
@@ -39,6 +46,60 @@ fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<AdjArray> {
     } else {
         let stdin = std::io::stdin().lock();
         Ok(AdjArray::try_read_pace(stdin)?)
+    }
+}
+
+fn dump_ccs(graph: &AdjArray, opts: &Opts) {
+    if opts.dump_ccs_lower_size.is_none() && opts.dump_ccs_upper_size.is_none() {
+        return;
+    }
+
+    let size_lb = opts.dump_ccs_lower_size.unwrap_or(8);
+    let size_ub = opts.dump_ccs_upper_size.unwrap_or(NumNodes::MAX);
+
+    let graph_name = if let Some(path) = &opts.input {
+        String::from(
+            path.file_stem()
+                .expect("Filestem")
+                .to_str()
+                .expect("String"),
+        )
+    } else if let Ok(iid) = std::env::var("STRIDE_IID") {
+        format!(
+            "{}",
+            iid.parse::<u32>()
+                .expect("STRIDE_IID needs to be an integer")
+        )
+    } else {
+        panic!("Expect instances name either using -i or via env var STRIDE_IID");
+    };
+
+    info!(
+        "Start export of CC with sizes between [{size_lb}, {size_ub}] into export_ccs/{graph_name}/"
+    );
+
+    let partition = graph.partition_into_connected_components(true);
+    let subgraphs = partition.split_into_subgraphs(graph);
+
+    let mut dir_checked = false;
+
+    for (i, (subgraph, _)) in subgraphs.into_iter().enumerate() {
+        if !(size_lb..=size_ub).contains(&subgraph.number_of_nodes()) {
+            continue;
+        }
+
+        let store_path: PathBuf = format!(
+            "export_ccs/{graph_name}/n{}_m{}-{i}.gr",
+            subgraph.number_of_nodes(),
+            subgraph.number_of_edges()
+        )
+        .into();
+
+        if !dir_checked {
+            std::fs::create_dir_all(store_path.parent().unwrap()).unwrap();
+            dir_checked = true;
+        }
+        subgraph.try_write_pace_file(store_path).unwrap();
     }
 }
 
@@ -212,8 +273,14 @@ fn main() -> anyhow::Result<()> {
     let mut rng = Pcg64Mcg::seed_from_u64(123u64);
 
     let input_graph = load_graph(&opts.input).unwrap();
+    info!(
+        "Graph loaded n={:7} m={:8}",
+        input_graph.number_of_nodes(),
+        input_graph.number_of_edges()
+    );
 
     let (mut state, mut reducer) = apply_reduction_rules(input_graph.clone());
+    dump_ccs(&state.graph, &opts);
 
     let mapping = state.graph.cuthill_mckee();
     if mapping.len() > 0 {
