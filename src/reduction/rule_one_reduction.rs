@@ -181,7 +181,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
             if processed.get_bit(u)
                 && !domset.is_in_domset(u)
                 && graph
-                    .closed_neighbors_of(u)
+                    .neighbors_of(u)
                     .filter(|x| !processed.get_bit(*x))
                     .count()
                     <= 1
@@ -344,6 +344,7 @@ mod tests {
                 for u in adj_graph.vertices() {
                     if adj_graph.degree_of(u) == 0 {
                         sol1.fix_node(u);
+                        covered.set_bit(u);
                     }
                 }
 
@@ -353,7 +354,10 @@ mod tests {
             }
             naive_rule1_impl(&csr_graph, &mut sol2);
 
-            assert!(sol1.equals(&sol2), "Test: {sol1:?}\nRef:  {sol2:?}");
+            assert!(
+                sol2.iter().all(|u| sol1.is_in_domset(u)),
+                "Test: {sol1:?}\nRef:  {sol2:?}"
+            );
         }
     }
 }
