@@ -1,7 +1,8 @@
 use dss::{
     graph::{
         AdjArray, AdjacencyList, BitSet, CsrGraph, CuthillMcKee, Edge, EdgeOps, ExtractCsrRepr,
-        Getter, GraphEdgeEditing, GraphFromReader, GraphNodeOrder, NodeMapper, NumNodes,
+        Getter, GraphEdgeEditing, GraphEdgeOrder, GraphFromReader, GraphNodeOrder, NodeMapper,
+        NumNodes,
     },
     heuristic::{greedy_approximation, reverse_greedy_search::GreedyReverseSearch},
     log::build_pace_logger_for_level,
@@ -150,6 +151,15 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
     );
 
     let domset = DominatingSet::new(graph.number_of_nodes());
+
+    info!(
+        "Mapped graph n={:7} m={:8} covered={:7} redundant={:7} (remaining: {:7})",
+        graph.number_of_nodes(),
+        graph.number_of_edges(),
+        covered.cardinality(),
+        redundant.cardinality(),
+        graph.number_of_nodes() - redundant.cardinality(),
+    );
 
     State {
         graph,
