@@ -103,6 +103,7 @@ fn main() -> anyhow::Result<()> {
         &mut redundant,
     );
 
+    let before_redundant = redundant.cardinality();
     {
         let csr_edges = graph.extract_csr_repr();
         RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut redundant)
@@ -121,18 +122,20 @@ fn main() -> anyhow::Result<()> {
     });
 
     info!(
-        "Subset n ~= {}, m -= {num_removed_edges}, |D| += 0, |covered| += 0",
-        redundant.cardinality()
+        "Subset n -= 0, m -= {num_removed_edges}, |D| += 0, |covered| += 0, |redundant| += {}",
+        redundant.cardinality() - before_redundant
     );
 
-    reducer.apply_rule::<RuleSmallExactReduction<_>>(
-        &mut graph,
-        &mut solution,
-        &mut covered,
-        &mut redundant,
-    );
+    if graph.number_of_edges() > 0 {
+        reducer.apply_rule::<RuleSmallExactReduction<_>>(
+            &mut graph,
+            &mut solution,
+            &mut covered,
+            &mut redundant,
+        );
+    }
 
-    let mut solution = {
+    let mut solution = if graph.number_of_edges() > 0 {
         let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
         match opt.cmd {
             Commands::SatSolverEnum(SatSolverOptsEnum::Sat(_)) => dss::exact::sat_solver::solve(
@@ -147,6 +150,8 @@ fn main() -> anyhow::Result<()> {
                 solution
             }
         }
+    } else {
+        solution
     };
 
     let mut covered = solution.compute_covered(&org_graph);

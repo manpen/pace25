@@ -38,7 +38,7 @@ impl<G: GraphEdgeOrder + AdjacencyList> Reducer<G> {
         let before_edges = graph.number_of_edges();
         let before_in_domset = solution.len();
         let before_covered = covered.cardinality();
-        let before_redundant = redundant.cardinality();
+        let before_redundant = redundant.cardinality() as i32;
 
         debug_assert!(solution.iter().all(|u| graph.degree_of(u) == 0));
 
@@ -50,7 +50,7 @@ impl<G: GraphEdgeOrder + AdjacencyList> Reducer<G> {
         let delta_edges = before_edges - graph.number_of_edges();
         let delta_in_domset = solution.len() - before_in_domset;
         let delta_covered = covered.cardinality() - before_covered;
-        let delta_redundant = redundant.cardinality() - before_redundant;
+        let delta_redundant = redundant.cardinality() as i32 - before_redundant;
 
         info!(
             "{} n -= {delta_nodes}, m -= {delta_edges}, |D| += {delta_in_domset}, |covered| += {delta_covered}, |redundant| += {delta_redundant}",
