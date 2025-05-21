@@ -1,7 +1,4 @@
 use rand::Rng;
-use std::collections::{HashMap, HashSet};
-
-use fxhash::FxHashSet;
 
 use super::*;
 
@@ -50,14 +47,12 @@ impl<'a, T: AdjacencyList> HeuristicBalancedCut<'a, T> {
                 } else {
                     c[u as usize] = true;
                 }
+            } else if b.len() < self.threshold {
+                b[u as usize] = true;
+            } else if a.len() < self.threshold {
+                a[u as usize] = true;
             } else {
-                if b.len() < self.threshold {
-                    b[u as usize] = true;
-                } else if a.len() < self.threshold {
-                    a[u as usize] = true;
-                } else {
-                    c[u as usize] = true;
-                }
+                c[u as usize] = true;
             }
         }
 
