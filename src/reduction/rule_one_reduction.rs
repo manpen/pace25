@@ -43,6 +43,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         graph: &mut Graph,
         domset: &mut DominatingSet,
         covered: &mut BitSet,
+        rule1_redundant: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
         let n = graph.len();
         assert!(NOT_SET as usize >= n);

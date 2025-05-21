@@ -88,14 +88,25 @@ fn main() -> anyhow::Result<()> {
     solution.fix_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
 
     let mut reducer = Reducer::new();
+    let mut redundant = BitSet::new(graph.number_of_nodes());
 
-    reducer.apply_rule_exhaustively::<RuleOneReduction<_>>(&mut graph, &mut solution, &mut covered);
-    reducer.apply_rule::<LongPathReduction<_>>(&mut graph, &mut solution, &mut covered);
+    reducer.apply_rule_exhaustively::<RuleOneReduction<_>>(
+        &mut graph,
+        &mut solution,
+        &mut covered,
+        &mut redundant,
+    );
+    reducer.apply_rule::<LongPathReduction<_>>(
+        &mut graph,
+        &mut solution,
+        &mut covered,
+        &mut redundant,
+    );
 
-    let redundant = {
+    {
         let csr_edges = graph.extract_csr_repr();
-        RuleSubsetReduction::apply_rule(csr_edges, &covered)
-    };
+        RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut redundant)
+    }
 
     let mut num_removed_edges = 0;
     redundant.iter_set_bits().for_each(|u| {
@@ -114,7 +125,12 @@ fn main() -> anyhow::Result<()> {
         redundant.cardinality()
     );
 
-    reducer.apply_rule::<RuleSmallExactReduction<_>>(&mut graph, &mut solution, &mut covered);
+    reducer.apply_rule::<RuleSmallExactReduction<_>>(
+        &mut graph,
+        &mut solution,
+        &mut covered,
+        &mut redundant,
+    );
 
     let mut solution = {
         let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));

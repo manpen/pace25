@@ -53,13 +53,25 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
     domset.fix_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
 
     let mut reducer = Reducer::new();
-    reducer.apply_rule_exhaustively::<RuleOneReduction<_>>(&mut graph, &mut domset, &mut covered);
-    reducer.apply_rule::<LongPathReduction<_>>(&mut graph, &mut domset, &mut covered);
+    let mut redundant = BitSet::new(graph.number_of_nodes());
 
-    let redundant = {
+    reducer.apply_rule_exhaustively::<RuleOneReduction<_>>(
+        &mut graph,
+        &mut domset,
+        &mut covered,
+        &mut redundant,
+    );
+    reducer.apply_rule::<LongPathReduction<_>>(
+        &mut graph,
+        &mut domset,
+        &mut covered,
+        &mut redundant,
+    );
+
+    {
         let csr_edges = graph.extract_csr_repr();
-        RuleSubsetReduction::apply_rule(csr_edges, &covered)
-    };
+        RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut redundant)
+    }
 
     let mut num_removed_edges = 0;
     redundant.iter_set_bits().for_each(|u| {
@@ -78,7 +90,12 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
         redundant.cardinality()
     );
 
-    reducer.apply_rule::<RuleSmallExactReduction<_>>(&mut graph, &mut domset, &mut covered);
+    reducer.apply_rule::<RuleSmallExactReduction<_>>(
+        &mut graph,
+        &mut domset,
+        &mut covered,
+        &mut redundant,
+    );
 
     info!("Preprocessing completed");
 

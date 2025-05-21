@@ -9,9 +9,12 @@ pub struct RuleSubsetReduction;
 impl RuleSubsetReduction {
     // Observe that we do NOT implement the standard traits, as this rule returns
     // redundant nodes, and does not fit the remainder of the infrastructure
-    pub fn apply_rule(mut graph: CsrEdges, is_perm_covered: &BitSet) -> BitSet {
+    pub fn apply_rule(
+        mut graph: CsrEdges,
+        is_perm_covered: &BitSet,
+        is_subset_dominated: &mut BitSet,
+    ) {
         let n = graph.number_of_nodes();
-        let mut is_subset_dominated = graph.vertex_bitset_unset();
 
         // Compute permanently covered nodes and degrees
         let mut non_perm_degree: Vec<NumNodes> = (0..n).map(|u| graph.degree_of(u)).collect();
@@ -89,9 +92,8 @@ impl RuleSubsetReduction {
                     is_subset_dominated.set_bit(u);
                 }
             }
+
             offsets.clear();
         }
-
-        is_subset_dominated
     }
 }
