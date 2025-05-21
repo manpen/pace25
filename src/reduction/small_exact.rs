@@ -15,6 +15,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         graph: &mut Graph,
         solution: &mut DominatingSet,
         covered: &mut BitSet,
+        _redundant: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
         const MAX_CC_SIZE: Node = 15;
 

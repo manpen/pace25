@@ -20,6 +20,7 @@ impl<G: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<G> for LongPat
         graph: &mut G,
         _solution: &mut DominatingSet,
         covered: &mut BitSet,
+        _redundant: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<G>>>) {
         let long_paths = graph.path_iter_with_atleast_path_nodes(5).collect_vec();
         if long_paths.is_empty() {
@@ -33,7 +34,7 @@ impl<G: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<G> for LongPat
 
             if path[2..2 + nodes_to_remove]
                 .iter()
-                .any(|&u| !covered.get_bit(u))
+                .any(|&u| covered.get_bit(u))
             {
                 // TODO: Fix me
                 continue;

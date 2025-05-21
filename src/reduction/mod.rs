@@ -22,6 +22,7 @@ pub trait ReductionRule<Graph> {
         graph: &mut Graph,
         solution: &mut DominatingSet,
         covered: &mut BitSet,
+        redundant: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>);
 }
 

@@ -32,15 +32,17 @@ impl<G: GraphEdgeOrder + AdjacencyList> Reducer<G> {
         graph: &mut G,
         solution: &mut DominatingSet,
         covered: &mut BitSet,
+        redundant: &mut BitSet,
     ) -> bool {
         let before_nodes = graph.vertices_with_neighbors().count();
         let before_edges = graph.number_of_edges();
         let before_in_domset = solution.len();
         let before_covered = covered.cardinality();
+        let before_redundant = redundant.cardinality() as i32;
 
         debug_assert!(solution.iter().all(|u| graph.degree_of(u) == 0));
 
-        let (changed, post) = R::apply_rule(graph, solution, covered);
+        let (changed, post) = R::apply_rule(graph, solution, covered, redundant);
         assert!(changed || post.is_none());
         debug_assert!(solution.iter().all(|u| graph.degree_of(u) == 0));
 
@@ -48,9 +50,10 @@ impl<G: GraphEdgeOrder + AdjacencyList> Reducer<G> {
         let delta_edges = before_edges - graph.number_of_edges();
         let delta_in_domset = solution.len() - before_in_domset;
         let delta_covered = covered.cardinality() - before_covered;
+        let delta_redundant = redundant.cardinality() as i32 - before_redundant;
 
         info!(
-            "{} n -= {delta_nodes}, m -= {delta_edges}, |D| += {delta_in_domset}, |covered| += {delta_covered}",
+            "{} n -= {delta_nodes}, m -= {delta_edges}, |D| += {delta_in_domset}, |covered| += {delta_covered}, |redundant| += {delta_redundant}",
             R::NAME
         );
 
@@ -68,10 +71,11 @@ impl<G: GraphEdgeOrder + AdjacencyList> Reducer<G> {
         graph: &mut G,
         solution: &mut DominatingSet,
         covered: &mut BitSet,
+        redundant: &mut BitSet,
     ) -> NumNodes {
         let mut iters = 1;
 
-        while self.apply_rule::<R>(graph, solution, covered) {
+        while self.apply_rule::<R>(graph, solution, covered, redundant) {
             iters += 1;
         }
 

@@ -232,6 +232,24 @@ impl AdjArray {
     }
 }
 
+/// The Csr-Represntation should have self-loops
+impl ExtractCsrRepr for AdjArray {
+    fn extract_csr_repr(&self) -> CsrEdges {
+        let mut offsets = Vec::with_capacity(self.len() + 1);
+        offsets.push(0);
+
+        let mut csr_edges = Vec::with_capacity(self.number_of_edges() as usize + self.len());
+        for u in self.vertices() {
+            debug_assert!(!self.has_edge(u, u));
+            csr_edges.push(u);
+            csr_edges.extend_from_slice(self.as_neighbors_slice(u));
+            offsets.push(offsets[u as usize] + self.degree_of(u) + 1);
+        }
+
+        CsrEdges::new(csr_edges, offsets)
+    }
+}
+
 #[derive(Default, Clone)]
 struct Neighborhood {
     nodes: Vec<Node>,

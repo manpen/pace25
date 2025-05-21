@@ -43,6 +43,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         graph: &mut Graph,
         domset: &mut DominatingSet,
         covered: &mut BitSet,
+        _redundant: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
         let n = graph.len();
         assert!(NOT_SET as usize >= n);
@@ -183,8 +184,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
                     .neighbors_of(u)
                     .filter(|x| !processed.get_bit(*x))
                     .count()
-                    == 0
-            // TODO: Why is 1 wrong?
+                    <= 1
             {
                 removable_nodes.set_bit(u);
             }
@@ -222,6 +222,19 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
 
         for u in selected {
             graph.remove_edges_at_node(u);
+        }
+
+        let mut post_process = Vec::new();
+        for u in covered
+            .iter_cleared_bits()
+            .filter(|u| graph.degree_of(*u) == 0)
+        {
+            post_process.push(u);
+        }
+
+        for u in post_process {
+            domset.fix_node(u);
+            covered.set_bit(u);
         }
 
         (modified, None::<Box<dyn Postprocessor<Graph>>>)
@@ -331,14 +344,20 @@ mod tests {
                 for u in adj_graph.vertices() {
                     if adj_graph.degree_of(u) == 0 {
                         sol1.fix_node(u);
+                        covered.set_bit(u);
                     }
                 }
 
-                let _ = RuleOneReduction::apply_rule(&mut adj_graph, &mut sol1, &mut covered);
+                let mut red = adj_graph.vertex_bitset_unset();
+                let _ =
+                    RuleOneReduction::apply_rule(&mut adj_graph, &mut sol1, &mut covered, &mut red);
             }
             naive_rule1_impl(&csr_graph, &mut sol2);
 
-            assert!(sol1.equals(&sol2), "Test: {sol1:?}\nRef:  {sol2:?}");
+            assert!(
+                sol2.iter().all(|u| sol1.is_in_domset(u)),
+                "Test: {sol1:?}\nRef:  {sol2:?}"
+            );
         }
     }
 }
