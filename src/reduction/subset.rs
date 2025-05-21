@@ -1,4 +1,4 @@
-use crate::{graph::*, utils::DominatingSet};
+use crate::graph::*;
 
 /// # Subset-Rule
 /// A node is subset-dominated by another node, if its neighborhood is a subset of the others neighborhood.
@@ -9,11 +9,7 @@ pub struct RuleSubsetReduction;
 impl RuleSubsetReduction {
     // Observe that we do NOT implement the standard traits, as this rule returns
     // redundant nodes, and does not fit the remainder of the infrastructure
-    pub fn apply_rule(
-        mut graph: CsrEdges,
-        is_perm_covered: &BitSet,
-        sol: &mut DominatingSet, // TODO: we probably do not want to have this mut
-    ) -> BitSet {
+    pub fn apply_rule(mut graph: CsrEdges, is_perm_covered: &BitSet) -> BitSet {
         let n = graph.number_of_nodes();
         let mut is_subset_dominated = graph.vertex_bitset_unset();
 
@@ -34,7 +30,7 @@ impl RuleSubsetReduction {
         let mut candidates = Vec::new();
         let mut offsets = Vec::new();
         for u in 0..n {
-            if is_subset_dominated.get_bit(u) || sol.is_fixed_node(u) {
+            if is_subset_dominated.get_bit(u) {
                 continue;
             }
 
@@ -85,23 +81,12 @@ impl RuleSubsetReduction {
                 // non_perm_degree[candidate as usize] <= non_perm_degree[u as usize]
                 //
                 // Inequality thus implies that the right side is bigger
-                if non_perm_degree[candidate as usize] == non_perm_degree[u as usize] {
-                    if u < candidate {
-                        is_subset_dominated.set_bit(u);
-                    } else {
-                        is_subset_dominated.set_bit(candidate);
-
-                        if sol.is_in_domset(candidate) && !is_subset_dominated.get_bit(u) {
-                            sol.replace(candidate, u);
-                        }
-                        continue;
-                    }
+                if non_perm_degree[candidate as usize] == non_perm_degree[u as usize]
+                    && u >= candidate
+                {
+                    is_subset_dominated.set_bit(candidate);
                 } else {
                     is_subset_dominated.set_bit(u);
-                }
-
-                if sol.is_in_domset(u) && !is_subset_dominated.get_bit(candidate) {
-                    sol.replace(u, candidate);
                 }
             }
             offsets.clear();

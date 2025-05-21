@@ -8,6 +8,8 @@ use dss::{
         LongPathReduction, Reducer, RuleOneReduction, RuleSmallExactReduction, RuleSubsetReduction,
     },
 };
+use itertools::Itertools;
+use log::info;
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
@@ -89,13 +91,30 @@ fn main() -> anyhow::Result<()> {
 
     reducer.apply_rule_exhaustively::<RuleOneReduction<_>>(&mut graph, &mut solution, &mut covered);
     reducer.apply_rule::<LongPathReduction<_>>(&mut graph, &mut solution, &mut covered);
-    reducer.apply_rule::<RuleSmallExactReduction<_>>(&mut graph, &mut solution, &mut covered);
 
     let redundant = {
-        let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
-        let csr_edges = csr_graph.extract_csr_repr();
-        RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut solution)
+        let csr_edges = graph.extract_csr_repr();
+        RuleSubsetReduction::apply_rule(csr_edges, &covered)
     };
+
+    let mut num_removed_edges = 0;
+    redundant.iter_set_bits().for_each(|u| {
+        let redundant_neighbors = graph
+            .neighbors_of(u)
+            .filter(|&v| redundant.get_bit(v))
+            .collect_vec();
+        num_removed_edges += redundant_neighbors.len();
+        for v in redundant_neighbors {
+            graph.remove_edge(u, v);
+        }
+    });
+
+    info!(
+        "Subset n ~= {}, m -= {num_removed_edges}, |D| += 0, |covered| += 0",
+        redundant.cardinality()
+    );
+
+    reducer.apply_rule::<RuleSmallExactReduction<_>>(&mut graph, &mut solution, &mut covered);
 
     let mut solution = {
         let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
