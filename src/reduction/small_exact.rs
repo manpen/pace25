@@ -81,7 +81,8 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         covered: &mut BitSet,
         _redundant: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
-        const MAX_CC_SIZE: Node = 36;
+        const MAX_CC_SIZE: Node = 80;
+        const MAX_UNCOVERED_SIZE: Node = 10;
         const MAX_DURATION: Duration = Duration::from_secs(30);
 
         let mut small_ccs = Vec::with_capacity(128);
@@ -90,6 +91,8 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         let mut modified = false;
         let mut num_cc3 = 0;
         let mut num_cc4 = 0;
+
+        let mut uncovered = Vec::with_capacity(1 + MAX_UNCOVERED_SIZE as usize);
 
         while let Some(nodes) = walker.next_cc(graph) {
             match nodes.len() {
@@ -153,7 +156,48 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
                     continue;
                 }
 
-                _ => small_ccs.push(nodes),
+                _ => {
+                    uncovered.clear();
+                    uncovered.extend(
+                        nodes
+                            .iter()
+                            .copied()
+                            .filter(|&x| !covered.get_bit(x))
+                            .take(1 + MAX_UNCOVERED_SIZE as usize),
+                    );
+
+                    if uncovered.is_empty() {
+                        // should not happen if we have proper reduction rules in place
+                        continue;
+                    }
+
+                    if uncovered.len() == 1 {
+                        solution.fix_node(uncovered[0]);
+                        covered.set_bits(nodes.iter().copied());
+                        for &u in &nodes {
+                            graph.remove_edges_at_node(u);
+                        }
+                    } else if uncovered.len() == 2 {
+                        if let Some(u) = nodes.iter().copied().find(|&u| {
+                            graph
+                                .closed_neighbors_of(u)
+                                .filter(|&v| v == uncovered[0] || v == uncovered[1])
+                                .count()
+                                == 2
+                        }) {
+                            solution.fix_node(u);
+                        } else {
+                            solution.fix_nodes(nodes.iter().copied());
+                        }
+
+                        covered.set_bits(nodes.iter().copied());
+                        for &u in &nodes {
+                            graph.remove_edges_at_node(u);
+                        }
+                    } else if uncovered.len() <= MAX_UNCOVERED_SIZE as usize {
+                        small_ccs.push((uncovered.len() as NumNodes, nodes))
+                    }
+                }
             }
         }
 
@@ -163,11 +207,11 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
             small_ccs.len()
         );
 
-        small_ccs.sort_by_key(|cc| cc.len());
+        small_ccs.sort_by_key(|(u, cc)| (*u, cc.len()));
 
         let mut mapping: HashMap<Node, Node> = HashMap::with_capacity(MAX_CC_SIZE as usize * 2);
         let start = Instant::now();
-        for nodes in small_ccs {
+        for (_, nodes) in small_ccs {
             if start.elapsed() > MAX_DURATION {
                 break;
             }
