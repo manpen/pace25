@@ -335,7 +335,8 @@ mod tests {
                     }
                 }
 
-                let _ = RuleOneReduction::apply_rule(&mut adj_graph, &mut sol1, &mut covered);
+                let mut red = adj_graph.vertex_bitset_unset();
+                let _ = RuleOneReduction::apply_rule(&mut adj_graph, &mut sol1, &mut covered, &mut red);
             }
             naive_rule1_impl(&csr_graph, &mut sol2);
 
