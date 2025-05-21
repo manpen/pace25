@@ -34,7 +34,7 @@ impl<G: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<G> for LongPat
 
             if path[2..2 + nodes_to_remove]
                 .iter()
-                .any(|&u| !covered.get_bit(u))
+                .any(|&u| covered.get_bit(u))
             {
                 // TODO: Fix me
                 continue;
