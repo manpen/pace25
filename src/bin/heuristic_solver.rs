@@ -15,9 +15,9 @@ use log::info;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64Mcg;
 use std::{path::PathBuf, time::Duration};
-use structopt::{StructOpt, clap};
+use structopt::StructOpt;
 
-#[derive(StructOpt, Default)]
+#[derive(Default, StructOpt)]
 struct Opts {
     #[structopt(short = "i")]
     input: Option<PathBuf>,
@@ -157,13 +157,11 @@ fn main() -> anyhow::Result<()> {
     build_pace_logger_for_level(log::LevelFilter::Info);
     signal_handling::initialize();
 
-    // while I love to have an error message here, this clashes with optil.io
-    // hence, we ignore parsing errors and only terminate if the user explictly asks for help
-    let opts = match Opts::from_args_safe() {
-        Ok(x) => x,
-        Err(e) if e.kind == clap::ErrorKind::HelpDisplayed => return Ok(()),
-        _ => Default::default(),
-    };
+    #[cfg(feature = "optil")]
+    let opts = Opts::default();
+
+    #[cfg(not(feature = "optil"))]
+    let opts = Opts::from_args();
 
     let mut rng = Pcg64Mcg::seed_from_u64(123u64);
 

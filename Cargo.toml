@@ -8,6 +8,7 @@ edition = "2024"
 [features]
 goodlp = ["good_lp"]
 par = ["rayon"]
+optil = ["log/max_level_off"]
 
 
 [dependencies]
