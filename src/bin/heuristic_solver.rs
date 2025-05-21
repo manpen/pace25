@@ -25,6 +25,9 @@ struct Opts {
 
     #[structopt(short = "T")]
     timeout: Option<f64>,
+
+    #[structopt(short = "q")]
+    no_output: bool,
 }
 
 fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<AdjArray> {
@@ -230,7 +233,9 @@ fn main() -> anyhow::Result<()> {
     reducer.post_process(&mut input_graph.clone(), &mut state.domset, &mut covered);
 
     assert!(state.domset.is_valid(&input_graph));
-    state.domset.write(std::io::stdout())?;
+    if !opts.no_output {
+        state.domset.write(std::io::stdout())?;
+    }
 
     Ok(())
 }
