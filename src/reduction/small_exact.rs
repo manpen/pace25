@@ -79,7 +79,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         graph: &mut Graph,
         solution: &mut DominatingSet,
         covered: &mut BitSet,
-        _redundant: &mut BitSet,
+        redundant: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
         const MAX_CC_SIZE: Node = 80;
         const MAX_UNCOVERED_SIZE: Node = 10;
@@ -222,10 +222,14 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
 
             let mut graph_mapped = AdjArray::new(n);
             let mut covered_mapped = graph_mapped.vertex_bitset_unset();
+            let mut redundant_mapped = graph_mapped.vertex_bitset_unset();
             for (&oldu, &newu) in mapping.iter() {
                 let ucovered = covered.get_bit(oldu);
                 if ucovered {
                     covered_mapped.set_bit(newu);
+                }
+                if redundant.get_bit(oldu) {
+                    redundant_mapped.set_bit(newu);
                 }
 
                 for oldv in graph.neighbors_of(oldu) {
@@ -255,7 +259,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
             let solution_mapped = match naive_solver(
                 &graph_mapped,
                 &covered_mapped,
-                &graph_mapped.vertex_bitset_unset(),
+                &redundant_mapped,
                 None,
                 Some(Duration::from_secs(1)),
             ) {
