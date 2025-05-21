@@ -259,8 +259,15 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
                 None,
                 Some(Duration::from_secs(1)),
             ) {
-                Some(x) => x,
-                None => continue,
+                Ok(x) => x,
+                Err(_) => {
+                    info!(
+                        "No solution for n={} covered={}",
+                        graph.number_of_nodes(),
+                        covered.cardinality()
+                    );
+                    continue;
+                }
             };
 
             for (&oldv, &newv) in mapping.iter() {
