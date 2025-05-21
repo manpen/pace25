@@ -145,7 +145,7 @@ fn main() -> anyhow::Result<()> {
                 SolverBackend::MAXSAT,
             )?,
             Commands::NaiveSolverEnum(_) => {
-                let local_sol = naive_solver(&graph, &covered, &redundant, None).unwrap();
+                let local_sol = naive_solver(&graph, &covered, &redundant, None, None).unwrap();
                 solution.add_nodes(local_sol.iter());
                 solution
             }

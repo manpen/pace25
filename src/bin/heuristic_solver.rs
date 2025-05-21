@@ -1,7 +1,8 @@
 use dss::{
     graph::{
         AdjArray, AdjacencyList, BitSet, CsrGraph, CuthillMcKee, Edge, EdgeOps, ExtractCsrRepr,
-        Getter, GraphEdgeEditing, GraphFromReader, GraphNodeOrder, NodeMapper, NumNodes,
+        Getter, GraphEdgeEditing, GraphEdgeOrder, GraphFromReader, GraphNodeOrder, NodeMapper,
+        NumNodes,
     },
     heuristic::{greedy_approximation, reverse_greedy_search::GreedyReverseSearch},
     log::build_pace_logger_for_level,
@@ -25,6 +26,9 @@ struct Opts {
 
     #[structopt(short = "T")]
     timeout: Option<f64>,
+
+    #[structopt(short = "q")]
+    no_output: bool,
 }
 
 fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<AdjArray> {
@@ -148,6 +152,15 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
 
     let domset = DominatingSet::new(graph.number_of_nodes());
 
+    info!(
+        "Mapped graph n={:7} m={:8} covered={:7} redundant={:7} (remaining: {:7})",
+        graph.number_of_nodes(),
+        graph.number_of_edges(),
+        covered.cardinality(),
+        redundant.cardinality(),
+        graph.number_of_nodes() - redundant.cardinality(),
+    );
+
     State {
         graph,
         domset,
@@ -230,7 +243,9 @@ fn main() -> anyhow::Result<()> {
     reducer.post_process(&mut input_graph.clone(), &mut state.domset, &mut covered);
 
     assert!(state.domset.is_valid(&input_graph));
-    state.domset.write(std::io::stdout())?;
+    if !opts.no_output {
+        state.domset.write(std::io::stdout())?;
+    }
 
     Ok(())
 }
