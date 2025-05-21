@@ -208,13 +208,16 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
                 }
             );
 
-            let solution_mapped = naive_solver(
+            let solution_mapped = match naive_solver(
                 &graph_mapped,
                 &covered_mapped,
                 &graph_mapped.vertex_bitset_unset(),
                 None,
-            )
-            .unwrap();
+                Some(Duration::from_secs(1)),
+            ) {
+                Some(x) => x,
+                None => continue,
+            };
 
             for (&oldv, &newv) in mapping.iter() {
                 if solution_mapped.is_in_domset(newv) {

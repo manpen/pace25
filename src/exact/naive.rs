@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use itertools::Itertools;
 #[allow(unused_imports)]
 use log::{info, trace};
@@ -9,6 +11,7 @@ pub fn naive_solver<G: Clone + AdjacencyList + GraphEdgeEditing>(
     is_perm_covered: &BitSet,
     never_select: &BitSet,
     upper_bound_incl: Option<NumNodes>,
+    timeout: Option<Duration>,
 ) -> Option<DominatingSet> {
     if is_perm_covered.are_all_set() {
         return Some(DominatingSet::new(graph.number_of_nodes()));
@@ -34,13 +37,15 @@ pub fn naive_solver<G: Clone + AdjacencyList + GraphEdgeEditing>(
 
     let candidates = candidates.into_iter().map(|(_, x)| x).collect_vec();
 
+    let finish_until = timeout.map(|t| Instant::now() + t);
     let size = naive_solver_impl(
         graph,
         &mut best_ds,
         &mut working_ds,
         candidates.as_slice(),
         is_perm_covered,
-        upper_bound_incl.unwrap_or_else(|| graph.number_of_nodes()),
+        upper_bound_incl.unwrap_or(candidates.len() as NumNodes),
+        finish_until,
     );
 
     if let Some(size) = size {
@@ -61,6 +66,7 @@ fn naive_solver_impl<G: Clone + AdjacencyList + GraphEdgeEditing>(
     candidates: &[Node],
     covered: &BitSet,
     mut upper_bound_incl: NumNodes,
+    finish_until: Option<Instant>,
 ) -> Option<NumNodes> {
     if covered.are_all_set() {
         // solved
@@ -71,6 +77,47 @@ fn naive_solver_impl<G: Clone + AdjacencyList + GraphEdgeEditing>(
 
     if candidates.is_empty() || upper_bound_incl <= work_domset.len() as NumNodes {
         return None;
+    }
+
+    if covered.cardinality() + 1 == graph.number_of_nodes() {
+        let uncovered = covered.iter_cleared_bits().next().unwrap();
+
+        let cand = *candidates
+            .iter()
+            .find(|&&c| graph.closed_neighbors_of(c).contains(&uncovered))
+            .unwrap();
+
+        work_domset.push(cand);
+        assert!(work_domset.len() <= upper_bound_incl as usize);
+        *best_domset = Some(work_domset.clone());
+        work_domset.pop();
+        return Some(1 + work_domset.len() as NumNodes);
+    }
+
+    if work_domset.len() + 1 == upper_bound_incl as usize {
+        let num_uncovered = graph.number_of_nodes() - covered.cardinality();
+        let cand = *candidates.iter().find(|&&c| {
+            graph
+                .closed_neighbors_of(c)
+                .filter(|&v| !covered.get_bit(v))
+                .count()
+                == num_uncovered as usize
+        })?;
+
+        work_domset.push(cand);
+        assert!(work_domset.len() <= upper_bound_incl as usize);
+        *best_domset = Some(work_domset.clone());
+        work_domset.pop();
+        return Some(1 + work_domset.len() as NumNodes);
+    }
+
+    if let Some(finish_until) = finish_until
+        && candidates.len() > 5
+    {
+        let now = Instant::now();
+        if now > finish_until {
+            return None;
+        }
     }
 
     let (candidate, candidates) = candidates.split_last().unwrap();
@@ -87,6 +134,7 @@ fn naive_solver_impl<G: Clone + AdjacencyList + GraphEdgeEditing>(
             candidates,
             &covered_with,
             upper_bound_incl,
+            finish_until,
         );
         work_domset.pop();
 
@@ -109,6 +157,7 @@ fn naive_solver_impl<G: Clone + AdjacencyList + GraphEdgeEditing>(
         candidates,
         covered,
         upper_bound_incl,
+        finish_until,
     );
 
     if let (Some(w), Some(wo)) = (size_with, size_without) {
@@ -145,6 +194,7 @@ mod test {
             &graph.vertex_bitset_unset(),
             &graph.vertex_bitset_unset(),
             None,
+            None,
         )
         .unwrap();
 
@@ -161,6 +211,7 @@ mod test {
                 &graph,
                 &graph.vertex_bitset_unset(),
                 &graph.vertex_bitset_unset(),
+                None,
                 None,
             )
             .unwrap(); // since we do not give an upper bound, there is a solution!
