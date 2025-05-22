@@ -131,6 +131,99 @@ impl<Index: PrimIndex> BitSetImpl<Index> {
         set
     }
 
+    /// Calls the predicate on all indices of set bits in ascending order and updates
+    /// the value of the bits according to the predicate's return value.
+    ///
+    /// # Example
+    /// ```
+    /// use stream_bitset::prelude::*;
+    /// let mut set = BitSet32::new_with_bits_set(8, vec![1u32, 2, 5, 6]);
+    /// set.update_set_bits(|i| i % 2 == 0); // only keep bits on even positions
+    /// assert_eq!(set.cardinality(), 2);
+    /// assert!(!set.get_bit(1));
+    /// assert!(set.get_bit(2));
+    /// assert!(!set.get_bit(5));
+    /// assert!(set.get_bit(6));
+    /// ```
+    pub fn update_set_bits<F: FnMut(Index) -> bool>(&mut self, mut predicate: F) {
+        let number_of_bits = self.number_of_bits();
+        let mut num_changed = 0;
+
+        for (word_idx, mask_iter) in self.data.iter_mut().enumerate() {
+            let mut mask: Bitmask = *mask_iter;
+            let mut updated: Bitmask = mask;
+
+            while mask != 0 {
+                let index_in_mask = {
+                    let first_one = mask.trailing_zeros() as usize;
+                    mask.clear_ith_bit(first_one);
+                    first_one
+                };
+
+                let index_in_set = Index::from(word_idx * BITS_IN_MASK + index_in_mask).unwrap();
+
+                if index_in_set >= number_of_bits {
+                    break;
+                }
+
+                if !predicate(index_in_set) {
+                    num_changed += 1;
+                    updated.clear_ith_bit(index_in_mask);
+                }
+            }
+            *mask_iter = updated;
+        }
+
+        self.cardinality -= num_changed;
+    }
+
+    /// Calls the predicate on all indices of set bits in ascending order and updates
+    /// the value of the bits according to the predicate's return value.
+    ///
+    /// # Example
+    /// ```
+    /// use stream_bitset::prelude::*;
+    /// let mut set = BitSet32::new_with_bits_cleared(6, vec![0u32, 3, 4, 5]);
+    /// set.update_cleared_bits(|i| i == 0 || i == 3); // set previously cleared bits at indices (0, 3)
+    /// assert_eq!(set.cardinality(), 4);
+    /// assert!(set.get_bit(0));
+    /// assert!(set.get_bit(3));
+    /// assert!(!set.get_bit(4));
+    /// assert!(!set.get_bit(5));
+    /// ```
+    pub fn update_cleared_bits<F: FnMut(Index) -> bool>(&mut self, mut predicate: F) {
+        const EMPTY_MASK: Bitmask = !0;
+        let number_of_bits = self.number_of_bits();
+        let mut num_changed = 0;
+
+        for (word_idx, mask_iter) in self.data.iter_mut().enumerate() {
+            let mut mask: Bitmask = *mask_iter;
+            let mut updated: Bitmask = mask;
+
+            while mask != EMPTY_MASK {
+                let index_in_mask = {
+                    let first_one = mask.trailing_ones() as usize;
+                    mask.set_ith_bit(first_one);
+                    first_one
+                };
+
+                let index_in_set = Index::from(word_idx * BITS_IN_MASK + index_in_mask).unwrap();
+
+                if index_in_set >= number_of_bits {
+                    break;
+                }
+
+                if predicate(index_in_set) {
+                    num_changed += 1;
+                    updated.set_ith_bit(index_in_mask);
+                }
+            }
+            *mask_iter = updated;
+        }
+
+        self.cardinality += num_changed;
+    }
+
     #[inline(always)]
     fn _get_number_of_bits(&self) -> usize {
         self.number_of_bits
@@ -168,7 +261,8 @@ impl<I> ToBitmaskStream for BitSetImpl<I>
 where
     I: PrimIndex,
 {
-    type ToStream<'a> = BitmaskSliceStream<'a>
+    type ToStream<'a>
+        = BitmaskSliceStream<'a>
     where
         Self: 'a;
 
@@ -279,7 +373,8 @@ impl<Index: PrimIndex> IntoBitmaskStream for BitsetStream<Index> {
 }
 
 impl<Index: PrimIndex> ToBitmaskStream for BitsetStream<Index> {
-    type ToStream<'b> = BitmaskSliceStream<'b>
+    type ToStream<'b>
+        = BitmaskSliceStream<'b>
     where
         Self: 'b;
 
@@ -290,6 +385,9 @@ impl<Index: PrimIndex> ToBitmaskStream for BitsetStream<Index> {
 
 #[cfg(test)]
 mod test {
+    use rand::{Rng, SeedableRng};
+    use rand_pcg::Pcg64Mcg;
+
     use super::*;
 
     #[test]
@@ -338,5 +436,41 @@ mod test {
         let bitset = BitSet32::new_with_bits_set(8, [0u32, 1, 7]);
         let result = format!("{bitset:?}");
         assert_eq!(result, "BitSet(num_bits=8 card=3 [11000001])");
+    }
+
+    #[test]
+    fn update_set_bits() {
+        let mut rng = Pcg64Mcg::seed_from_u64(1234567);
+
+        for n in 1..1000 {
+            let mut set = BitSet32::new_with_bits_set(n, (0..n).filter(|_| rng.gen_bool(0.5)));
+
+            let subset =
+                BitSet32::new_with_bits_set(n, set.iter_set_bits().filter(|_| rng.gen_bool(0.5)));
+
+            assert!(subset.is_subset_of(&set));
+
+            set.update_set_bits(|i| subset.get_bit(i));
+
+            assert_eq!(set, subset);
+        }
+    }
+
+    #[test]
+    fn update_cleared_bits() {
+        let mut rng = Pcg64Mcg::seed_from_u64(1234567);
+
+        for n in 1..100 {
+            for _ in 0..10 {
+                let mut set = BitSet32::new_with_bits_set(n, (0..n).filter(|_| rng.gen_bool(0.5)));
+                let superset = BitSet32::new_with_bits_set(
+                    n,
+                    (0..n).filter(|&i| set.get_bit(i) || rng.gen_bool(0.5)),
+                );
+                assert!(set.is_subset_of(&superset));
+                set.update_cleared_bits(|i| superset.get_bit(i));
+                assert_eq!(set, superset);
+            }
+        }
     }
 }

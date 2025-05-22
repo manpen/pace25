@@ -38,11 +38,11 @@ macro_rules! impl_bitset {
         }
 
         /// Returns true iff all bits are set.
-        /// 
+        ///
         /// # Examples
         /// ```
         /// use stream_bitset::prelude::*;
-        /// let set = BitSet32::new(2);
+        /// let mut set = BitSet32::new(2);
         /// assert!(!set.are_all_set());
         /// set.set_bit(0);
         /// assert!(!set.are_all_set());
@@ -54,11 +54,11 @@ macro_rules! impl_bitset {
         }
 
         /// Returns true iff all bits are unset.
-        /// 
+        ///
         /// # Examples
         /// ```
         /// use stream_bitset::prelude::*;
-        /// let set = BitSet32::new(2);
+        /// let mut set = BitSet32::new(2);
         /// assert!(set.are_all_unset());
         /// set.set_bit(0);
         /// assert!(!set.are_all_unset());
