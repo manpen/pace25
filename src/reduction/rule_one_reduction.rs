@@ -224,18 +224,13 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
             graph.remove_edges_at_node(u);
         }
 
-        let mut post_process = Vec::new();
-        for u in covered
-            .iter_cleared_bits()
-            .filter(|u| graph.degree_of(*u) == 0)
-        {
-            post_process.push(u);
-        }
-
-        for u in post_process {
-            domset.fix_node(u);
-            covered.set_bit(u);
-        }
+        covered.update_cleared_bits(|u| {
+            let is_singleton = graph.degree_of(u) == 0;
+            if is_singleton {
+                domset.fix_node(u);
+            }
+            is_singleton
+        });
 
         (modified, None::<Box<dyn Postprocessor<Graph>>>)
     }
