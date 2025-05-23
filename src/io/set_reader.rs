@@ -152,12 +152,17 @@ impl<R: BufRead> SetReader<R> {
     fn parse_edge_line(&mut self) -> Result<Option<Vec<Edge>>> {
         let line = self.next_non_comment_line()?;
         if let Some(line) = line {
-            let edges = line.trim().split(' ').filter(|t| !t.is_empty()).map(|s| {
-                let node = s.parse().unwrap();
-                debug_assert!((1..=self.number_of_nodes).contains(&node));
+            let edges = line
+                .trim()
+                .split(' ')
+                .filter(|t| !t.is_empty())
+                .map(|s| {
+                    let node = s.parse().unwrap();
+                    debug_assert!((1..=self.number_of_nodes).contains(&node));
 
-                Edge(node - 1, self.current_set_idx)
-            }).collect();
+                    Edge(node - 1, self.current_set_idx)
+                })
+                .collect();
 
             Ok(Some(edges))
         } else {
@@ -173,8 +178,7 @@ mod test {
 
     #[test]
     fn test_success() {
-        const DEMO_FILE: &str =
-            "c TEST\np hs 6 5\n1 2\nc TEST\n2 3 4\n5 6\n1 3 6\n2 4 5\n";
+        const DEMO_FILE: &str = "c TEST\np hs 6 5\n1 2\nc TEST\n2 3 4\n5 6\n1 3 6\n2 4 5\n";
         let buf_reader = std::io::BufReader::new(DEMO_FILE.as_bytes());
         let pace_reader = SetReader::try_new(buf_reader).unwrap();
 
@@ -183,6 +187,13 @@ mod test {
 
         let mut edges: Vec<_> = pace_reader.collect();
         edges.sort_unstable();
+
+        // Nodes => Sets
+        // 6  => {0, 1}
+        // 7  => {1, 2, 3}
+        // 8  => {4, 5}
+        // 9  => {0, 2, 5}
+        // 10 => {1, 3, 4}
         assert_eq!(
             edges,
             vec![
