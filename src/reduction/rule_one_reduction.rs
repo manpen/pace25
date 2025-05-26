@@ -178,14 +178,11 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
                 {
                     domset.fix_node(u);
                     selected.push(u);
+                    covered.set_bits(graph.closed_neighbors_of(u));
+                    processed.set_bits(graph.closed_neighbors_of(u));
                     break;
                 }
             }
-        }
-
-        for &u in &selected {
-            covered.set_bits(graph.closed_neighbors_of(u));
-            processed.set_bits(graph.closed_neighbors_of(u));
         }
 
         for u in graph.vertices() {
