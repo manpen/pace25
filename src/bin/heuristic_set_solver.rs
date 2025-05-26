@@ -64,7 +64,10 @@ fn apply_reduction_rules(
     domset.fix_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
 
     let mut reducer = Reducer::new();
-    let mut redundant = BitSet::new(graph.number_of_nodes());
+    let mut redundant = BitSet::new_with_bits_set(
+        graph.number_of_nodes(),
+        orig_number_nodes..graph.number_of_nodes(),
+    );
 
     reducer.apply_rule_exhaustively::<RuleOneReduction<_>>(
         &mut graph,
