@@ -63,15 +63,26 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         // Helper-BitSet to ensure we only process each node once later
         let mut processed: BitSet = graph.vertex_bitset_unset();
 
+        // Compute permanently covered nodes and degrees
+        let mut non_perm_degree: Vec<NumNodes> = (0..graph.number_of_nodes())
+            .map(|u| graph.degree_of(u) + 1)
+            .collect();
+
+        for u in covered.iter_set_bits() {
+            for v in graph.closed_neighbors_of(u) {
+                non_perm_degree[v as usize] -= 1;
+            }
+        }
+
         // (1) Compute first mapping and fix possible singletons
-        for u in covered.iter_cleared_bits() {
+        for u in graph.vertices() {
             if graph.degree_of(u) == 0 {
                 continue;
             }
 
             let max_neighbor = graph
                 .closed_neighbors_of(u)
-                .map(|u| (graph.degree_of(u), u))
+                .map(|u| (non_perm_degree[u as usize], u))
                 .max()
                 .map(|(_, u)| u)
                 .unwrap();
@@ -92,7 +103,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
             for v in inv_mappings[u as usize].drain(..) {
                 if graph
                     .closed_neighbors_of(v)
-                    .all(|x| marked[x as usize] == u)
+                    .all(|x| marked[x as usize] == u || covered.get_bit(x))
                 {
                     parent[v as usize] = u;
                     type2_nodes.set_bit(v);
@@ -122,7 +133,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
                     .filter_map(|x| {
                         let pt = parent[x as usize];
                         (pt != NOT_SET && pt != v && marked[pt as usize] == v)
-                            .then(|| (graph.degree_of(pt), pt))
+                            .then(|| (non_perm_degree[pt as usize], pt))
                     })
                     .min()
                 {
@@ -132,6 +143,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
             }
         }
 
+        processed.clear_all();
         parent = vec![NOT_SET; n];
         let mut removable_nodes = graph.vertex_bitset_unset();
 
@@ -150,7 +162,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
             for &v in &inv_mappings[u as usize] {
                 if graph
                     .closed_neighbors_of(v)
-                    .all(|x| marked[x as usize] == u)
+                    .all(|x| marked[x as usize] == u || covered.get_bit(x))
                 {
                     parent[v as usize] = u;
                 }
@@ -166,14 +178,13 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
                 {
                     domset.fix_node(u);
                     selected.push(u);
-                    covered.set_bits(graph.closed_neighbors_of(u));
                     break;
                 }
             }
         }
 
-        processed.clear_all();
         for &u in &selected {
+            covered.set_bits(graph.closed_neighbors_of(u));
             processed.set_bits(graph.closed_neighbors_of(u));
         }
 
@@ -182,7 +193,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
                 && !domset.is_in_domset(u)
                 && graph
                     .neighbors_of(u)
-                    .filter(|x| !processed.get_bit(*x))
+                    .filter(|x| !processed.get_bit(*x) && !covered.get_bit(*x))
                     .count()
                     <= 1
             {
