@@ -1,7 +1,6 @@
 pub mod adj_array;
 pub mod bipartite;
 pub mod bridges;
-pub mod complement;
 pub mod connectivity;
 pub mod csr;
 pub mod cut_vertex;
@@ -20,7 +19,6 @@ pub mod traversal;
 pub use adj_array::*;
 pub use bipartite::*;
 pub use bridges::*;
-pub use complement::*;
 pub use connectivity::*;
 pub use csr::*;
 pub use cut_vertex::*;
