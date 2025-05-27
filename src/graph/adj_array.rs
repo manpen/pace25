@@ -55,62 +55,9 @@ impl AdjacencyList for AdjArray {
     }
 }
 
-impl ColoredAdjacencyList for AdjArray {
-    type BlackNeighborIter<'a>
-        = impl Iterator<Item = Node> + 'a
-    where
-        Self: 'a;
-
-    type RedNeighborIter<'a>
-        = impl Iterator<Item = Node> + 'a
-    where
-        Self: 'a;
-
-    forward!(black_degree_of, black_degree, NumNodes);
-    forward!(red_degree_of, red_degree, NumNodes);
-    forward!(
-        black_neighbors_of,
-        black_neighbors,
-        Self::BlackNeighborIter<'_>
-    );
-    forward!(red_neighbors_of, red_neighbors, Self::RedNeighborIter<'_>);
-
-    type BlackNeighborsStream<'a>
-        = BitsetStream<Node>
-    where
-        Self: 'a;
-
-    type RedNeighborsStream<'a>
-        = BitsetStream<Node>
-    where
-        Self: 'a;
-
-    fn black_neighbors_of_as_stream(&self, u: Node) -> Self::BlackNeighborsStream<'_> {
-        self.black_neighbors_of_as_bitset(u).into_bitmask_stream()
-    }
-
-    fn red_neighbors_of_as_stream(&self, u: Node) -> Self::RedNeighborsStream<'_> {
-        self.red_neighbors_of_as_bitset(u).into_bitmask_stream()
-    }
-}
-
 impl AdjacencyTest for AdjArray {
     fn has_edge(&self, u: Node, v: Node) -> bool {
         self.adj[u as usize].has_neighbor(v)
-    }
-}
-
-impl ColoredAdjacencyTest for AdjArray {
-    fn has_black_edge(&self, u: Node, v: Node) -> bool {
-        self.adj[u as usize].has_black_neighbor(v)
-    }
-
-    fn has_red_edge(&self, u: Node, v: Node) -> bool {
-        self.adj[u as usize].has_red_neighbor(v)
-    }
-
-    fn type_of_edge(&self, u: Node, v: Node) -> EdgeKind {
-        self.adj[u as usize].edge_type_with(v)
     }
 }
 
@@ -167,17 +114,6 @@ impl AdjArray {
     pub fn unordered_edges(&self) -> impl Iterator<Item = Edge> + '_ {
         self.vertices_range()
             .flat_map(|u| self.neighbors_of(u).map(move |v| Edge(u, v)))
-    }
-
-    pub fn unordered_colored_edges(&self) -> impl Iterator<Item = ColoredEdge> + '_ {
-        self.vertices_range().flat_map(|u| {
-            self.black_neighbors_of(u)
-                .map(move |v| ColoredEdge(u, v, EdgeColor::Black))
-                .chain(
-                    self.red_neighbors_of(u)
-                        .map(move |v| ColoredEdge(u, v, EdgeColor::Red)),
-                )
-        })
     }
 
     pub fn test_only_from(edges: impl Clone + IntoIterator<Item = impl Into<Edge>>) -> Self {

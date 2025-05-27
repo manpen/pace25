@@ -87,8 +87,8 @@ mod test {
 
             assert_eq!(org.number_of_nodes(), read.number_of_nodes());
             assert_eq!(
-                org.ordered_colored_edges(true).collect_vec(),
-                read.ordered_colored_edges(true).collect_vec()
+                org.ordered_edges(true).collect_vec(),
+                read.ordered_edges(true).collect_vec()
             );
         }
     }

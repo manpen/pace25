@@ -185,7 +185,7 @@ impl Partition {
     /// one subgraph per partition class; the `result[i]` corresponds to partition class `i`.
     pub fn split_into_subgraphs_as<GI, GO, M>(&self, graph: &GI) -> Vec<(GO, M)>
     where
-        GI: ColoredAdjacencyList,
+        GI: AdjacencyList,
         GO: GraphNew + GraphEdgeEditing,
         M: node_mapper::Setter + node_mapper::Getter,
     {
@@ -223,12 +223,14 @@ impl Partition {
             let mapped_u = result_containg_u.1.new_id_of(u).unwrap();
 
             // Iterate over all out-neighbors of u that are in the same partition class
-            for ColoredEdge(_, v, color) in graph
-                .colored_edges_of(u, true)
-                .filter(|ColoredEdge(_, v, _)| self.classes[*v as usize] == class_id)
+            for Edge(_, v) in graph
+                .edges_of(u, true)
+                .filter(|Edge(_, v)| self.classes[*v as usize] == class_id)
             {
                 let mapped_v = result_containg_u.1.new_id_of(v).unwrap();
-                result_containg_u.0.add_edge(mapped_u, mapped_v, color);
+                result_containg_u
+                    .0
+                    .add_edge(mapped_u, mapped_v, EdgeColor::Black);
             }
         }
 
@@ -238,7 +240,7 @@ impl Partition {
     /// Shorthand for [`Partition::split_into_subgraphs_as`]
     pub fn split_into_subgraphs<G>(&self, graph: &G) -> Vec<(G, NodeMapper)>
     where
-        G: ColoredAdjacencyList + GraphNew + GraphEdgeEditing,
+        G: AdjacencyList + GraphNew + GraphEdgeEditing,
     {
         self.split_into_subgraphs_as(graph)
     }

@@ -138,27 +138,4 @@ mod test {
 
         assert_eq!(graph.compute_bridges(), vec![Edge(1, 3)]);
     }
-
-    #[test]
-    fn colored_bridges_in_path() {
-        for n in [0, 1, 5, 10, 15] {
-            let mut graph = AdjArray::new(n);
-            for u in 0..n.saturating_sub(1) {
-                graph.add_edge(
-                    u,
-                    u + 1,
-                    if u % 2 == 0 {
-                        EdgeColor::Black
-                    } else {
-                        EdgeColor::Red
-                    },
-                );
-            }
-
-            let mut bridges = graph.compute_colored_bridges();
-            bridges.sort();
-
-            assert_eq!(bridges, graph.ordered_colored_edges(true).collect_vec());
-        }
-    }
 }
