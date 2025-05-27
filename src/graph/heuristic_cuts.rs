@@ -66,7 +66,7 @@ impl<'a, G: AdjacencyList + ArticluationPoint + Traversal> GraphCutBuilder<'a, G
     ///
     /// # Arguments
     /// * `size` - Minimum number of nodes required in each connected component
-    ///            after removing the cut. Use `None` for no minimum requirement.
+    /// after removing the cut. Use `None` for no minimum requirement.
     pub fn min_cc_size(mut self, size: Option<NumNodes>) -> Self {
         self.min_cc_size = size;
         self
