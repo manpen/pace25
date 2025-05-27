@@ -44,6 +44,7 @@ impl<G: GraphEdgeOrder + AdjacencyList + UnsafeGraphEditing> Reducer<G> {
         assert!(changed || post.is_none());
         changed |= self.remove_unnecessary_edges(graph, covered, redundant);
         debug_assert!(solution.iter().all(|u| graph.degree_of(u) == 0));
+        debug_assert!(solution.iter().all(|u| !redundant.get_bit(u)));
 
         let delta_nodes = before_nodes - graph.vertices_with_neighbors().count();
         let delta_edges = before_edges - graph.number_of_edges();
@@ -52,7 +53,7 @@ impl<G: GraphEdgeOrder + AdjacencyList + UnsafeGraphEditing> Reducer<G> {
         let delta_redundant = redundant.cardinality() as i32 - before_redundant;
 
         info!(
-            "{} n -= {delta_nodes}, m -= {delta_edges}, |D| += {delta_in_domset}, |covered| += {delta_covered}, |redundant| += {delta_redundant}",
+            "{} n -= {delta_nodes}, m -= {delta_edges}, |D| += {delta_in_domset}, |covered| += {delta_covered}, |redundant| += {delta_redundant}, changed={changed}",
             R::NAME
         );
 
