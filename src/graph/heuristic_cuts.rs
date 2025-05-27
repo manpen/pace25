@@ -106,7 +106,7 @@ impl<'a, G: AdjacencyList + ArticluationPoint + Traversal> GraphCutBuilder<'a, G
 
     fn compute_two_cut(&self) -> Vec<Vec<Node>> {
         let mut cuts: HashSet<(Node, Node)> = Default::default();
-        let n = self.graph.number_of_nodes() as u32;
+        let n = self.graph.number_of_nodes();
         for u in 0..n {
             let mut visited = BitSet::new(n);
             visited.set_bit(u);
@@ -123,7 +123,7 @@ impl<'a, G: AdjacencyList + ArticluationPoint + Traversal> GraphCutBuilder<'a, G
 
     fn compute_three_cut(&self) -> Vec<Vec<Node>> {
         let mut cuts: HashSet<(Node, Node, Node)> = Default::default();
-        let n = self.graph.number_of_nodes() as u32;
+        let n = self.graph.number_of_nodes();
         for u in 0..n {
             for v in (u + 1)..n {
                 let mut visited = BitSet::new(n);
@@ -134,7 +134,7 @@ impl<'a, G: AdjacencyList + ArticluationPoint + Traversal> GraphCutBuilder<'a, G
                         .compute_articulation_points_with_visited(visited)
                         .iter_set_bits()
                         .map(|w| {
-                            let mut tmp =  vec![u, v, w];
+                            let mut tmp =  [u, v, w];
                             tmp.sort();
                             (tmp[0], tmp[1], tmp[2])
                         }),
