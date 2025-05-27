@@ -1,10 +1,8 @@
-use std::marker::PhantomData;
+use super::*;
+use crate::graph::{AdjacencyList, GraphEdgeOrder, NumNodes, UnsafeGraphEditing};
 
 use log::info;
-
-use crate::graph::{AdjacencyList, GraphEdgeOrder, NumNodes};
-
-use super::*;
+use std::marker::PhantomData;
 
 pub struct Reducer<G> {
     post_processors: Vec<Box<dyn Postprocessor<G>>>,
@@ -20,7 +18,7 @@ impl<G> Default for Reducer<G> {
     }
 }
 
-impl<G: GraphEdgeOrder + AdjacencyList> Reducer<G> {
+impl<G: GraphEdgeOrder + AdjacencyList + UnsafeGraphEditing> Reducer<G> {
     pub fn new() -> Self {
         Default::default()
     }
@@ -42,8 +40,9 @@ impl<G: GraphEdgeOrder + AdjacencyList> Reducer<G> {
 
         debug_assert!(solution.iter().all(|u| graph.degree_of(u) == 0));
 
-        let (changed, post) = R::apply_rule(graph, solution, covered, redundant);
+        let (mut changed, post) = R::apply_rule(graph, solution, covered, redundant);
         assert!(changed || post.is_none());
+        changed |= self.remove_unnecessary_edges(graph, covered, redundant);
         debug_assert!(solution.iter().all(|u| graph.degree_of(u) == 0));
 
         let delta_nodes = before_nodes - graph.vertices_with_neighbors().count();
@@ -81,6 +80,54 @@ impl<G: GraphEdgeOrder + AdjacencyList> Reducer<G> {
 
         info!("{} applied exhaustively {iters} times", R::NAME);
         iters
+    }
+
+    pub fn remove_unnecessary_edges(
+        &self,
+        graph: &mut G,
+        covered: &BitSet,
+        redundant: &BitSet,
+    ) -> bool {
+        let mut delete_node = covered.clone();
+        delete_node &= redundant;
+
+        let mut half_edges_removed = 0;
+
+        for u in graph.vertices_range() {
+            if delete_node.get_bit(u) {
+                half_edges_removed += unsafe { graph.remove_half_edges_at(u) };
+                continue;
+            }
+
+            half_edges_removed += match (covered.get_bit(u), redundant.get_bit(u)) {
+                (true, false) => unsafe {
+                    graph.remove_half_edges_at_if(u, |v| {
+                        covered.get_bit(v) || delete_node.get_bit(v)
+                    })
+                },
+                (false, true) => unsafe {
+                    graph.remove_half_edges_at_if(u, |v| {
+                        redundant.get_bit(v) || delete_node.get_bit(v)
+                    })
+                },
+                (false, false) => unsafe {
+                    graph.remove_half_edges_at_if(u, |v| delete_node.get_bit(v))
+                },
+                (true, true) => unreachable!("This node is contained in delete_node"),
+            };
+        }
+
+        assert!(half_edges_removed % 2 == 0);
+        unsafe {
+            graph.set_number_of_edges(graph.number_of_edges() - half_edges_removed / 2);
+        }
+
+        info!(
+            "Removed {} cov-cov or red-red edges",
+            half_edges_removed / 2
+        );
+
+        half_edges_removed > 0
     }
 
     pub fn post_process(

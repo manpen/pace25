@@ -1,3 +1,5 @@
+use smallvec::SmallVec;
+
 use super::*;
 use std::fmt;
 
@@ -72,6 +74,7 @@ impl GraphNew for AdjArray {
 
 impl GraphEdgeEditing for AdjArray {
     fn try_add_edge(&mut self, u: Node, v: Node) -> bool {
+        assert_ne!(u, v);
         let prev = self.adj[u as usize].try_add_edge(v);
 
         if !prev && u != v {
@@ -104,6 +107,27 @@ impl GraphEdgeEditing for AdjArray {
         for &v in &neighbors.nodes {
             assert!(self.adj[v as usize].try_delete_edge(u));
         }
+    }
+}
+
+impl UnsafeGraphEditing for AdjArray {
+    unsafe fn remove_half_edges_at_if<F: FnMut(Node) -> bool>(
+        &mut self,
+        u: Node,
+        predicate: F,
+    ) -> NumNodes {
+        self.adj[u as usize].remove_neighbors_if(predicate)
+    }
+
+    unsafe fn remove_half_edges_at(&mut self, u: Node) -> NumNodes {
+        let size_before = self.adj[u as usize].degree();
+        self.adj[u as usize].clear();
+        size_before
+    }
+
+    unsafe fn set_number_of_edges(&mut self, m: NumEdges) {
+        debug_assert_eq!(2 * m, self.adj.iter().map(|a| a.degree()).sum::<NumEdges>());
+        self.number_of_edges = m;
     }
 }
 
@@ -149,7 +173,7 @@ impl ExtractCsrRepr for AdjArray {
 
 #[derive(Default, Clone)]
 struct Neighborhood {
-    nodes: Vec<Node>,
+    nodes: SmallVec<[Node; 8]>,
 }
 
 impl Neighborhood {
@@ -181,6 +205,16 @@ impl Neighborhood {
         } else {
             false
         }
+    }
+
+    pub fn remove_neighbors_if<F: FnMut(Node) -> bool>(&mut self, mut predicate: F) -> NumNodes {
+        let size_before = self.nodes.len();
+        self.nodes.retain(|x| !predicate(*x));
+        (size_before - self.nodes.len()) as NumNodes
+    }
+
+    pub fn clear(&mut self) {
+        self.nodes.clear();
     }
 }
 

@@ -369,6 +369,37 @@ pub trait GraphEdgeEditing: GraphNew {
     fn remove_edges_at_node(&mut self, u: Node);
 }
 
+pub trait UnsafeGraphEditing {
+    /// Iterates through the neighborhood of node `u` and for each neighbor v call the
+    /// predicate `predicate(v)`. If it returns `true`, neighbor v is remove. The
+    /// relative order of neighbors remains.
+    ///
+    /// # Safety
+    /// This function only deletes a half edge and does NOT update the number of edges.
+    /// It is the callers responsibility to also remove the half edge pointing in the
+    /// opposite direction and to update the number of edges
+    unsafe fn remove_half_edges_at_if<F: FnMut(Node) -> bool>(
+        &mut self,
+        u: Node,
+        predicate: F,
+    ) -> NumNodes;
+
+    /// Delete all out-going half edges of node u, without removing the opposite half edges.
+    ///
+    /// # Safety
+    /// This function only deletes a half edge and does NOT update the number of edges.
+    /// It is the callers responsibility to also remove the half edge pointing in the
+    /// opposite direction and to update the number of edges
+    unsafe fn remove_half_edges_at(&mut self, u: Node) -> NumNodes;
+
+    /// Sets the number of edges of the graph to an user-provided value. It is intended to
+    /// be used together with `remove_half_edges_at_if`.
+    ///
+    /// # Safety
+    /// It is undefined behavior to update a wrong number of edges.
+    unsafe fn set_number_of_edges(&mut self, m: NumEdges);
+}
+
 /// A trait that allows accessing and modification of neighbors by index
 pub trait IndexedAdjacencyList: AdjacencyList {
     /// Returns the ith neighbor of a node
@@ -381,7 +412,7 @@ pub trait IndexedAdjacencyList: AdjacencyList {
     /// Possibly panics if i >= degree_of(u)
     fn ith_cross_position(&self, u: Node, i: NumNodes) -> NumNodes;
 
-    /// Swaps neighbos at positions nb1_pos and nb2_pos of u
+    /// Swaps neighbor at positions nb1_pos and nb2_pos of u
     ///
     /// Possibly panics if nb1_pos >= degree_of(u) || nb2_pos >= degree_of(u)
     fn swap_neighbors(&mut self, u: Node, nb1_pos: NumNodes, nb2_pos: NumNodes);
