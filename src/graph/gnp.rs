@@ -18,7 +18,7 @@ impl<G> GnpGenerator for G
 where
     G: GraphNew + GraphEdgeEditing,
 {
-    fn random_colored_gnp<R: Rng>(rng: &mut R, n: Node, p: f64, prob_black: f64) -> Self
+    fn random_colored_gnp<R: Rng>(rng: &mut R, n: Node, p: f64, _prob_black: f64) -> Self
     where
         G: GraphNew + GraphEdgeEditing,
     {
@@ -34,13 +34,7 @@ where
             .collect();
 
         for (u, v) in edges {
-            let color = if rng.gen_bool(prob_black) {
-                EdgeColor::Black
-            } else {
-                EdgeColor::Red
-            };
-
-            result.add_edge(u, v, color);
+            result.add_edge(u, v);
         }
 
         result

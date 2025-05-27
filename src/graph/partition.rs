@@ -228,9 +228,7 @@ impl Partition {
                 .filter(|Edge(_, v)| self.classes[*v as usize] == class_id)
             {
                 let mapped_v = result_containg_u.1.new_id_of(v).unwrap();
-                result_containg_u
-                    .0
-                    .add_edge(mapped_u, mapped_v, EdgeColor::Black);
+                result_containg_u.0.add_edge(mapped_u, mapped_v);
             }
         }
 

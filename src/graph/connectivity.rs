@@ -50,7 +50,7 @@ mod test {
     #[test]
     fn partition_into_connected_components() {
         let mut graph = AdjArray::new(7);
-        graph.add_edges([(1, 2), (2, 3), (4, 5)], EdgeColor::Black);
+        graph.add_edges([(1, 2), (2, 3), (4, 5)]);
 
         {
             let part = graph.partition_into_connected_components(true);

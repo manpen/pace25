@@ -48,8 +48,8 @@ mod test {
     #[test]
     fn hard_coded() {
         let mut graph = AdjArray::new(4);
-        graph.add_edge(0, 1, EdgeColor::Black);
-        graph.add_edge(3, 2, EdgeColor::Black);
+        graph.add_edge(0, 1);
+        graph.add_edge(3, 2);
 
         let output = {
             let mut buffer: Vec<u8> = Vec::new();

@@ -34,7 +34,7 @@ macro_rules! impl_graph_tests {
                         continue;
                     }
 
-                    if !graph.try_add_edge(u, v, EdgeColor::Black).is_none() {
+                    if graph.try_add_edge(u, v) {
                         graph.remove_edge(u, v);
                     }
                 }
@@ -45,7 +45,7 @@ macro_rules! impl_graph_tests {
             #[test]
             fn delete_edges_at_node() {
                 let mut graph = <$graph>::new(4);
-                graph.add_edges([(0, 1), (0, 2), (0, 3), (1, 2), (2, 3)], EdgeColor::Black);
+                graph.add_edges([(0, 1), (0, 2), (0, 3), (1, 2), (2, 3)]);
 
                 assert_eq!(graph.number_of_edges(), 5);
                 assert_eq!(graph.degrees().collect_vec(), [3, 2, 3, 2]);
@@ -60,10 +60,10 @@ macro_rules! impl_graph_tests {
             fn loops() {
                 let mut graph = <$graph>::new(1);
 
-                assert!(graph.try_add_edge(0, 0, EdgeColor::Black).is_none());
-                assert!(graph.try_add_edge(0, 0, EdgeColor::Red).is_some());
-                assert!(graph.try_remove_edge(0, 0).is_some());
-                assert!(graph.try_remove_edge(0, 0).is_none());
+                assert!(!graph.try_add_edge(0, 0));
+                assert!(graph.try_add_edge(0, 0));
+                assert!(graph.try_remove_edge(0, 0));
+                assert!(!graph.try_remove_edge(0, 0));
             }
         }
     };

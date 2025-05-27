@@ -151,7 +151,7 @@ pub trait Getter {
             if let Some(new_u) = self.new_id_of(old_u) {
                 for Edge(_, old_v) in input.edges_of(old_u, true) {
                     if let Some(new_v) = self.new_id_of(old_v) {
-                        output.try_add_edge(new_u, new_v, EdgeColor::Black);
+                        output.try_add_edge(new_u, new_v);
                     }
                 }
             }

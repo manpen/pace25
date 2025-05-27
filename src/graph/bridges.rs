@@ -118,7 +118,7 @@ mod test {
         for n in [0, 1, 5, 10, 15] {
             let mut graph = AdjArray::new(n);
             for u in 0..n.saturating_sub(1) {
-                graph.add_edge(u, u + 1, EdgeColor::Black);
+                graph.add_edge(u, u + 1);
             }
 
             let mut bridges = graph.compute_bridges();
@@ -131,10 +131,7 @@ mod test {
     #[test]
     fn bridge_in_example() {
         let mut graph = AdjArray::new(6);
-        graph.add_edges(
-            [(0, 1), (0, 2), (2, 1), (1, 3), (3, 4), (4, 5), (5, 3)],
-            EdgeColor::Red,
-        );
+        graph.add_edges([(0, 1), (0, 2), (2, 1), (1, 3), (3, 4), (4, 5), (5, 3)]);
 
         assert_eq!(graph.compute_bridges(), vec![Edge(1, 3)]);
     }

@@ -331,33 +331,27 @@ pub trait GraphNew {
 
 /// Provides functions to insert/delete edges
 pub trait GraphEdgeEditing: GraphNew {
-    /// Adds the directed edge *(u,v)* to the graph. I.e., the edge FROM u TO v.
+    /// Adds the directed edge *(u,v)* to the graph.
     /// ** Panics if the edge is already contained or possibly if u, v >= n **
-    fn add_edge(&mut self, u: Node, v: Node, color: EdgeColor) {
-        assert!(self.try_add_edge(u, v, color).is_none())
+    fn add_edge(&mut self, u: Node, v: Node) {
+        assert!(!self.try_add_edge(u, v))
     }
 
     /// Adds the directed edge *(u,v)* to the graph. I.e., the edge FROM u TO v.
     /// Returns *true* exactly if the edge was not present previously.
     /// ** Can panic if u, v >= n, depending on implementation **
-    fn try_add_edge(&mut self, u: Node, v: Node, color: EdgeColor) -> EdgeKind;
+    fn try_add_edge(&mut self, u: Node, v: Node) -> bool;
 
-    fn add_edges(&mut self, edges: impl IntoIterator<Item = impl Into<Edge>>, color: EdgeColor) {
+    fn add_edges(&mut self, edges: impl IntoIterator<Item = impl Into<Edge>>) {
         for Edge(u, v) in edges.into_iter().map(|d| d.into()) {
-            self.add_edge(u, v, color);
-        }
-    }
-
-    fn add_colored_edges(&mut self, edges: impl IntoIterator<Item = impl Borrow<ColoredEdge>>) {
-        for ColoredEdge(u, v, color) in edges.into_iter().map(|d| *d.borrow()) {
-            self.add_edge(u, v, color);
+            self.add_edge(u, v);
         }
     }
 
     /// Removes the directed edge *(u,v)* from the graph. I.e., the edge FROM u TO v.
     /// ** Panics if the edge is not present or u, v >= n **
     fn remove_edge(&mut self, u: Node, v: Node) {
-        assert!(self.try_remove_edge(u, v).is_some())
+        assert!(self.try_remove_edge(u, v));
     }
 
     fn remove_edges(&mut self, edges: impl IntoIterator<Item = impl Borrow<Edge>>) {
@@ -369,7 +363,7 @@ pub trait GraphEdgeEditing: GraphNew {
     /// Removes the directed edge *(u,v)* from the graph. I.e., the edge FROM u TO v.
     /// If the edge was removed, returns *true* and *false* otherwise.
     /// ** Panics if u, v >= n **
-    fn try_remove_edge(&mut self, u: Node, v: Node) -> EdgeKind;
+    fn try_remove_edge(&mut self, u: Node, v: Node) -> bool;
 
     /// Removes all edges into and out of node u
     fn remove_edges_at_node(&mut self, u: Node);
@@ -402,7 +396,7 @@ pub trait GraphFromReader {
 impl<G: GraphNew + GraphEdgeEditing> GraphFromReader for G {
     fn from_edges(n: NumNodes, edges: impl IntoIterator<Item = impl Into<Edge>>) -> Self {
         let mut graph = Self::new(n);
-        graph.add_edges(edges, EdgeColor::Black);
+        graph.add_edges(edges);
         graph
     }
 }

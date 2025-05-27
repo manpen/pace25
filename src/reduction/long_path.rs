@@ -46,7 +46,7 @@ impl<G: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<G> for LongPat
             }
 
             total_nodes_deleted += nodes_to_remove as NumNodes;
-            graph.add_edge(path[1], path[2 + nodes_to_remove], EdgeColor::Black);
+            graph.add_edge(path[1], path[2 + nodes_to_remove]);
         }
 
         (
