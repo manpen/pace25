@@ -23,3 +23,32 @@ where
         write!(writer, r"}}")
     }
 }
+
+pub trait DotNodeWriter {
+    fn try_write_dot_nodes<W: Write>(
+        &mut self,
+        writer: W,
+        node_prefix: &str,
+        color: &str,
+    ) -> Result<(), std::io::Error>;
+}
+
+impl<T> DotNodeWriter for T
+where
+    T: Iterator<Item = Node>,
+{
+    fn try_write_dot_nodes<W: Write>(
+        &mut self,
+        mut writer: W,
+        node_prefix: &str,
+        color: &str,
+    ) -> Result<(), std::io::Error> {
+        for u in self {
+            write!(
+                writer,
+                "{node_prefix}{u} [style=filled, fillcolor={color}];"
+            )?;
+        }
+        writeln!(writer, "")
+    }
+}
