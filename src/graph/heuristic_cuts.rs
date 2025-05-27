@@ -1,26 +1,31 @@
 use super::*;
 use std::{cmp, collections::HashSet};
 
-pub trait AdjacencyList {
-    fn num_nodes(&self) -> usize;
-    fn neighbors(&self, node: Node) -> Vec<Node>;
-    // Add other required graph operations...
-}
-
 pub struct GraphCutBuilder<'a, G: AdjacencyList + ArticluationPoint + Traversal> {
     graph: &'a G,
     enabled_cuts: Vec<CutType>,
     min_cc_size: Option<NumNodes>, // Minimum connected component size to keep
 }
 
+// Enum representing the different types of graph cuts that can be computed.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum CutType {
-    OneCut,
+    OneCut, // Single-node cut (articulation points)
     TwoCut,
     ThreeCut,
 }
 
+// Builder for computing various graph cuts with configurable parameters.
+///
+/// The builder allows enabling/disabling specific cut types and setting
+/// minimum connected component size requirements.
+/// If a cut produces >=2 components where the second largest component does
+/// not contain > threshold nodes, it is filtered out.
 impl<'a, G: AdjacencyList + ArticluationPoint + Traversal> GraphCutBuilder<'a, G> {
+    /// Creates a new GraphCutBuilder with all cut types enabled by default.
+    ///
+    /// # Arguments
+    /// * `graph` - The graph to compute cuts on
     pub fn new(graph: &'a G) -> Self {
         Self {
             graph,
@@ -29,6 +34,10 @@ impl<'a, G: AdjacencyList + ArticluationPoint + Traversal> GraphCutBuilder<'a, G
         }
     }
 
+    /// Enables a specific cut type if it's not already enabled.
+    ///
+    /// # Arguments
+    /// * `cut_type` - The cut type to enable
     pub fn enable_cut(mut self, cut_type: CutType) -> Self {
         if self.enabled_cuts.contains(&cut_type) {
             self
@@ -38,6 +47,10 @@ impl<'a, G: AdjacencyList + ArticluationPoint + Traversal> GraphCutBuilder<'a, G
         }
     }
 
+    /// Disables a specific cut type if it's currently enabled.
+    ///
+    /// # Arguments
+    /// * `cut_type` - The cut type to disable
     pub fn disable_cut(mut self, cut_type: CutType) -> Self {
         if let Some(index) = self
             .enabled_cuts
@@ -49,11 +62,21 @@ impl<'a, G: AdjacencyList + ArticluationPoint + Traversal> GraphCutBuilder<'a, G
         self
     }
 
+    /// Sets the minimum connected component size requirement for cuts.
+    ///
+    /// # Arguments
+    /// * `size` - Minimum number of nodes required in each connected component
+    ///            after removing the cut. Use `None` for no minimum requirement.
     pub fn min_cc_size(mut self, size: Option<NumNodes>) -> Self {
         self.min_cc_size = size;
         self
     }
 
+    /// Computes all enabled cuts and returns them as a single collection.
+    ///
+    /// The result is a vector of cut sets, where each cut set is a vector of nodes.
+    /// only cuts that meet the minimum cc`size (if set)
+    /// are included in the results.
     pub fn compute(self) -> Vec<Vec<Node>> {
         let mut all_cuts: Vec<Vec<Node>> = Vec::new();
 
@@ -75,19 +98,19 @@ impl<'a, G: AdjacencyList + ArticluationPoint + Traversal> GraphCutBuilder<'a, G
                 let partition = self
                     .graph
                     .partition_into_connected_components_exclude_nodes(true, candidate.clone());
-                let mut smallest = 0;
-                let mut second_smallest = 0;
+                let mut largest = 0;
+                let mut second_largest = 0;
                 if partition.number_of_classes() > 1 {
                     for i in 0..partition.number_of_classes() {
                         let a = partition.number_in_class(i);
-                        if a < smallest {
-                            second_smallest = smallest;
-                            smallest = a;
-                        } else if a < second_smallest {
-                            second_smallest = a;
+                        if a > largest {
+                            second_largest = largest;
+                            largest = a;
+                        } else if a < second_largest {
+                            second_largest = a;
                         }
                     }
-                    if second_smallest >= min_cc_size {
+                    if second_largest >= min_cc_size {
                         good_cuts.push(candidate);
                     }
                 }
