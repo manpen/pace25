@@ -222,7 +222,7 @@ mod test {
     fn randomized() {
         let mut rng = Pcg64Mcg::seed_from_u64(1234567);
         for _ in 0..100 {
-            let graph = AdjArray::random_black_gnp(&mut rng, 20, 4. / 20.);
+            let graph = AdjArray::random_gnp(&mut rng, 20, 4. / 20.);
 
             let solution = naive_solver(
                 &graph,

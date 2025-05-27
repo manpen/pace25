@@ -5,20 +5,15 @@ use rand_distr::Geometric;
 pub trait GnpGenerator: Sized {
     /// Generates a Gilbert (also, wrongly, known as Erdos-Reyni) graph
     /// The `G(n,p)` contains n nodes and each of the `n(n-1)/2` edges exists
-    /// independently with probability `p`. Each edge is black independently
-    /// with probability `prob_black` and red otherwise
-    fn random_colored_gnp<R: Rng>(rng: &mut R, n: Node, p: f64, prob_black: f64) -> Self;
-
-    fn random_black_gnp<R: Rng>(rng: &mut R, n: Node, p: f64) -> Self {
-        Self::random_colored_gnp(rng, n, p, 1.0)
-    }
+    /// independently with probability `p`.
+    fn random_gnp<R: Rng>(rng: &mut R, n: Node, p: f64) -> Self;
 }
 
 impl<G> GnpGenerator for G
 where
     G: GraphNew + GraphEdgeEditing,
 {
-    fn random_colored_gnp<R: Rng>(rng: &mut R, n: Node, p: f64, _prob_black: f64) -> Self
+    fn random_gnp<R: Rng>(rng: &mut R, n: Node, p: f64) -> Self
     where
         G: GraphNew + GraphEdgeEditing,
     {
@@ -143,7 +138,7 @@ mod test {
             let n = 100;
 
             let mean_edges = (0..repeats)
-                .map(|_| AdjArray::random_black_gnp(rng, n, p).number_of_edges() as f64)
+                .map(|_| AdjArray::random_gnp(rng, n, p).number_of_edges() as f64)
                 .sum::<f64>()
                 / repeats as f64;
 

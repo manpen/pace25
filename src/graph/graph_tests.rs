@@ -3,11 +3,7 @@ macro_rules! impl_graph_tests {
     ($graph : ty) => {
         #[cfg(test)]
         mod graph_tests {
-            use std::collections::HashSet;
-
             use itertools::Itertools;
-            use rand::{Rng, SeedableRng};
-            use rand_pcg::Pcg64;
 
             use super::*;
 
@@ -22,24 +18,6 @@ macro_rules! impl_graph_tests {
                     assert_eq!(graph.vertices_range().len(), n as usize);
                     assert_eq!(graph.vertices().collect_vec(), (0..n).collect_vec());
                 }
-            }
-
-            fn get_random_graph(rng: &mut impl Rng, n: NumNodes, m: NumEdges) -> $graph {
-                let mut graph = <$graph>::new(n);
-
-                while graph.number_of_edges() < m {
-                    let u = rng.gen_range(0..n);
-                    let v = rng.gen_range(0..n);
-                    if Edge(u, v).is_loop() {
-                        continue;
-                    }
-
-                    if graph.try_add_edge(u, v) {
-                        graph.remove_edge(u, v);
-                    }
-                }
-
-                graph
             }
 
             #[test]

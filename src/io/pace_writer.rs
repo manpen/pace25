@@ -78,7 +78,7 @@ mod test {
         for n in 0..100 {
             let p = rng.gen_range(0.01..0.99);
 
-            let org = AdjArray::random_black_gnp(&mut rng, n, p);
+            let org = AdjArray::random_gnp(&mut rng, n, p);
 
             let mut buffer: Vec<u8> = Vec::new();
             org.try_write_pace(&mut buffer).expect("Failed to write");
