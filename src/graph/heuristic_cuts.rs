@@ -1,5 +1,5 @@
-use std::{cmp, collections::HashSet};
 use super::*;
+use std::{cmp, collections::HashSet};
 
 pub trait AdjacencyList {
     fn num_nodes(&self) -> usize;
@@ -134,7 +134,7 @@ impl<'a, G: AdjacencyList + ArticluationPoint + Traversal> GraphCutBuilder<'a, G
                         .compute_articulation_points_with_visited(visited)
                         .iter_set_bits()
                         .map(|w| {
-                            let mut tmp =  [u, v, w];
+                            let mut tmp = [u, v, w];
                             tmp.sort();
                             (tmp[0], tmp[1], tmp[2])
                         }),
