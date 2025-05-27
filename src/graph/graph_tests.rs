@@ -198,40 +198,6 @@ macro_rules! impl_graph_tests {
             }
 
             #[test]
-            fn merge() {
-                let mut path = <$graph>::new(3);
-                path.add_edges([(0, 1), (1, 2)], EdgeColor::Black);
-
-                {
-                    let mut path = path.clone();
-                    path.merge_node_into(0, 1);
-
-                    assert_eq!(path.number_of_edges(), 1);
-                    assert_eq!(path.red_degrees().collect_vec(), [0, 1, 1]);
-                    assert_eq!(path.black_degrees().collect_vec(), [0, 0, 0]);
-
-                    assert_eq!(
-                        path.unordered_colored_edges().next().unwrap(),
-                        ColoredEdge(1, 2, EdgeColor::Red)
-                    );
-                }
-
-                {
-                    let mut path = path.clone();
-                    path.merge_node_into(0, 2);
-
-                    assert_eq!(path.number_of_edges(), 1);
-                    assert_eq!(path.red_degrees().collect_vec(), [0, 0, 0]);
-                    assert_eq!(path.black_degrees().collect_vec(), [0, 1, 1]);
-
-                    assert_eq!(
-                        path.unordered_colored_edges().next().unwrap(),
-                        ColoredEdge(1, 2, EdgeColor::Black)
-                    );
-                }
-            }
-
-            #[test]
             fn loops() {
                 let mut graph = <$graph>::new(1);
 

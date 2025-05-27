@@ -377,18 +377,6 @@ pub trait GraphEdgeEditing: GraphNew {
 
     /// Removes all edges into and out of node u
     fn remove_edges_at_node(&mut self, u: Node);
-
-    /// Removes all edges into and out of node `u` and connects every in-neighbor with every out-neighbor.
-    fn merge_node_into(&mut self, removed: Node, survivor: Node);
-
-    /// Dry-run of [`GraphEdgeEditing::merge_node_into`] that only returns the red-degree after a merge were carried out
-    fn red_degree_after_merge(&self, removed: Node, survivor: Node) -> NumNodes {
-        self.red_neighbors_after_merge(removed, survivor, false)
-            .cardinality() as NumNodes
-    }
-
-    /// Dry-run of [`GraphEdgeEditing::merge_node_into`] that only returns the red-neighbors after a merge
-    fn red_neighbors_after_merge(&self, removed: Node, survivor: Node, only_new: bool) -> BitSet;
 }
 
 /// A trait that allows accessing and modification of neighbors by index

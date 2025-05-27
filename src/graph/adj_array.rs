@@ -161,42 +161,6 @@ impl GraphEdgeEditing for AdjArray {
             assert!(self.adj[v as usize].try_delete_edge(u).is_some());
         }
     }
-
-    fn merge_node_into(&mut self, removed: Node, survivor: Node) {
-        assert_ne!(removed, survivor);
-
-        let reds = self.red_neighbors_after_merge(removed, survivor, true);
-
-        for red_neigh in reds.iter_set_bits() {
-            self.try_add_edge(survivor, red_neigh as Node, EdgeColor::Red);
-        }
-
-        debug_assert!(!self.has_edge(survivor, survivor));
-
-        self.remove_edges_at_node(removed);
-    }
-
-    fn red_neighbors_after_merge(&self, removed: Node, survivor: Node, only_new: bool) -> BitSet {
-        let mut turned_red = self.black_neighbors_of_as_bitset(survivor);
-
-        for v in self.black_neighbors_of(removed) {
-            if turned_red.set_bit(v) {
-                turned_red.clear_bit(v); // flip bit!
-            }
-        }
-        turned_red.set_bits(self.red_neighbors_of(removed));
-
-        if only_new {
-            turned_red.clear_bits(self.red_neighbors_of(survivor));
-        } else {
-            turned_red.set_bits(self.red_neighbors_of(survivor));
-        }
-
-        turned_red.clear_bit(removed);
-        turned_red.clear_bit(survivor);
-
-        turned_red
-    }
 }
 
 impl AdjArray {

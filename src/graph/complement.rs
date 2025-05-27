@@ -51,32 +51,6 @@ pub trait Complement: ColoredAdjacencyList + GraphNew + GraphEdgeEditing {
     }
 }
 
-impl Complement for AdjMatrix {
-    fn trigraph_complement(&self, ignore_isolated: bool) -> Self {
-        let mut mask = BitSet::new_all_set(self.number_of_nodes());
-        if ignore_isolated {
-            mask.clear_bits(self.vertices().filter(|&u| self.degree_of(u) == 0));
-        }
-
-        let mut complement = self.clone();
-
-        complement.number_of_edges = 0;
-        for u in mask.iter_set_bits() {
-            let adj = complement.adj_of_mut(u);
-            adj.flip_all();
-            *adj |= &self.red_adj_of(u).bitmask_stream();
-            *adj &= &mask;
-
-            adj.clear_bit(u); // no self loops
-            debug_assert!(self.red_adj_of(u).is_subset_of(adj));
-            complement.number_of_edges += adj.cardinality() as NumEdges;
-        }
-        complement.number_of_edges /= 2; // sum over degrees is double counting; halve it!
-
-        complement
-    }
-}
-
 impl Complement for AdjArray {}
 
 #[cfg(test)]
