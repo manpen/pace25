@@ -90,23 +90,35 @@ fn main() -> anyhow::Result<()> {
     let mut reducer = Reducer::new();
     let mut redundant = BitSet::new(graph.number_of_nodes());
 
-    reducer.apply_rule_exhaustively::<RuleOneReduction<_>>(
-        &mut graph,
-        &mut solution,
-        &mut covered,
-        &mut redundant,
-    );
-    reducer.apply_rule::<LongPathReduction<_>>(
-        &mut graph,
-        &mut solution,
-        &mut covered,
-        &mut redundant,
-    );
+    loop {
+        let mut changed = false;
 
-    let before_redundant = redundant.cardinality();
-    {
-        let csr_edges = graph.extract_csr_repr();
-        RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut redundant)
+        changed |= reducer.apply_rule::<RuleOneReduction<_>>(
+            &mut graph,
+            &mut solution,
+            &mut covered,
+            &mut redundant,
+        );
+        changed |= reducer.apply_rule::<LongPathReduction<_>>(
+            &mut graph,
+            &mut solution,
+            &mut covered,
+            &mut redundant,
+        );
+
+        if changed {
+            continue;
+        }
+
+        if true {
+            let csr_edges = graph.extract_csr_repr();
+            RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut redundant);
+            if reducer.remove_unnecessary_edges(&mut graph, &covered, &redundant) {
+                continue;
+            }
+        }
+
+        break;
     }
 
     let mut num_removed_edges = 0;
@@ -120,11 +132,6 @@ fn main() -> anyhow::Result<()> {
             graph.remove_edge(u, v);
         }
     });
-
-    info!(
-        "Subset n -= 0, m -= {num_removed_edges}, |D| += 0, |covered| += 0, |redundant| += {}",
-        redundant.cardinality() - before_redundant
-    );
 
     if graph.number_of_edges() > 0 {
         reducer.apply_rule::<RuleSmallExactReduction<_>>(

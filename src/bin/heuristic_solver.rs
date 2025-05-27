@@ -120,22 +120,35 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
     let mut reducer = Reducer::new();
     let mut redundant = BitSet::new(graph.number_of_nodes());
 
-    reducer.apply_rule_exhaustively::<RuleOneReduction<_>>(
-        &mut graph,
-        &mut domset,
-        &mut covered,
-        &mut redundant,
-    );
-    reducer.apply_rule::<LongPathReduction<_>>(
-        &mut graph,
-        &mut domset,
-        &mut covered,
-        &mut redundant,
-    );
+    loop {
+        let mut changed = false;
 
-    {
-        let csr_edges = graph.extract_csr_repr();
-        RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut redundant)
+        changed |= reducer.apply_rule::<RuleOneReduction<_>>(
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+        changed |= reducer.apply_rule::<LongPathReduction<_>>(
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+
+        if changed {
+            continue;
+        }
+
+        {
+            let csr_edges = graph.extract_csr_repr();
+            RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut redundant);
+            if reducer.remove_unnecessary_edges(&mut graph, &covered, &redundant) {
+                continue;
+            }
+        }
+
+        break;
     }
 
     let mut num_removed_edges = 0;
