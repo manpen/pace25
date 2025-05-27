@@ -49,6 +49,6 @@ where
                 "{node_prefix}{u} [style=filled, fillcolor={color}];"
             )?;
         }
-        writeln!(writer, "")
+        writeln!(writer)
     }
 }
