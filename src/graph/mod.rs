@@ -8,7 +8,6 @@ pub mod cuthill_mckee;
 pub mod distance_two_pairs;
 pub mod edge;
 pub mod gnp;
-pub mod graph_digest;
 pub mod modules;
 pub mod node_mapper;
 pub mod partition;
@@ -26,7 +25,6 @@ pub use cuthill_mckee::CuthillMcKee;
 pub use distance_two_pairs::*;
 pub use edge::*;
 pub use gnp::*;
-pub use graph_digest::*;
 pub use modules::Modules;
 pub use node_mapper::*;
 pub use partition::*;
@@ -432,8 +430,6 @@ pub trait FullfledgedGraph:
     + ColoredAdjacencyList
     + ColoredAdjacencyTest
     + GraphEdgeEditing
-    + Complement
-    + GraphDigest
     + std::fmt::Debug
 {
 }
@@ -445,8 +441,6 @@ impl<G> FullfledgedGraph for G where
         + ColoredAdjacencyList
         + ColoredAdjacencyTest
         + GraphEdgeEditing
-        + Complement
-        + GraphDigest
         + std::fmt::Debug
 {
 }
