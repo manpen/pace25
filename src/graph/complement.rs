@@ -90,11 +90,6 @@ mod test {
         complement_for::<AdjArray>();
     }
 
-    #[test]
-    fn complement_adj_matrix() {
-        complement_for::<AdjMatrix>();
-    }
-
     fn complement_for<G: Complement + FullfledgedGraph>() {
         let mut rng = Pcg64::seed_from_u64(0x263741);
 

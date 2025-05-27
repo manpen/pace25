@@ -53,14 +53,6 @@ impl GraphDigest for AdjArray {
     }
 }
 
-impl GraphDigest for AdjMatrix {
-    fn binary_digest<D: Digest>(&self) -> digest::Output<D> {
-        let mut hasher = D::new();
-        hasher.update(unsafe { self.adj.raw_data() });
-        hasher.finalize()
-    }
-}
-
 #[cfg(test)]
 pub mod test {
     use crate::graph::{AdjArray, EdgeColor, GraphDigest, GraphEdgeEditing, GraphNew};
