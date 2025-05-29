@@ -37,5 +37,6 @@ pub trait Postprocessor<Graph> {
         graph: &mut Graph,
         solution: &mut DominatingSet,
         covered: &mut BitSet,
+        redundant: &mut BitSet,
     );
 }

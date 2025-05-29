@@ -43,7 +43,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         graph: &mut Graph,
         domset: &mut DominatingSet,
         covered: &mut BitSet,
-        _redundant: &mut BitSet,
+        redundant: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
         let n = graph.len();
         assert!(NOT_SET as usize >= n);
@@ -118,7 +118,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         for u in type2_nodes.iter_set_bits() {
             for v in graph.closed_neighbors_of(u) {
                 // Only process each node once
-                if processed.set_bit(v) {
+                if processed.set_bit(v) || redundant.get_bit(v) {
                     continue;
                 }
 

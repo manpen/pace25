@@ -9,7 +9,6 @@ use dss::{
     },
 };
 use itertools::Itertools;
-use log::info;
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
@@ -113,6 +112,7 @@ fn main() -> anyhow::Result<()> {
         if true {
             let csr_edges = graph.extract_csr_repr();
             RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut redundant);
+            assert!(!solution.iter().any(|u| redundant.get_bit(u)));
             if reducer.remove_unnecessary_edges(&mut graph, &covered, &redundant) {
                 continue;
             }
@@ -162,7 +162,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     let mut covered = solution.compute_covered(&org_graph);
-    reducer.post_process(&mut graph, &mut solution, &mut covered);
+    reducer.post_process(&mut graph, &mut solution, &mut covered, &mut redundant);
 
     assert!(solution.is_valid(&org_graph), "Produced DS is not valid");
     write_solution(&solution, &opt.output)?;

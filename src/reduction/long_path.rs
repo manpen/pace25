@@ -37,7 +37,9 @@ impl<G: AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> ReductionRul
 
         let mut post_process_paths = Vec::new();
 
-        let mut modified = false;
+        let mut num_cycle = 0;
+        let mut num_path = 0;
+        let mut num_path_with_pp = 0;
         for mut path in long_paths {
             // If two adjacent nodes on the path are covered, the edge between them can be deleted
             // and we do not have a proper path any more. Skip and let the reducer split the path.
@@ -68,19 +70,28 @@ impl<G: AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> ReductionRul
             };
 
             if rule_impl.process_circle(&path) {
-                modified = true;
+                num_cycle += 1;
                 continue;
             }
 
             if rule_impl.process_path_without_postprocess(&mut path) {
-                modified = true;
+                num_path += 1;
                 continue;
             }
 
             if rule_impl.process_path_with_postprocess(&mut path) {
-                modified = true;
+                num_path_with_pp += 1;
                 post_process_paths.push(path);
             }
+        }
+
+        let modified = (num_cycle + num_path + num_path_with_pp) > 0;
+
+        if modified {
+            info!(
+                "{} Cycle: {num_cycle:4} Path (w/o pp): {num_path:4} Path (w pp): {num_path_with_pp:4}",
+                Self::NAME
+            );
         }
 
         (
@@ -236,6 +247,7 @@ impl<'a, G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'a, G> {
     }
 
     fn process_path_with_postprocess(&mut self, path: &mut [Node]) -> bool {
+        return false;
         // we can remove groups of three as long as at least four nodes remain
         let nodes_to_remove = ((path.len() - 4) / 3) * 3;
         if nodes_to_remove == 0 {
@@ -291,7 +303,8 @@ impl<G: AdjacencyList + AdjacencyTest + GraphEdgeEditing> Postprocessor<G>
             redundant,
         };
 
-        for path in self.removed_paths.drain(..) {
+        while let Some(path) = self.removed_paths.pop() {
+            info!("PP: {path:?}");
             rule_impl.post_process_path(&path);
         }
     }

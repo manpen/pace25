@@ -136,9 +136,10 @@ impl<G: GraphEdgeOrder + AdjacencyList + UnsafeGraphEditing> Reducer<G> {
         graph: &mut G,
         solution: &mut DominatingSet,
         covered: &mut BitSet,
+        redundant: &mut BitSet,
     ) {
         while let Some(mut p) = self.post_processors.pop() {
-            p.post_process(graph, solution, covered);
+            p.post_process(graph, solution, covered, redundant);
         }
     }
 }

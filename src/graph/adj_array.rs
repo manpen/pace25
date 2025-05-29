@@ -74,7 +74,6 @@ impl GraphNew for AdjArray {
 
 impl GraphEdgeEditing for AdjArray {
     fn try_add_edge(&mut self, u: Node, v: Node) -> bool {
-        assert_ne!(u, v);
         let prev = self.adj[u as usize].try_add_edge(v);
 
         if !prev && u != v {
