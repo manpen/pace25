@@ -1,5 +1,6 @@
 use std::{fs::File, path::PathBuf};
 
+#[allow(unused_imports)]
 use dss::{
     exact::{naive::naive_solver, sat_solver::SolverBackend},
     log::build_pace_logger_for_level,
@@ -98,12 +99,12 @@ fn main() -> anyhow::Result<()> {
             &mut covered,
             &mut redundant,
         );
-        changed |= reducer.apply_rule::<LongPathReduction<_>>(
-            &mut graph,
-            &mut solution,
-            &mut covered,
-            &mut redundant,
-        );
+        //changed |= reducer.apply_rule::<LongPathReduction<_>>(
+        //    &mut graph,
+        //    &mut solution,
+        //    &mut covered,
+        //    &mut redundant,
+        //);
 
         if changed {
             continue;
