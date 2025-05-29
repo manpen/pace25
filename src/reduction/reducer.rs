@@ -44,7 +44,7 @@ impl<G: GraphEdgeOrder + AdjacencyList + UnsafeGraphEditing> Reducer<G> {
         assert!(changed || post.is_none());
         changed |= self.remove_unnecessary_edges(graph, covered, redundant);
         debug_assert!(solution.iter().all(|u| graph.degree_of(u) == 0));
-        debug_assert!(solution.iter().all(|u| !redundant.get_bit(u)));
+        assert!(solution.iter().all(|u| !redundant.get_bit(u)));
 
         let delta_nodes = before_nodes - graph.vertices_with_neighbors().count();
         let delta_edges = before_edges - graph.number_of_edges();

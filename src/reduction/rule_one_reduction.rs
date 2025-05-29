@@ -118,7 +118,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         for u in type2_nodes.iter_set_bits() {
             for v in graph.closed_neighbors_of(u) {
                 // Only process each node once
-                if processed.set_bit(v) || redundant.get_bit(v) {
+                if processed.set_bit(v) {
                     continue;
                 }
 
@@ -136,6 +136,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
                             .then(|| (non_perm_degree[pt as usize], pt))
                     })
                     .min()
+                    && !redundant.get_bit(min_node)
                 {
                     // We drained inv_mappings earlier completely, so we can now reuse it
                     inv_mappings[min_node as usize].push(v);
@@ -176,6 +177,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
                     .closed_neighbors_of(v)
                     .all(|x| parent[x as usize] == u || x == u)
                 {
+                    assert!(!redundant.get_bit(u));
                     domset.fix_node(u);
                     selected.push(u);
                     covered.set_bits(graph.closed_neighbors_of(u));
@@ -235,6 +237,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         covered.update_cleared_bits(|u| {
             let is_singleton = graph.degree_of(u) == 0;
             if is_singleton {
+                assert!(!redundant.get_bit(u));
                 domset.fix_node(u);
             }
             is_singleton
