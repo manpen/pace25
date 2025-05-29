@@ -114,7 +114,7 @@ struct RuleImpl<'a, G> {
     redundant: &'a BitSet,
 }
 
-impl<'a, G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'a, G> {
+impl<G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'_, G> {
     fn add_to_solution(&mut self, u: Node) {
         assert!(!self.redundant.get_bit(u));
         self.covered.set_bits(self.graph.closed_neighbors_of(u));
