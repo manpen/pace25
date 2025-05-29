@@ -246,6 +246,7 @@ impl<'a, G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'a, G> {
         false
     }
 
+    #[allow(unreachable_code, unused_variables)]
     fn process_path_with_postprocess(&mut self, path: &mut [Node]) -> bool {
         return false;
         // we can remove groups of three as long as at least four nodes remain
