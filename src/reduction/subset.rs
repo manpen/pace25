@@ -30,6 +30,9 @@ impl RuleSubsetReduction {
             graph[u].sort_unstable();
         }
 
+        // If new nodes were fixed, relationships between redundant nodes might get reversed
+        is_subset_dominated.clear_all();
+
         let mut candidates = Vec::new();
         let mut offsets = Vec::new();
         for u in 0..n {
@@ -82,7 +85,7 @@ impl RuleSubsetReduction {
                 //
                 // Inequality thus implies that the right side is bigger
                 if non_perm_degree[candidate as usize] == non_perm_degree[u as usize]
-                    && u < candidate
+                    && u > candidate
                 {
                     is_subset_dominated.set_bit(candidate);
                 } else {
