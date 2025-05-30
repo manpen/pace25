@@ -22,7 +22,7 @@ use std::{
 };
 use structopt::StructOpt;
 
-#[derive(Default, StructOpt)]
+#[derive(StructOpt)]
 struct Opts {
     #[structopt(short = "i")]
     input: Option<PathBuf>,
@@ -47,6 +47,21 @@ struct Opts {
 
     #[structopt(short = "C")]
     dump_ccs_upper_size: Option<NumNodes>,
+}
+
+impl Default for Opts {
+    fn default() -> Self {
+        Self {
+            input: None,
+            timeout: None,
+            no_output: false,
+            skip_local_search: false,
+            greedy_timeout: 10.0,
+            greedy_iterations: 30,
+            dump_ccs_lower_size: None,
+            dump_ccs_upper_size: None,
+        }
+    }
 }
 
 fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<AdjArray> {
