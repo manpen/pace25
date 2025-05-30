@@ -316,13 +316,13 @@ fn main() -> anyhow::Result<()> {
             let mut algo =
                 IterativeGreedy::new(&mut rng, &mapped.graph, &mapped.covered, &mapped.redundant);
 
+            let mut remaining_iterations = opts.greedy_iterations.max(1);
             let start_time = Instant::now();
-            for _ in 0..opts.greedy_iterations {
-                algo.execute_step();
-                if start_time.elapsed().as_secs_f64() > opts.greedy_timeout {
-                    continue;
-                }
-            }
+            algo.run_while(|_| {
+                remaining_iterations -= 1;
+                (remaining_iterations > 0)
+                    && (start_time.elapsed().as_secs_f64() < opts.greedy_timeout)
+            });
 
             mapped.domset = algo.best_known_solution().unwrap();
         }
