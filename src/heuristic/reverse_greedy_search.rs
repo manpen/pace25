@@ -508,6 +508,14 @@ where
             self.previous_improvement = self.round;
         }
     }
+
+    pub fn current_round(&self) -> u64 {
+        self.round
+    }
+
+    pub fn current_score(&self) -> NumNodes {
+        self.best_solution.len() as NumNodes
+    }
 }
 
 /// Helper enum to keep track of DomSet-Changes

@@ -36,14 +36,17 @@ struct Opts {
     #[structopt(short = "v")]
     verbose: bool,
 
-    #[structopt(short = "l")]
-    skip_local_search: bool,
-
     #[structopt(short = "g", default_value = "10")]
     greedy_timeout: f64,
 
     #[structopt(short = "G", default_value = "30")]
     greedy_iterations: u64,
+
+    #[structopt(short = "a", default_value = "3")]
+    ls_attempts: u64,
+
+    #[structopt(short = "p", default_value = "10")]
+    ls_presolve_timeout: f64,
 
     #[structopt(short = "c")]
     dump_ccs_lower_size: Option<NumNodes>,
@@ -58,12 +61,13 @@ impl Default for Opts {
             input: None,
             timeout: None,
             no_output: false,
-            skip_local_search: false,
             greedy_timeout: 10.0,
             greedy_iterations: 30,
             dump_ccs_lower_size: None,
             dump_ccs_upper_size: None,
             verbose: false,
+            ls_attempts: 3,
+            ls_presolve_timeout: 12.0,
         }
     }
 }
@@ -133,7 +137,8 @@ fn dump_ccs(graph: &AdjArray, opts: &Opts) {
     }
 }
 
-struct State<G> {
+#[derive(Clone)]
+struct State<G: Clone> {
     graph: G,
     domset: DominatingSet,
     covered: BitSet,
@@ -256,38 +261,41 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
     }
 }
 
-fn run_search(rng: &mut impl Rng, mapped: State<CsrGraph>, opts: &Opts) -> DominatingSet {
+type MainHeuristic = GreedyReverseSearch<CsrGraph, 10, 10>;
+
+fn build_heuristic(rng: &mut impl Rng, mapped: State<CsrGraph>, opts: &Opts) -> MainHeuristic {
     let State {
         graph,
-        domset,
+        mut domset,
         covered,
         redundant,
     } = mapped;
 
-    let mut search = GreedyReverseSearch::<_, 10, 10>::new(
-        graph.clone(),
-        domset,
-        covered.clone(),
-        redundant.clone(),
-        rng,
-    );
+    // Greedy
+    {
+        assert!(domset.is_empty());
+        info!("Start Greedy");
+
+        let mut algo = IterativeGreedy::new(rng, &graph, &covered, &redundant);
+
+        let mut remaining_iterations = opts.greedy_iterations.max(1);
+        let start_time = Instant::now();
+        algo.run_while(|_| {
+            remaining_iterations -= 1;
+            (remaining_iterations > 0) && (start_time.elapsed().as_secs_f64() < opts.greedy_timeout)
+        });
+
+        domset = algo.best_known_solution().unwrap();
+    }
+
+    info!("Start GreedyReverseSearch");
+    let mut search = MainHeuristic::new(graph, domset, covered, redundant, rng);
 
     if opts.verbose {
         search.enable_verbose_logging();
     }
 
-    let domset = if let Some(seconds) = opts.timeout {
-        search.run_until_timeout(Duration::from_secs_f64(seconds));
-        search.best_known_solution()
-    } else {
-        search.run_to_completion()
-    }
-    .unwrap();
-
-    assert!(redundant.iter_set_bits().all(|u| !domset.is_in_domset(u)));
-    assert!(domset.is_valid_given_previous_cover(&graph, &covered));
-
-    domset
+    search
 }
 
 fn main() -> anyhow::Result<()> {
@@ -314,42 +322,43 @@ fn main() -> anyhow::Result<()> {
 
     let mapping = state.graph.cuthill_mckee();
     if mapping.len() > 0 {
-        info!("Start greedy");
         // if the reduction rules are VERY successful, no nodes remain
-        let mut mapped = remap_state(&state, &mapping);
-        assert!(mapped.domset.is_empty());
+        let mapped = remap_state(&state, &mapping);
 
-        // greedy
-        {
-            let mut algo =
-                IterativeGreedy::new(&mut rng, &mapped.graph, &mapped.covered, &mapped.redundant);
+        let mut best_heuristic: Option<MainHeuristic> = None;
 
-            let mut remaining_iterations = opts.greedy_iterations.max(1);
-            let start_time = Instant::now();
-            algo.run_while(|_| {
-                remaining_iterations -= 1;
-                (remaining_iterations > 0)
-                    && (start_time.elapsed().as_secs_f64() < opts.greedy_timeout)
-            });
+        for ls_attempt in 0..opts.ls_attempts {
+            let mut heuristic = build_heuristic(&mut rng, mapped.clone(), &opts);
+            heuristic.run_until_timeout(Duration::from_secs_f64(opts.ls_presolve_timeout));
 
-            mapped.domset = algo.best_known_solution().unwrap();
+            info!(
+                "Heuristic presolve attempt {ls_attempt} with score {}",
+                heuristic.current_score()
+            );
+
+            if best_heuristic
+                .as_ref()
+                .is_none_or(|x| x.current_score() > heuristic.current_score())
+            {
+                best_heuristic = Some(heuristic);
+            }
         }
 
-        if !opts.skip_local_search {
-            info!("Start local search");
-            let domset_mapped = run_search(&mut rng, mapped, &opts);
-            info!("Local search found solution size {}", domset_mapped.len());
-
-            let size_before = state.domset.len();
-            state
-                .domset
-                .add_nodes(mapping.get_filtered_old_ids(domset_mapped.iter()));
-            assert_eq!(size_before + domset_mapped.len(), state.domset.len());
+        let mut best_heuristic = best_heuristic.unwrap();
+        let domset_mapped = if let Some(timeout) = opts.timeout {
+            best_heuristic.run_until_timeout(Duration::from_secs_f64(timeout));
+            best_heuristic.best_known_solution().unwrap()
         } else {
-            state
-                .domset
-                .add_nodes(mapping.get_filtered_old_ids(mapped.domset.iter()));
-        }
+            best_heuristic.run_to_completion().unwrap()
+        };
+
+        info!("Local search found solution size {}", domset_mapped.len());
+
+        let size_before = state.domset.len();
+        state
+            .domset
+            .add_nodes(mapping.get_filtered_old_ids(domset_mapped.iter()));
+        assert_eq!(size_before + domset_mapped.len(), state.domset.len());
     }
 
     let mut covered = state.domset.compute_covered(&input_graph);
