@@ -56,7 +56,7 @@ pub struct GreedyReverseSearch<
     G: StaticGraph + SelfLoop,
 {
     /// A reference to the graph: mutable access is needed as we need to re-order adjacency lists
-    graph: &'a mut G,
+    graph: G,
 
     /// The current solution we operate on
     current_solution: DominatingSet,
@@ -130,13 +130,13 @@ where
     /// Creates a new instance of the algorithm for a given graph and a starting DomSet which must be valid.
     /// Runs Subset-Reduction beforehand to further reduce the DomSet and removes redundant nodes afterwards.
     pub fn new(
-        graph: &'a mut G,
+        mut graph: G,
         mut initial_solution: DominatingSet,
         is_perm_covered: BitSet,
         non_optimal_nodes: BitSet,
         rng: &'a mut R,
     ) -> Self {
-        assert!(initial_solution.is_valid_given_previous_cover(graph, &is_perm_covered));
+        assert!(initial_solution.is_valid_given_previous_cover(&graph, &is_perm_covered));
         assert!(graph.len() > 0);
         assert!(initial_solution.num_of_fixed_nodes() == 0);
 
@@ -762,10 +762,9 @@ mod tests {
             let initial_domset = random_initial_solution(&mut rng, &graph);
 
             let domset = {
-                let mut csr_graph =
-                    CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
+                let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
                 let mut algo = GreedyReverseSearch::<_, _, 10, 10>::new(
-                    &mut csr_graph,
+                    csr_graph,
                     initial_domset,
                     graph.vertex_bitset_unset(),
                     graph.vertex_bitset_unset(),
@@ -811,10 +810,9 @@ mod tests {
             non_opt_nodes -= &perm_covered;
 
             let domset = {
-                let mut csr_graph =
-                    CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
+                let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
                 let mut algo = GreedyReverseSearch::<_, _, 10, 10>::new(
-                    &mut csr_graph,
+                    csr_graph,
                     initial_domset,
                     perm_covered.clone(),
                     non_opt_nodes.clone(),
@@ -855,10 +853,9 @@ mod tests {
             }
 
             let domset = {
-                let mut csr_graph =
-                    CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
+                let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
                 let mut algo = GreedyReverseSearch::<_, _, 10, 10>::new(
-                    &mut csr_graph,
+                    csr_graph,
                     initial_domset,
                     graph.vertex_bitset_unset(),
                     non_opt_nodes.clone(),
