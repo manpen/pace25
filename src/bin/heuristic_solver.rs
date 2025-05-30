@@ -1,8 +1,8 @@
 use dss::{
     graph::{
         AdjArray, AdjacencyList, BitSet, Connectivity as _, CsrGraph, CuthillMcKee, Edge, EdgeOps,
-        ExtractCsrRepr, Getter, GraphEdgeEditing, GraphEdgeOrder, GraphFromReader, GraphNodeOrder,
-        NodeMapper, NumNodes,
+        ExtractCsrRepr, Getter, GraphEdgeOrder, GraphFromReader, GraphNodeOrder, NodeMapper,
+        NumNodes,
     },
     heuristic::{greedy_approximation, reverse_greedy_search::GreedyReverseSearch},
     io::PaceWriter as _,
@@ -13,7 +13,6 @@ use dss::{
     },
     utils::{DominatingSet, signal_handling},
 };
-use itertools::Itertools;
 use log::info;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64Mcg;
@@ -30,6 +29,9 @@ struct Opts {
 
     #[structopt(short = "q")]
     no_output: bool,
+
+    #[structopt(short = "l")]
+    skip_local_search: bool,
 
     #[structopt(short = "c")]
     dump_ccs_lower_size: Option<NumNodes>,
@@ -143,30 +145,13 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
         {
             let csr_edges = graph.extract_csr_repr();
             RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut redundant);
-            if reducer.remove_unnecessary_edges(&mut graph, &covered, &redundant) {
+            if reducer.remove_unnecessary_edges(&mut graph, &covered, &redundant) > 0 {
                 continue;
             }
         }
 
         break;
     }
-
-    let mut num_removed_edges = 0;
-    redundant.iter_set_bits().for_each(|u| {
-        let redundant_neighbors = graph
-            .neighbors_of(u)
-            .filter(|&v| redundant.get_bit(v))
-            .collect_vec();
-        num_removed_edges += redundant_neighbors.len();
-        for v in redundant_neighbors {
-            graph.remove_edge(u, v);
-        }
-    });
-
-    info!(
-        "Subset n ~= {}, m -= {num_removed_edges}, |D| += 0, |covered| += 0",
-        redundant.cardinality()
-    );
 
     reducer.apply_rule::<RuleSmallExactReduction<_>>(
         &mut graph,
@@ -175,7 +160,7 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
         &mut redundant,
     );
 
-    info!("Preprocessing completed");
+    reducer.report_summary();
 
     (
         State {
@@ -308,15 +293,21 @@ fn main() -> anyhow::Result<()> {
         );
         info!("Greedy found solution size {}", mapped.domset.len());
 
-        info!("Start local search");
-        let domset_mapped = run_search(&mut rng, mapped, opts.timeout);
-        info!("Local search found solution size {}", domset_mapped.len());
+        if !opts.skip_local_search {
+            info!("Start local search");
+            let domset_mapped = run_search(&mut rng, mapped, opts.timeout);
+            info!("Local search found solution size {}", domset_mapped.len());
 
-        let size_before = state.domset.len();
-        state
-            .domset
-            .add_nodes(mapping.get_filtered_old_ids(domset_mapped.iter()));
-        assert_eq!(size_before + domset_mapped.len(), state.domset.len());
+            let size_before = state.domset.len();
+            state
+                .domset
+                .add_nodes(mapping.get_filtered_old_ids(domset_mapped.iter()));
+            assert_eq!(size_before + domset_mapped.len(), state.domset.len());
+        } else {
+            state
+                .domset
+                .add_nodes(mapping.get_filtered_old_ids(mapped.domset.iter()));
+        }
     }
 
     let mut covered = state.domset.compute_covered(&input_graph);
