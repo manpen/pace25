@@ -30,6 +30,9 @@ struct Opts {
     #[structopt(short = "q")]
     no_output: bool,
 
+    #[structopt(short = "l")]
+    skip_local_search: bool,
+
     #[structopt(short = "c")]
     dump_ccs_lower_size: Option<NumNodes>,
 
@@ -290,15 +293,21 @@ fn main() -> anyhow::Result<()> {
         );
         info!("Greedy found solution size {}", mapped.domset.len());
 
-        info!("Start local search");
-        let domset_mapped = run_search(&mut rng, mapped, opts.timeout);
-        info!("Local search found solution size {}", domset_mapped.len());
+        if !opts.skip_local_search {
+            info!("Start local search");
+            let domset_mapped = run_search(&mut rng, mapped, opts.timeout);
+            info!("Local search found solution size {}", domset_mapped.len());
 
-        let size_before = state.domset.len();
-        state
-            .domset
-            .add_nodes(mapping.get_filtered_old_ids(domset_mapped.iter()));
-        assert_eq!(size_before + domset_mapped.len(), state.domset.len());
+            let size_before = state.domset.len();
+            state
+                .domset
+                .add_nodes(mapping.get_filtered_old_ids(domset_mapped.iter()));
+            assert_eq!(size_before + domset_mapped.len(), state.domset.len());
+        } else {
+            state
+                .domset
+                .add_nodes(mapping.get_filtered_old_ids(mapped.domset.iter()));
+        }
     }
 
     let mut covered = state.domset.compute_covered(&input_graph);
