@@ -5,7 +5,7 @@ use smallvec::SmallVec;
 use std::{borrow::Borrow, marker::PhantomData};
 
 #[allow(unused_imports)]
-use log::info;
+use log::{debug, info};
 
 type SmallNodeBuffer = SmallVec<[Node; 8]>;
 
@@ -88,7 +88,7 @@ impl<G: AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> ReductionRul
         let modified = (num_cycle + num_path + num_path_with_pp) > 0;
 
         if modified {
-            info!(
+            debug!(
                 "{} Cycle: {num_cycle:4} Path (w/o pp): {num_path:4} Path (w pp): {num_path_with_pp:4}",
                 Self::NAME
             );

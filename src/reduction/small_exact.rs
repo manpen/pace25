@@ -201,7 +201,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
             }
         }
 
-        info!(
+        debug!(
             "{} Found {num_cc3} CC3, {num_cc4} CC4, and {} large ccs",
             Self::NAME,
             small_ccs.len()

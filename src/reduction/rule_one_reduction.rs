@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use super::*;
 use crate::{graph::*, utils::DominatingSet};
 
-use log::info;
+use log::debug;
 use smallvec::SmallVec;
 
 /// Rule1
@@ -203,7 +203,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         let mut modified = !selected.is_empty() || removable_nodes.cardinality() > 0;
 
         assert!(removable_nodes.cardinality() >= selected.len() as NumNodes);
-        info!(
+        debug!(
             "RuleOne removeable nodes: {}",
             removable_nodes.cardinality()
         );

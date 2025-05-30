@@ -1,8 +1,8 @@
 use dss::{
     graph::{
         AdjArray, AdjacencyList, BitSet, Connectivity as _, CsrGraph, CuthillMcKee, Edge, EdgeOps,
-        ExtractCsrRepr, Getter, GraphEdgeEditing, GraphEdgeOrder, GraphFromReader, GraphNodeOrder,
-        NodeMapper, NumNodes,
+        ExtractCsrRepr, Getter, GraphEdgeOrder, GraphFromReader, GraphNodeOrder, NodeMapper,
+        NumNodes,
     },
     heuristic::{greedy_approximation, reverse_greedy_search::GreedyReverseSearch},
     io::PaceWriter as _,
@@ -13,7 +13,6 @@ use dss::{
     },
     utils::{DominatingSet, signal_handling},
 };
-use itertools::Itertools;
 use log::info;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64Mcg;
@@ -143,30 +142,13 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
         {
             let csr_edges = graph.extract_csr_repr();
             RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut redundant);
-            if reducer.remove_unnecessary_edges(&mut graph, &covered, &redundant) {
+            if reducer.remove_unnecessary_edges(&mut graph, &covered, &redundant) > 0 {
                 continue;
             }
         }
 
         break;
     }
-
-    let mut num_removed_edges = 0;
-    redundant.iter_set_bits().for_each(|u| {
-        let redundant_neighbors = graph
-            .neighbors_of(u)
-            .filter(|&v| redundant.get_bit(v))
-            .collect_vec();
-        num_removed_edges += redundant_neighbors.len();
-        for v in redundant_neighbors {
-            graph.remove_edge(u, v);
-        }
-    });
-
-    info!(
-        "Subset n ~= {}, m -= {num_removed_edges}, |D| += 0, |covered| += 0",
-        redundant.cardinality()
-    );
 
     reducer.apply_rule::<RuleSmallExactReduction<_>>(
         &mut graph,

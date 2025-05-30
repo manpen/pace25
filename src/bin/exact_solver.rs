@@ -114,7 +114,7 @@ fn main() -> anyhow::Result<()> {
             let csr_edges = graph.extract_csr_repr();
             RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut redundant);
             assert!(!solution.iter().any(|u| redundant.get_bit(u)));
-            if reducer.remove_unnecessary_edges(&mut graph, &covered, &redundant) {
+            if reducer.remove_unnecessary_edges(&mut graph, &covered, &redundant) > 0 {
                 continue;
             }
         }
