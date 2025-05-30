@@ -187,7 +187,7 @@ fn run_search(rng: &mut impl Rng, mapped: State<CsrGraph>, timeout: Option<f64>)
         redundant,
     } = mapped;
 
-    let mut search = GreedyReverseSearch::<_, _, 10, 10>::new(
+    let mut search = GreedyReverseSearch::<_, 10, 10>::new(
         graph.clone(),
         domset,
         covered.clone(),

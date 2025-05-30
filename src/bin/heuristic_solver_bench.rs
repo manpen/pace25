@@ -82,7 +82,7 @@ fn main() -> anyhow::Result<()> {
     timer = Instant::now();
 
     let mut rng = Pcg64Mcg::seed_from_u64(123u64);
-    let mut search = GreedyReverseSearch::<_, _, 10, 10>::new(
+    let mut search = GreedyReverseSearch::<_, 10, 10>::new(
         graph.clone(),
         domset,
         is_perm_covered,
