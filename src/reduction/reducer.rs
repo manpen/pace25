@@ -1,11 +1,18 @@
 use super::*;
 use crate::graph::{AdjacencyList, GraphEdgeOrder, NumNodes, UnsafeGraphEditing};
+use std::{
+    cmp::Reverse,
+    collections::HashMap,
+    marker::PhantomData,
+    time::{Duration, Instant},
+};
 
+use itertools::Itertools;
 use log::info;
-use std::marker::PhantomData;
 
 pub struct Reducer<G> {
     post_processors: Vec<Box<dyn Postprocessor<G>>>,
+    time_per_rule: HashMap<&'static str, Duration>,
     _graph: PhantomData<G>,
 }
 
@@ -13,6 +20,7 @@ impl<G> Default for Reducer<G> {
     fn default() -> Self {
         Self {
             post_processors: Default::default(),
+            time_per_rule: Default::default(),
             _graph: Default::default(),
         }
     }
@@ -40,9 +48,15 @@ impl<G: GraphEdgeOrder + AdjacencyList + UnsafeGraphEditing> Reducer<G> {
 
         debug_assert!(solution.iter().all(|u| graph.degree_of(u) == 0));
 
+        let start_rule = Instant::now();
         let (mut changed, post) = R::apply_rule(graph, solution, covered, redundant);
         assert!(changed || post.is_none());
+
+        let start_clean = Instant::now();
+        let duration_rule = start_clean.duration_since(start_rule);
         changed |= self.remove_unnecessary_edges(graph, covered, redundant);
+        let duration_clean = start_clean.elapsed();
+
         debug_assert!(solution.iter().all(|u| graph.degree_of(u) == 0));
         assert!(solution.iter().all(|u| !redundant.get_bit(u)));
 
@@ -53,13 +67,25 @@ impl<G: GraphEdgeOrder + AdjacencyList + UnsafeGraphEditing> Reducer<G> {
         let delta_redundant = redundant.cardinality() as i32 - before_redundant;
 
         info!(
-            "{} n -= {delta_nodes}, m -= {delta_edges}, |D| += {delta_in_domset}, |covered| += {delta_covered}, |redundant| += {delta_redundant}, changed={changed}",
-            R::NAME
+            "{} n -= {delta_nodes}, m -= {delta_edges}, |D| += {delta_in_domset}, |covered| += {delta_covered}, |redundant| += {delta_redundant}, changed={changed}, time: {:6}ms + {:4}ms",
+            R::NAME,
+            duration_rule.as_millis(),
+            duration_clean.as_millis()
         );
 
         if let Some(p) = post {
             self.post_processors.push(p);
         }
+
+        self.time_per_rule
+            .entry(R::NAME)
+            .and_modify(|x| *x += duration_rule)
+            .or_insert(duration_rule);
+
+        self.time_per_rule
+            .entry("RemoveUnnecessaryEdges")
+            .and_modify(|x| *x += duration_clean)
+            .or_insert(duration_clean);
 
         changed
     }
@@ -129,6 +155,21 @@ impl<G: GraphEdgeOrder + AdjacencyList + UnsafeGraphEditing> Reducer<G> {
         );
 
         half_edges_removed > 0
+    }
+
+    pub fn report_summary(&self) {
+        let mut items: Vec<(&str, Duration)> = self
+            .time_per_rule
+            .iter()
+            .map(|(k, v)| (*k, *v))
+            .collect_vec();
+
+        items.sort_by_key(|(k, v)| (Reverse(*v), *k));
+
+        info!("Preprocessing completed");
+        for (rule, time) in items {
+            info!("  |- Rule {rule:40} took {:7}ms", time.as_millis());
+        }
     }
 
     pub fn post_process(

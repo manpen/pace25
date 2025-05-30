@@ -175,7 +175,7 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
         &mut redundant,
     );
 
-    info!("Preprocessing completed");
+    reducer.report_summary();
 
     (
         State {
