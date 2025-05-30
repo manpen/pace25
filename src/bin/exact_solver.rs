@@ -1,5 +1,6 @@
 use std::{fs::File, path::PathBuf};
 
+use dss::reduction::RuleIsolatedReduction;
 #[allow(unused_imports)]
 use dss::{
     exact::{naive::naive_solver, sat_solver::SolverBackend},
@@ -100,6 +101,12 @@ fn main() -> anyhow::Result<()> {
             &mut redundant,
         );
         changed |= reducer.apply_rule::<LongPathReduction<_>>(
+            &mut graph,
+            &mut solution,
+            &mut covered,
+            &mut redundant,
+        );
+        changed |= reducer.apply_rule::<RuleIsolatedReduction<_>>(
             &mut graph,
             &mut solution,
             &mut covered,

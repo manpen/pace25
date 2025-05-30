@@ -9,7 +9,8 @@ use dss::{
     log::build_pace_logger_for_level,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
     reduction::{
-        LongPathReduction, Reducer, RuleOneReduction, RuleSmallExactReduction, RuleSubsetReduction,
+        LongPathReduction, Reducer, RuleIsolatedReduction, RuleOneReduction,
+        RuleSmallExactReduction, RuleSubsetReduction,
     },
     utils::{DominatingSet, signal_handling},
 };
@@ -169,6 +170,12 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
             &mut redundant,
         );
         changed |= reducer.apply_rule::<LongPathReduction<_>>(
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+        changed |= reducer.apply_rule::<RuleIsolatedReduction<_>>(
             &mut graph,
             &mut domset,
             &mut covered,

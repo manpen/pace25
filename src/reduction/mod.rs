@@ -8,6 +8,8 @@ pub mod reducer;
 pub use reducer::Reducer;
 pub mod subset;
 pub use subset::RuleSubsetReduction;
+pub mod isolated;
+pub use isolated::RuleIsolatedReduction;
 
 use crate::{graph::BitSet, utils::DominatingSet};
 
