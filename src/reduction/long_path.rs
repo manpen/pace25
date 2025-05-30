@@ -228,6 +228,38 @@ impl<G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'_, G> {
         true
     }
 
+    fn process_path_with_uncovered_triples(
+        &mut self,
+        path: &[Node], // first and last are identical and may have degree > 2
+    ) -> bool {
+        let mut modified = false;
+        let mut i = 0;
+        'outer: while i + 4 < path.len() {
+            if !self.covered.get_bit(path[i + 4]) {
+                i += 5;
+                continue;
+            }
+
+            for j in [3, 2, 1] {
+                if self.covered.get_bit(path[i + j]) {
+                    i += j;
+                    continue 'outer;
+                }
+            }
+
+            if self.covered.get_bit(path[i]) && !self.redundant.get_bit(path[i + 2]) {
+                self.add_to_solution(path[i + 2]);
+                modified = true;
+                i += 4;
+                continue;
+            }
+
+            i += 1;
+        }
+
+        modified
+    }
+
     fn process_path_without_postprocess(
         &mut self,
         path: &mut [Node], // first and last are identical and may have degree > 2
@@ -243,7 +275,7 @@ impl<G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'_, G> {
             return self.process_leaf_path(path);
         }
 
-        false
+        self.process_path_with_uncovered_triples(path)
     }
 
     #[allow(unreachable_code, unused_variables)]
@@ -525,6 +557,57 @@ mod test {
                 );
             }
         }
+    }
+
+    #[test]
+    fn gnp_paths_with_triples() {
+        let mut rng = Pcg64Mcg::seed_from_u64(0x123456);
+        let mut num_infeasible = 0;
+        for (n_path, n_random) in (3..10).cartesian_product([8]) {
+            // repeats
+            for i in 0..1000 {
+                let (mut graph, mut path) = build_gnp_path(&mut rng, n_path, n_random);
+                let org_graph = graph.clone();
+
+                let mut solution = DominatingSet::new(graph.number_of_nodes());
+
+                // cover/redundant only on non-path nodes!
+                let mut covered = sample_non_adjacent_bits(&mut rng, i % 8, &graph, None);
+                let redundant = sample_non_adjacent_bits(&mut rng, i % 3, &graph, Some(&covered));
+
+                let clean_solution =
+                    if let Ok(x) = naive_solver(&graph, &covered, &redundant, None, None) {
+                        x
+                    } else {
+                        num_infeasible += 1;
+                        continue;
+                    };
+
+                let modified = {
+                    let mut rule_impl = RuleImpl {
+                        graph: &mut graph,
+                        solution: &mut solution,
+                        covered: &mut covered,
+                        redundant: &redundant,
+                    };
+
+                    rule_impl.process_path_with_uncovered_triples(&mut path)
+                };
+                assert_eq!(!solution.is_empty(), modified);
+
+                {
+                    let tmp = naive_solver(&graph, &covered, &redundant, None, None).unwrap();
+                    solution.add_nodes(tmp.iter());
+                }
+
+                assert_eq!(
+                    clean_solution.len(),
+                    solution.len(),
+                    "before: {clean_solution:?}, after: {solution:?}, {org_graph:?}"
+                );
+            }
+        }
+        assert!(num_infeasible < 100);
     }
 
     #[test]

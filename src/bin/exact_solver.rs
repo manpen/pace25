@@ -99,12 +99,12 @@ fn main() -> anyhow::Result<()> {
             &mut covered,
             &mut redundant,
         );
-        //changed |= reducer.apply_rule::<LongPathReduction<_>>(
-        //    &mut graph,
-        //    &mut solution,
-        //    &mut covered,
-        //    &mut redundant,
-        //);
+        changed |= reducer.apply_rule::<LongPathReduction<_>>(
+            &mut graph,
+            &mut solution,
+            &mut covered,
+            &mut redundant,
+        );
 
         if changed {
             continue;

@@ -91,10 +91,15 @@ fn naive_solver_impl<G: Clone + AdjacencyList + GraphEdgeEditing>(
     if covered.cardinality() + 1 == graph.number_of_nodes() {
         let uncovered = covered.iter_cleared_bits().next().unwrap();
 
-        let cand = *candidates
+        let cand = if let Some(x) = candidates
             .iter()
-            .find(|&&c| graph.closed_neighbors_of(c).contains(&uncovered))
-            .unwrap();
+            .copied()
+            .find(|&c| graph.closed_neighbors_of(c).contains(&uncovered))
+        {
+            x
+        } else {
+            return Err(ExactError::Infeasible);
+        };
 
         work_domset.push(cand);
         assert!(work_domset.len() <= upper_bound_incl as usize);
