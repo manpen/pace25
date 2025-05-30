@@ -373,8 +373,8 @@ fn main() -> anyhow::Result<()> {
         let mut best_heuristic = best_heuristic.unwrap();
 
         info!(
-            "Start final run at score {}"
-            heuristic.current_score()
+            "Start final run at score {}",
+            best_heuristic.current_score()
         );
 
         let domset_mapped = if let Some(timeout) = opts.timeout {
