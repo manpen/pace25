@@ -36,17 +36,20 @@ struct Opts {
     #[structopt(short = "v")]
     verbose: bool,
 
-    #[structopt(short = "g", default_value = "10")]
+    #[structopt(short = "g", default_value = "6")]
     greedy_timeout: f64,
 
-    #[structopt(short = "G", default_value = "30")]
+    #[structopt(short = "G", default_value = "20")]
     greedy_iterations: u64,
 
-    #[structopt(short = "a", default_value = "3")]
+    #[structopt(short = "a", default_value = "6")]
     ls_attempts: u64,
 
-    #[structopt(short = "p", default_value = "10")]
+    #[structopt(short = "p", default_value = "13")]
     ls_presolve_timeout: f64,
+
+    #[structopt(short = "m", default_value = "2")]
+    ls_presolve_max_gap: f64,
 
     #[structopt(short = "c")]
     dump_ccs_lower_size: Option<NumNodes>,
@@ -61,13 +64,14 @@ impl Default for Opts {
             input: None,
             timeout: None,
             no_output: false,
-            greedy_timeout: 10.0,
-            greedy_iterations: 30,
+            greedy_timeout: 5.0,
+            greedy_iterations: 20,
             dump_ccs_lower_size: None,
             dump_ccs_upper_size: None,
             verbose: false,
-            ls_attempts: 3,
-            ls_presolve_timeout: 12.0,
+            ls_attempts: 6,
+            ls_presolve_timeout: 13.0,
+            ls_presolve_max_gap: 2.0,
         }
     }
 }
@@ -329,7 +333,29 @@ fn main() -> anyhow::Result<()> {
 
         for ls_attempt in 0..opts.ls_attempts {
             let mut heuristic = build_heuristic(&mut rng, mapped.clone(), &opts);
-            heuristic.run_until_timeout(Duration::from_secs_f64(opts.ls_presolve_timeout));
+
+            let start = Instant::now();
+            let mut last_update_time = start;
+            let mut last_update_score = heuristic.current_score();
+            heuristic.run_while(|a| {
+                let now = Instant::now();
+                if now.duration_since(start) > Duration::from_secs_f64(opts.ls_presolve_timeout) {
+                    info!(" Stop presolve due to timeout");
+                    return false;
+                }
+
+                if a.current_score() < last_update_score {
+                    last_update_score = a.current_score();
+                    last_update_time = now;
+                } else if now.duration_since(last_update_time)
+                    > Duration::from_secs_f64(opts.ls_presolve_max_gap)
+                {
+                    info!(" Stop presolve due to max gap");
+                    return false;
+                }
+
+                true
+            });
 
             info!(
                 "Heuristic presolve attempt {ls_attempt} with score {}",
@@ -345,6 +371,12 @@ fn main() -> anyhow::Result<()> {
         }
 
         let mut best_heuristic = best_heuristic.unwrap();
+
+        info!(
+            "Start final run at score {}"
+            heuristic.current_score()
+        );
+
         let domset_mapped = if let Some(timeout) = opts.timeout {
             best_heuristic.run_until_timeout(Duration::from_secs_f64(timeout));
             best_heuristic.best_known_solution().unwrap()
