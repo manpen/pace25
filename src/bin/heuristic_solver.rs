@@ -4,7 +4,7 @@ use dss::{
         ExtractCsrRepr, Getter, GraphEdgeOrder, GraphFromReader, GraphNodeOrder, NodeMapper,
         NumNodes,
     },
-    heuristic::{greedy_approximation, reverse_greedy_search::GreedyReverseSearch},
+    heuristic::{iterative_greedy::IterativeGreedy, reverse_greedy_search::GreedyReverseSearch},
     io::PaceWriter as _,
     log::build_pace_logger_for_level,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
@@ -16,7 +16,10 @@ use dss::{
 use log::info;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64Mcg;
-use std::{path::PathBuf, time::Duration};
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 use structopt::StructOpt;
 
 #[derive(Default, StructOpt)]
@@ -32,6 +35,12 @@ struct Opts {
 
     #[structopt(short = "l")]
     skip_local_search: bool,
+
+    #[structopt(short = "g", default_value = "10")]
+    greedy_timeout: f64,
+
+    #[structopt(short = "G", default_value = "30")]
+    greedy_iterations: u64,
 
     #[structopt(short = "c")]
     dump_ccs_lower_size: Option<NumNodes>,
@@ -285,13 +294,23 @@ fn main() -> anyhow::Result<()> {
         info!("Start greedy");
         // if the reduction rules are VERY successful, no nodes remain
         let mut mapped = remap_state(&state, &mapping);
-        greedy_approximation(
-            &mapped.graph,
-            &mut mapped.domset,
-            &mapped.covered,
-            &mapped.redundant,
-        );
-        info!("Greedy found solution size {}", mapped.domset.len());
+        assert!(mapped.domset.is_empty());
+
+        // greedy
+        {
+            let mut algo =
+                IterativeGreedy::new(&mut rng, &mapped.graph, &mapped.covered, &mapped.redundant);
+
+            let start_time = Instant::now();
+            for _ in 0..opts.greedy_iterations {
+                algo.execute_step();
+                if start_time.elapsed().as_secs_f64() > opts.greedy_timeout {
+                    continue;
+                }
+            }
+
+            mapped.domset = algo.best_known_solution().unwrap();
+        }
 
         if !opts.skip_local_search {
             info!("Start local search");
