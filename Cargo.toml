@@ -20,8 +20,6 @@ rand_distr="0.4"
 paste = "1.0"
 fxhash="0.2"
 rayon={version= "1.6", optional=true}
-digest = "0.10.0"
-sha2 = "0.10.0"
 log = "0.4"
 env_logger = "0.9"
 ctrlc = { version = "3.1.9", features = ["termination"] }

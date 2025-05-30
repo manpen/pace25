@@ -1,6 +1,8 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, time::Instant};
 
-use rand::Rng;
+use log::info;
+use rand::{Rng, SeedableRng};
+use rand_pcg::Pcg64Mcg;
 use thiserror::Error;
 
 use crate::{
@@ -45,17 +47,14 @@ use crate::{
 /// which they must be at the beginning/end of each *round*. See BaseStateError down below for a
 /// description of these states.
 pub struct GreedyReverseSearch<
-    'a,
-    R,
     G,
     const NUM_SAMPLER_BUCKETS: usize = 8,
     const NUM_SAMPLES: usize = 10,
 > where
-    R: Rng,
     G: StaticGraph + SelfLoop,
 {
     /// A reference to the graph: mutable access is needed as we need to re-order adjacency lists
-    graph: &'a mut G,
+    graph: G,
 
     /// The current solution we operate on
     current_solution: DominatingSet,
@@ -71,7 +70,7 @@ pub struct GreedyReverseSearch<
     /// Contains only nodes u with scores[u] > 0.
     sampler: WeightedPow2Sampler<NUM_SAMPLER_BUCKETS>,
     /// RNG used for sampling
-    rng: &'a mut R,
+    rng: Pcg64Mcg,
 
     /// List of all nodes that are either currently inserted into an IntersectionTree and need to
     /// be removed to maintain (I2) or need to be added to an IntersectionTree to maintain (I2)
@@ -114,24 +113,27 @@ pub struct GreedyReverseSearch<
 
     /// BitSet indicating whether a node is permanently covered by a (removed) fixed node
     is_perm_covered: BitSet,
+
+    verbose_logging: bool,
+    previous_improvement: u64,
+    start_time: Instant,
 }
 
-impl<'a, R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
-    GreedyReverseSearch<'a, R, G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
+impl<G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
+    GreedyReverseSearch<G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
 where
-    R: Rng,
     G: StaticGraph + SelfLoop,
 {
     /// Creates a new instance of the algorithm for a given graph and a starting DomSet which must be valid.
     /// Runs Subset-Reduction beforehand to further reduce the DomSet and removes redundant nodes afterwards.
     pub fn new(
-        graph: &'a mut G,
+        mut graph: G,
         mut initial_solution: DominatingSet,
         is_perm_covered: BitSet,
         non_optimal_nodes: BitSet,
-        rng: &'a mut R,
+        seeding_rng: &mut impl Rng,
     ) -> Self {
-        assert!(initial_solution.is_valid_given_previous_cover(graph, &is_perm_covered));
+        assert!(initial_solution.is_valid_given_previous_cover(&graph, &is_perm_covered));
         assert!(graph.len() > 0);
         assert!(initial_solution.num_of_fixed_nodes() == 0);
 
@@ -217,6 +219,7 @@ where
         let current_solution = initial_solution.clone();
         let best_solution = initial_solution;
 
+        let rng = Pcg64Mcg::seed_from_u64(seeding_rng.r#gen());
         Self {
             graph,
             current_solution,
@@ -235,7 +238,14 @@ where
             round: 1,
             domset_modifications: Vec::with_capacity(1 + n / 64),
             is_perm_covered,
+            verbose_logging: false,
+            previous_improvement: 0,
+            start_time: Instant::now(),
         }
+    }
+
+    pub fn enable_verbose_logging(&mut self) {
+        self.verbose_logging = true;
     }
 
     /// Run one iteration of the algorithm:
@@ -486,6 +496,25 @@ where
                 }
             }
         }
+
+        if self.verbose_logging {
+            info!(
+                " Better solution: size={:6}, round={:9}, gap={:9}, time={:7}ms",
+                self.best_solution.len(),
+                self.round,
+                self.round - self.previous_improvement,
+                self.start_time.elapsed().as_millis()
+            );
+            self.previous_improvement = self.round;
+        }
+    }
+
+    pub fn current_round(&self) -> u64 {
+        self.round
+    }
+
+    pub fn current_score(&self) -> NumNodes {
+        self.best_solution.len() as NumNodes
     }
 }
 
@@ -495,11 +524,9 @@ enum DomSetModification {
     Remove(Node),
 }
 
-impl<R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
-    IterativeAlgorithm<DominatingSet>
-    for GreedyReverseSearch<'_, R, G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
+impl<G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
+    IterativeAlgorithm<DominatingSet> for GreedyReverseSearch<G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
 where
-    R: Rng,
     G: StaticGraph + SelfLoop,
 {
     fn execute_step(&mut self) {
@@ -515,11 +542,10 @@ where
     }
 }
 
-impl<R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
+impl<G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
     TerminatingIterativeAlgorithm<DominatingSet>
-    for GreedyReverseSearch<'_, R, G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
+    for GreedyReverseSearch<G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
 where
-    R: Rng,
     G: StaticGraph + SelfLoop,
 {
 }
@@ -576,11 +602,9 @@ impl Debug for RevGreedyError {
     }
 }
 
-impl<R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
-    InvariantCheck<RevGreedyError>
-    for GreedyReverseSearch<'_, R, G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
+impl<G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize> InvariantCheck<RevGreedyError>
+    for GreedyReverseSearch<G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
 where
-    R: Rng,
     G: StaticGraph + SelfLoop,
 {
     fn is_correct(&self) -> Result<(), RevGreedyError> {
@@ -739,10 +763,9 @@ mod tests {
             let initial_domset = random_initial_solution(&mut rng, &graph);
 
             let domset = {
-                let mut csr_graph =
-                    CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
-                let mut algo = GreedyReverseSearch::<_, _, 10, 10>::new(
-                    &mut csr_graph,
+                let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
+                let mut algo = GreedyReverseSearch::<_, 10, 10>::new(
+                    csr_graph,
                     initial_domset,
                     graph.vertex_bitset_unset(),
                     graph.vertex_bitset_unset(),
@@ -788,10 +811,9 @@ mod tests {
             non_opt_nodes -= &perm_covered;
 
             let domset = {
-                let mut csr_graph =
-                    CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
-                let mut algo = GreedyReverseSearch::<_, _, 10, 10>::new(
-                    &mut csr_graph,
+                let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
+                let mut algo = GreedyReverseSearch::<_, 10, 10>::new(
+                    csr_graph,
                     initial_domset,
                     perm_covered.clone(),
                     non_opt_nodes.clone(),
@@ -832,10 +854,9 @@ mod tests {
             }
 
             let domset = {
-                let mut csr_graph =
-                    CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
-                let mut algo = GreedyReverseSearch::<_, _, 10, 10>::new(
-                    &mut csr_graph,
+                let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
+                let mut algo = GreedyReverseSearch::<_, 10, 10>::new(
+                    csr_graph,
                     initial_domset,
                     graph.vertex_bitset_unset(),
                     non_opt_nodes.clone(),

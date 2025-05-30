@@ -181,14 +181,14 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
 
 fn run_search(rng: &mut impl Rng, mapped: State<CsrGraph>, timeout: Option<f64>) -> DominatingSet {
     let State {
-        mut graph,
+        graph,
         domset,
         covered,
         redundant,
     } = mapped;
 
-    let mut search = GreedyReverseSearch::<_, _, 10, 10>::new(
-        &mut graph,
+    let mut search = GreedyReverseSearch::<_, 10, 10>::new(
+        graph.clone(),
         domset,
         covered.clone(),
         redundant.clone(),

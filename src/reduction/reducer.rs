@@ -49,13 +49,16 @@ impl<G: GraphEdgeOrder + AdjacencyList + UnsafeGraphEditing> Reducer<G> {
         debug_assert!(solution.iter().all(|u| graph.degree_of(u) == 0));
 
         let start_rule = Instant::now();
-        let (mut changed, post) = R::apply_rule(graph, solution, covered, redundant);
+        let (changed, post) = R::apply_rule(graph, solution, covered, redundant);
         assert!(changed || post.is_none());
 
         let start_clean = Instant::now();
         let duration_rule = start_clean.duration_since(start_rule);
-        let unneccesary_edges = self.remove_unnecessary_edges(graph, covered, redundant);
-        changed |= unneccesary_edges > 0;
+        let unneccesary_edges = if changed {
+            self.remove_unnecessary_edges(graph, covered, redundant)
+        } else {
+            0
+        };
         let duration_clean = start_clean.elapsed();
 
         debug_assert!(solution.iter().all(|u| graph.degree_of(u) == 0));

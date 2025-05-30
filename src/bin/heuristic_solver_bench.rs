@@ -48,7 +48,7 @@ fn main() -> anyhow::Result<()> {
     // (7-8)
     let orig_graph = graph;
     let mapping = orig_graph.cuthill_mckee();
-    let mut graph = CsrGraph::from_edges(
+    let graph = CsrGraph::from_edges(
         orig_graph.number_of_nodes(),
         orig_graph
             .edges(true)
@@ -82,8 +82,8 @@ fn main() -> anyhow::Result<()> {
     timer = Instant::now();
 
     let mut rng = Pcg64Mcg::seed_from_u64(123u64);
-    let mut search = GreedyReverseSearch::<_, _, 10, 10>::new(
-        &mut graph,
+    let mut search = GreedyReverseSearch::<_, 10, 10>::new(
+        graph.clone(),
         domset,
         is_perm_covered,
         redundant_mapped,
