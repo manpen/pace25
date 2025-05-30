@@ -31,6 +31,9 @@ struct Opts {
     #[structopt(short = "T")]
     timeout: Option<f64>,
 
+    #[structopt(short = "k")]
+    preprocess_only: bool,
+
     #[structopt(short = "q")]
     no_output: bool,
 
@@ -73,6 +76,7 @@ impl Default for Opts {
             ls_attempts: 6,
             ls_presolve_timeout: 13.0,
             ls_presolve_max_gap: 2.0,
+            preprocess_only: false,
         }
     }
 }
@@ -335,6 +339,10 @@ fn main() -> anyhow::Result<()> {
     if mapping.len() > 0 {
         // if the reduction rules are VERY successful, no nodes remain
         let mapped = remap_state(&state, &mapping);
+
+        if opts.preprocess_only {
+            return Ok(());
+        }
 
         let mut best_heuristic: Option<MainHeuristic> = None;
 
