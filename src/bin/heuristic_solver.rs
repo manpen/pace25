@@ -33,6 +33,9 @@ struct Opts {
     #[structopt(short = "q")]
     no_output: bool,
 
+    #[structopt(short = "v")]
+    verbose: bool,
+
     #[structopt(short = "l")]
     skip_local_search: bool,
 
@@ -60,6 +63,7 @@ impl Default for Opts {
             greedy_iterations: 30,
             dump_ccs_lower_size: None,
             dump_ccs_upper_size: None,
+            verbose: false,
         }
     }
 }
@@ -252,7 +256,7 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
     }
 }
 
-fn run_search(rng: &mut impl Rng, mapped: State<CsrGraph>, timeout: Option<f64>) -> DominatingSet {
+fn run_search(rng: &mut impl Rng, mapped: State<CsrGraph>, opts: &Opts) -> DominatingSet {
     let State {
         mut graph,
         domset,
@@ -268,7 +272,11 @@ fn run_search(rng: &mut impl Rng, mapped: State<CsrGraph>, timeout: Option<f64>)
         rng,
     );
 
-    let domset = if let Some(seconds) = timeout {
+    if opts.verbose {
+        search.enable_verbose_logging();
+    }
+
+    let domset = if let Some(seconds) = opts.timeout {
         search.run_until_timeout(Duration::from_secs_f64(seconds));
         search.best_known_solution()
     } else {
@@ -329,7 +337,7 @@ fn main() -> anyhow::Result<()> {
 
         if !opts.skip_local_search {
             info!("Start local search");
-            let domset_mapped = run_search(&mut rng, mapped, opts.timeout);
+            let domset_mapped = run_search(&mut rng, mapped, &opts);
             info!("Local search found solution size {}", domset_mapped.len());
 
             let size_before = state.domset.len();

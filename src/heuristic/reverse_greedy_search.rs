@@ -1,5 +1,6 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, time::Instant};
 
+use log::info;
 use rand::Rng;
 use thiserror::Error;
 
@@ -114,6 +115,10 @@ pub struct GreedyReverseSearch<
 
     /// BitSet indicating whether a node is permanently covered by a (removed) fixed node
     is_perm_covered: BitSet,
+
+    verbose_logging: bool,
+    previous_improvement: u64,
+    start_time: Instant,
 }
 
 impl<'a, R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
@@ -235,7 +240,14 @@ where
             round: 1,
             domset_modifications: Vec::with_capacity(1 + n / 64),
             is_perm_covered,
+            verbose_logging: false,
+            previous_improvement: 0,
+            start_time: Instant::now(),
         }
+    }
+
+    pub fn enable_verbose_logging(&mut self) {
+        self.verbose_logging = true;
     }
 
     /// Run one iteration of the algorithm:
@@ -485,6 +497,17 @@ where
                     DomSetModification::Remove(node) => self.best_solution.remove_node(node),
                 }
             }
+        }
+
+        if self.verbose_logging {
+            info!(
+                " Better solution: size={:6}, round={:9}, gap={:9}, time={:7}ms",
+                self.best_solution.len(),
+                self.round,
+                self.round - self.previous_improvement,
+                self.start_time.elapsed().as_millis()
+            );
+            self.previous_improvement = self.round;
         }
     }
 }
