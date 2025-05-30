@@ -735,7 +735,7 @@ mod tests {
     fn full_graph() {
         let mut rng = Pcg64Mcg::seed_from_u64(123456);
         for _ in 0..500 {
-            let graph = AdjArray::random_black_gnp(&mut rng, 100, 0.03);
+            let graph = AdjArray::random_gnp(&mut rng, 100, 0.03);
             let initial_domset = random_initial_solution(&mut rng, &graph);
 
             let domset = {
@@ -766,7 +766,7 @@ mod tests {
     fn with_deleted_nodes() {
         let mut rng = Pcg64Mcg::seed_from_u64(123456);
         for _ in 0..500 {
-            let org_graph = AdjArray::random_black_gnp(&mut rng, 100, 0.03);
+            let org_graph = AdjArray::random_gnp(&mut rng, 100, 0.03);
             let mut graph = org_graph.clone();
             let initial_domset = random_initial_solution(&mut rng, &graph);
 
@@ -818,7 +818,7 @@ mod tests {
     fn non_opt_nodes() {
         let mut rng = Pcg64Mcg::seed_from_u64(123456);
         for _ in 0..500 {
-            let org_graph = AdjArray::random_black_gnp(&mut rng, 100, 0.03);
+            let org_graph = AdjArray::random_gnp(&mut rng, 100, 0.03);
             let graph = org_graph.clone();
             let initial_domset = random_initial_solution(&mut rng, &graph);
 

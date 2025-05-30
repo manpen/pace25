@@ -1,3 +1,5 @@
+use smallvec::SmallVec;
+
 use super::*;
 use std::fmt;
 
@@ -55,62 +57,9 @@ impl AdjacencyList for AdjArray {
     }
 }
 
-impl ColoredAdjacencyList for AdjArray {
-    type BlackNeighborIter<'a>
-        = impl Iterator<Item = Node> + 'a
-    where
-        Self: 'a;
-
-    type RedNeighborIter<'a>
-        = impl Iterator<Item = Node> + 'a
-    where
-        Self: 'a;
-
-    forward!(black_degree_of, black_degree, NumNodes);
-    forward!(red_degree_of, red_degree, NumNodes);
-    forward!(
-        black_neighbors_of,
-        black_neighbors,
-        Self::BlackNeighborIter<'_>
-    );
-    forward!(red_neighbors_of, red_neighbors, Self::RedNeighborIter<'_>);
-
-    type BlackNeighborsStream<'a>
-        = BitsetStream<Node>
-    where
-        Self: 'a;
-
-    type RedNeighborsStream<'a>
-        = BitsetStream<Node>
-    where
-        Self: 'a;
-
-    fn black_neighbors_of_as_stream(&self, u: Node) -> Self::BlackNeighborsStream<'_> {
-        self.black_neighbors_of_as_bitset(u).into_bitmask_stream()
-    }
-
-    fn red_neighbors_of_as_stream(&self, u: Node) -> Self::RedNeighborsStream<'_> {
-        self.red_neighbors_of_as_bitset(u).into_bitmask_stream()
-    }
-}
-
 impl AdjacencyTest for AdjArray {
     fn has_edge(&self, u: Node, v: Node) -> bool {
         self.adj[u as usize].has_neighbor(v)
-    }
-}
-
-impl ColoredAdjacencyTest for AdjArray {
-    fn has_black_edge(&self, u: Node, v: Node) -> bool {
-        self.adj[u as usize].has_black_neighbor(v)
-    }
-
-    fn has_red_edge(&self, u: Node, v: Node) -> bool {
-        self.adj[u as usize].has_red_neighbor(v)
-    }
-
-    fn type_of_edge(&self, u: Node, v: Node) -> EdgeKind {
-        self.adj[u as usize].edge_type_with(v)
     }
 }
 
@@ -124,31 +73,28 @@ impl GraphNew for AdjArray {
 }
 
 impl GraphEdgeEditing for AdjArray {
-    fn try_add_edge(&mut self, u: Node, v: Node, color: EdgeColor) -> EdgeKind {
-        let prev = self.adj[u as usize].try_add_edge(v, color);
+    fn try_add_edge(&mut self, u: Node, v: Node) -> bool {
+        let prev = self.adj[u as usize].try_add_edge(v);
 
-        if prev != color && u != v {
-            assert_eq!(self.adj[v as usize].try_add_edge(u, color), prev)
+        if !prev && u != v {
+            let _other = self.adj[v as usize].try_add_edge(u);
+            debug_assert!(!_other);
         }
 
-        if prev.is_none() {
-            self.number_of_edges += 1;
-        }
+        self.number_of_edges += !prev as NumEdges;
 
         prev
     }
 
-    fn try_remove_edge(&mut self, u: Node, v: Node) -> EdgeKind {
+    fn try_remove_edge(&mut self, u: Node, v: Node) -> bool {
         let prev = self.adj[u as usize].try_delete_edge(v);
 
-        if prev.is_some() && u != v {
+        if prev && u != v {
             let _other = self.adj[v as usize].try_delete_edge(u);
             debug_assert_eq!(prev, _other);
         }
 
-        if prev.is_some() {
-            self.number_of_edges -= 1;
-        }
+        self.number_of_edges -= prev as NumEdges;
 
         prev
     }
@@ -158,44 +104,29 @@ impl GraphEdgeEditing for AdjArray {
         self.number_of_edges -= neighbors.nodes.len() as NumEdges;
 
         for &v in &neighbors.nodes {
-            assert!(self.adj[v as usize].try_delete_edge(u).is_some());
+            assert!(self.adj[v as usize].try_delete_edge(u));
         }
     }
+}
 
-    fn merge_node_into(&mut self, removed: Node, survivor: Node) {
-        assert_ne!(removed, survivor);
-
-        let reds = self.red_neighbors_after_merge(removed, survivor, true);
-
-        for red_neigh in reds.iter_set_bits() {
-            self.try_add_edge(survivor, red_neigh as Node, EdgeColor::Red);
-        }
-
-        debug_assert!(!self.has_edge(survivor, survivor));
-
-        self.remove_edges_at_node(removed);
+impl UnsafeGraphEditing for AdjArray {
+    unsafe fn remove_half_edges_at_if<F: FnMut(Node) -> bool>(
+        &mut self,
+        u: Node,
+        predicate: F,
+    ) -> NumNodes {
+        self.adj[u as usize].remove_neighbors_if(predicate)
     }
 
-    fn red_neighbors_after_merge(&self, removed: Node, survivor: Node, only_new: bool) -> BitSet {
-        let mut turned_red = self.black_neighbors_of_as_bitset(survivor);
+    unsafe fn remove_half_edges_at(&mut self, u: Node) -> NumNodes {
+        let size_before = self.adj[u as usize].degree();
+        self.adj[u as usize].clear();
+        size_before
+    }
 
-        for v in self.black_neighbors_of(removed) {
-            if turned_red.set_bit(v) {
-                turned_red.clear_bit(v); // flip bit!
-            }
-        }
-        turned_red.set_bits(self.red_neighbors_of(removed));
-
-        if only_new {
-            turned_red.clear_bits(self.red_neighbors_of(survivor));
-        } else {
-            turned_red.set_bits(self.red_neighbors_of(survivor));
-        }
-
-        turned_red.clear_bit(removed);
-        turned_red.clear_bit(survivor);
-
-        turned_red
+    unsafe fn set_number_of_edges(&mut self, m: NumEdges) {
+        debug_assert_eq!(2 * m, self.adj.iter().map(|a| a.degree()).sum::<NumEdges>());
+        self.number_of_edges = m;
     }
 }
 
@@ -203,17 +134,6 @@ impl AdjArray {
     pub fn unordered_edges(&self) -> impl Iterator<Item = Edge> + '_ {
         self.vertices_range()
             .flat_map(|u| self.neighbors_of(u).map(move |v| Edge(u, v)))
-    }
-
-    pub fn unordered_colored_edges(&self) -> impl Iterator<Item = ColoredEdge> + '_ {
-        self.vertices_range().flat_map(|u| {
-            self.black_neighbors_of(u)
-                .map(move |v| ColoredEdge(u, v, EdgeColor::Black))
-                .chain(
-                    self.red_neighbors_of(u)
-                        .map(move |v| ColoredEdge(u, v, EdgeColor::Red)),
-                )
-        })
     }
 
     pub fn test_only_from(edges: impl Clone + IntoIterator<Item = impl Into<Edge>>) -> Self {
@@ -226,7 +146,7 @@ impl AdjArray {
             .unwrap_or(0);
         let mut graph = Self::new(n as NumNodes);
 
-        graph.add_edges(edges, EdgeColor::Black);
+        graph.add_edges(edges);
 
         graph
     }
@@ -252,8 +172,7 @@ impl ExtractCsrRepr for AdjArray {
 
 #[derive(Default, Clone)]
 struct Neighborhood {
-    nodes: Vec<Node>,
-    red_degree: NumNodes,
+    nodes: SmallVec<[Node; 8]>,
 }
 
 impl Neighborhood {
@@ -261,123 +180,40 @@ impl Neighborhood {
         self.nodes.len() as NumNodes
     }
 
-    fn black_degree(&self) -> NumNodes {
-        self.nodes.len() as NumNodes - self.red_degree
-    }
-
-    fn red_degree(&self) -> NumNodes {
-        self.red_degree
-    }
-
     fn neighbors(&self) -> impl Iterator<Item = Node> + '_ {
         self.nodes.iter().copied()
-    }
-
-    fn black_neighbors(&self) -> impl Iterator<Item = Node> + '_ {
-        self.nodes[0..self.black_degree() as usize].iter().copied()
-    }
-
-    fn red_neighbors(&self) -> impl Iterator<Item = Node> + '_ {
-        self.nodes[self.black_degree() as usize..].iter().copied()
-    }
-
-    fn edge_type_with(&self, v: Node) -> EdgeKind {
-        if self.has_black_neighbor(v) {
-            EdgeKind::Black
-        } else if self.has_red_neighbor(v) {
-            EdgeKind::Red
-        } else {
-            EdgeKind::None
-        }
     }
 
     fn has_neighbor(&self, v: Node) -> bool {
         self.neighbors().any(|u| u == v)
     }
 
-    fn has_black_neighbor(&self, v: Node) -> bool {
-        self.black_neighbors().any(|u| u == v)
-    }
-
-    fn has_red_neighbor(&self, v: Node) -> bool {
-        self.red_neighbors().any(|u| u == v)
-    }
-
-    fn try_add_edge(&mut self, v: Node, kind: EdgeColor) -> EdgeKind {
-        let (position, previous) = self.find_neighbor(v);
-
-        match previous {
-            EdgeKind::None => {
-                self.push_red(v);
-                if kind == EdgeColor::Black {
-                    self.recolor_red_to_black(self.nodes.len() - 1);
-                }
-            }
-
-            EdgeKind::Black => {
-                if kind == EdgeColor::Red {
-                    self.recolor_black_to_red(position.unwrap());
-                }
-            }
-
-            EdgeKind::Red => {
-                if kind == EdgeColor::Black {
-                    self.recolor_red_to_black(position.unwrap());
-                }
-            }
+    fn try_add_edge(&mut self, v: Node) -> bool {
+        if self.nodes.contains(&v) {
+            return true;
         }
 
-        previous
-    }
-
-    fn find_neighbor(&self, v: Node) -> (Option<usize>, EdgeKind) {
-        let position = self.neighbors().position(|x| x == v);
-
-        match position {
-            None => (None, EdgeKind::None),
-            Some(x) if x < self.black_degree() as usize => (Some(x), EdgeKind::Black),
-            Some(x) => (Some(x), EdgeKind::Red),
-        }
-    }
-
-    fn try_delete_edge(&mut self, v: Node) -> EdgeKind {
-        let (position, previous) = self.find_neighbor(v);
-
-        if previous.is_none() {
-            return EdgeKind::None;
-        }
-
-        let idx = if previous.is_black() {
-            self.recolor_black_to_red(position.unwrap())
-        } else {
-            position.unwrap()
-        };
-
-        self.nodes.swap_remove(idx);
-        self.red_degree -= 1;
-
-        previous
-    }
-
-    fn push_red(&mut self, v: Node) {
         self.nodes.push(v);
-        self.red_degree += 1;
+        false
     }
 
-    fn recolor_red_to_black(&mut self, idx: usize) -> usize {
-        let first_red = self.black_degree() as usize;
-        debug_assert!(idx >= first_red);
-        self.nodes.swap(first_red, idx);
-        self.red_degree -= 1;
-        first_red
+    fn try_delete_edge(&mut self, v: Node) -> bool {
+        if let Some((pos, _)) = self.nodes.iter().find_position(|&&x| x == v) {
+            self.nodes.swap_remove(pos);
+            true
+        } else {
+            false
+        }
     }
 
-    fn recolor_black_to_red(&mut self, idx: usize) -> usize {
-        let last_black = self.black_degree().checked_sub(1).unwrap() as usize;
-        debug_assert!(idx <= last_black);
-        self.nodes.swap(last_black, idx);
-        self.red_degree += 1;
-        last_black
+    pub fn remove_neighbors_if<F: FnMut(Node) -> bool>(&mut self, mut predicate: F) -> NumNodes {
+        let size_before = self.nodes.len();
+        self.nodes.retain(|x| !predicate(*x));
+        (size_before - self.nodes.len()) as NumNodes
+    }
+
+    pub fn clear(&mut self) {
+        self.nodes.clear();
     }
 }
 

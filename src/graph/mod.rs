@@ -1,7 +1,6 @@
 pub mod adj_array;
 pub mod bipartite;
 pub mod bridges;
-pub mod complement;
 pub mod connectivity;
 pub mod csr;
 pub mod cut_vertex;
@@ -9,8 +8,6 @@ pub mod cuthill_mckee;
 pub mod distance_two_pairs;
 pub mod edge;
 pub mod gnp;
-pub mod graph_digest;
-pub mod matrix;
 pub mod modules;
 pub mod node_mapper;
 pub mod partition;
@@ -21,7 +18,6 @@ pub mod traversal;
 pub use adj_array::*;
 pub use bipartite::*;
 pub use bridges::*;
-pub use complement::*;
 pub use connectivity::*;
 pub use csr::*;
 pub use cut_vertex::*;
@@ -29,8 +25,6 @@ pub use cuthill_mckee::CuthillMcKee;
 pub use distance_two_pairs::*;
 pub use edge::*;
 pub use gnp::*;
-pub use graph_digest::*;
-pub use matrix::*;
 pub use modules::Modules;
 pub use node_mapper::*;
 pub use partition::*;
@@ -337,33 +331,27 @@ pub trait GraphNew {
 
 /// Provides functions to insert/delete edges
 pub trait GraphEdgeEditing: GraphNew {
-    /// Adds the directed edge *(u,v)* to the graph. I.e., the edge FROM u TO v.
+    /// Adds the directed edge *(u,v)* to the graph.
     /// ** Panics if the edge is already contained or possibly if u, v >= n **
-    fn add_edge(&mut self, u: Node, v: Node, color: EdgeColor) {
-        assert!(self.try_add_edge(u, v, color).is_none())
+    fn add_edge(&mut self, u: Node, v: Node) {
+        assert!(!self.try_add_edge(u, v))
     }
 
     /// Adds the directed edge *(u,v)* to the graph. I.e., the edge FROM u TO v.
     /// Returns *true* exactly if the edge was not present previously.
     /// ** Can panic if u, v >= n, depending on implementation **
-    fn try_add_edge(&mut self, u: Node, v: Node, color: EdgeColor) -> EdgeKind;
+    fn try_add_edge(&mut self, u: Node, v: Node) -> bool;
 
-    fn add_edges(&mut self, edges: impl IntoIterator<Item = impl Into<Edge>>, color: EdgeColor) {
+    fn add_edges(&mut self, edges: impl IntoIterator<Item = impl Into<Edge>>) {
         for Edge(u, v) in edges.into_iter().map(|d| d.into()) {
-            self.add_edge(u, v, color);
-        }
-    }
-
-    fn add_colored_edges(&mut self, edges: impl IntoIterator<Item = impl Borrow<ColoredEdge>>) {
-        for ColoredEdge(u, v, color) in edges.into_iter().map(|d| *d.borrow()) {
-            self.add_edge(u, v, color);
+            self.add_edge(u, v);
         }
     }
 
     /// Removes the directed edge *(u,v)* from the graph. I.e., the edge FROM u TO v.
     /// ** Panics if the edge is not present or u, v >= n **
     fn remove_edge(&mut self, u: Node, v: Node) {
-        assert!(self.try_remove_edge(u, v).is_some())
+        assert!(self.try_remove_edge(u, v));
     }
 
     fn remove_edges(&mut self, edges: impl IntoIterator<Item = impl Borrow<Edge>>) {
@@ -375,22 +363,41 @@ pub trait GraphEdgeEditing: GraphNew {
     /// Removes the directed edge *(u,v)* from the graph. I.e., the edge FROM u TO v.
     /// If the edge was removed, returns *true* and *false* otherwise.
     /// ** Panics if u, v >= n **
-    fn try_remove_edge(&mut self, u: Node, v: Node) -> EdgeKind;
+    fn try_remove_edge(&mut self, u: Node, v: Node) -> bool;
 
     /// Removes all edges into and out of node u
     fn remove_edges_at_node(&mut self, u: Node);
+}
 
-    /// Removes all edges into and out of node `u` and connects every in-neighbor with every out-neighbor.
-    fn merge_node_into(&mut self, removed: Node, survivor: Node);
+pub trait UnsafeGraphEditing {
+    /// Iterates through the neighborhood of node `u` and for each neighbor v call the
+    /// predicate `predicate(v)`. If it returns `true`, neighbor v is remove. The
+    /// relative order of neighbors remains.
+    ///
+    /// # Safety
+    /// This function only deletes a half edge and does NOT update the number of edges.
+    /// It is the callers responsibility to also remove the half edge pointing in the
+    /// opposite direction and to update the number of edges
+    unsafe fn remove_half_edges_at_if<F: FnMut(Node) -> bool>(
+        &mut self,
+        u: Node,
+        predicate: F,
+    ) -> NumNodes;
 
-    /// Dry-run of [`GraphEdgeEditing::merge_node_into`] that only returns the red-degree after a merge were carried out
-    fn red_degree_after_merge(&self, removed: Node, survivor: Node) -> NumNodes {
-        self.red_neighbors_after_merge(removed, survivor, false)
-            .cardinality() as NumNodes
-    }
+    /// Delete all out-going half edges of node u, without removing the opposite half edges.
+    ///
+    /// # Safety
+    /// This function only deletes a half edge and does NOT update the number of edges.
+    /// It is the callers responsibility to also remove the half edge pointing in the
+    /// opposite direction and to update the number of edges
+    unsafe fn remove_half_edges_at(&mut self, u: Node) -> NumNodes;
 
-    /// Dry-run of [`GraphEdgeEditing::merge_node_into`] that only returns the red-neighbors after a merge
-    fn red_neighbors_after_merge(&self, removed: Node, survivor: Node, only_new: bool) -> BitSet;
+    /// Sets the number of edges of the graph to an user-provided value. It is intended to
+    /// be used together with `remove_half_edges_at_if`.
+    ///
+    /// # Safety
+    /// It is undefined behavior to update a wrong number of edges.
+    unsafe fn set_number_of_edges(&mut self, m: NumEdges);
 }
 
 /// A trait that allows accessing and modification of neighbors by index
@@ -405,7 +412,7 @@ pub trait IndexedAdjacencyList: AdjacencyList {
     /// Possibly panics if i >= degree_of(u)
     fn ith_cross_position(&self, u: Node, i: NumNodes) -> NumNodes;
 
-    /// Swaps neighbos at positions nb1_pos and nb2_pos of u
+    /// Swaps neighbor at positions nb1_pos and nb2_pos of u
     ///
     /// Possibly panics if nb1_pos >= degree_of(u) || nb2_pos >= degree_of(u)
     fn swap_neighbors(&mut self, u: Node, nb1_pos: NumNodes, nb2_pos: NumNodes);
@@ -420,7 +427,7 @@ pub trait GraphFromReader {
 impl<G: GraphNew + GraphEdgeEditing> GraphFromReader for G {
     fn from_edges(n: NumNodes, edges: impl IntoIterator<Item = impl Into<Edge>>) -> Self {
         let mut graph = Self::new(n);
-        graph.add_edges(edges, EdgeColor::Black);
+        graph.add_edges(edges);
         graph
     }
 }
@@ -448,8 +455,6 @@ pub trait FullfledgedGraph:
     + ColoredAdjacencyList
     + ColoredAdjacencyTest
     + GraphEdgeEditing
-    + Complement
-    + GraphDigest
     + std::fmt::Debug
 {
 }
@@ -461,8 +466,6 @@ impl<G> FullfledgedGraph for G where
         + ColoredAdjacencyList
         + ColoredAdjacencyTest
         + GraphEdgeEditing
-        + Complement
-        + GraphDigest
         + std::fmt::Debug
 {
 }

@@ -43,7 +43,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         graph: &mut Graph,
         domset: &mut DominatingSet,
         covered: &mut BitSet,
-        _redundant: &mut BitSet,
+        redundant: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
         let n = graph.len();
         assert!(NOT_SET as usize >= n);
@@ -136,6 +136,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
                             .then(|| (non_perm_degree[pt as usize], pt))
                     })
                     .min()
+                    && !redundant.get_bit(min_node)
                 {
                     // We drained inv_mappings earlier completely, so we can now reuse it
                     inv_mappings[min_node as usize].push(v);
@@ -176,6 +177,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
                     .closed_neighbors_of(v)
                     .all(|x| parent[x as usize] == u || x == u)
                 {
+                    assert!(!redundant.get_bit(u));
                     domset.fix_node(u);
                     selected.push(u);
                     covered.set_bits(graph.closed_neighbors_of(u));
@@ -235,6 +237,16 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         covered.update_cleared_bits(|u| {
             let is_singleton = graph.degree_of(u) == 0;
             if is_singleton {
+                // If redundant[u] = 1, then u was dominated by another node v that was removed in
+                // this iteration along with every other neighbor of u because u was the only
+                // uncovered neighbor of those nodes.
+                //
+                // It would be equally optimal to put v into the dominating set instead, but at
+                // this point, it does not matter.
+                //
+                // We nonetheless mark u was not-redundant anymore to prevent further checks from
+                // flagging this as unintended behavior
+                redundant.clear_bit(u);
                 domset.fix_node(u);
             }
             is_singleton

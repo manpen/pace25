@@ -239,7 +239,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
                     }
 
                     if !ucovered || !covered.get_bit(oldv) {
-                        graph_mapped.add_edge(newu, newv, EdgeColor::Black);
+                        graph_mapped.add_edge(newu, newv);
                     }
                 }
             }

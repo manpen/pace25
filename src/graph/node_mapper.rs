@@ -133,7 +133,7 @@ pub trait Getter {
     /// ```
     fn relabelled_graph_as<GI, GO>(&self, input: &GI) -> GO
     where
-        GI: GraphNodeOrder + ColoredAdjacencyList,
+        GI: GraphNodeOrder + AdjacencyList,
         GO: GraphNew + GraphEdgeEditing,
     {
         let max_node = input
@@ -149,9 +149,9 @@ pub trait Getter {
         let mut output = GO::new(max_node as NumNodes);
         for old_u in input.vertices() {
             if let Some(new_u) = self.new_id_of(old_u) {
-                for ColoredEdge(_, old_v, color) in input.colored_edges_of(old_u, false) {
+                for Edge(_, old_v) in input.edges_of(old_u, true) {
                     if let Some(new_v) = self.new_id_of(old_v) {
-                        output.try_add_edge(new_u, new_v, color);
+                        output.try_add_edge(new_u, new_v);
                     }
                 }
             }
@@ -163,7 +163,7 @@ pub trait Getter {
     /// Short-hand for [`Getter::relabelled_graph_as`] where the output type matches the input type.
     fn relabelled_graph<G>(&self, input: &G) -> G
     where
-        G: ColoredAdjacencyList + GraphNew + GraphEdgeEditing,
+        G: AdjacencyList + GraphNew + GraphEdgeEditing,
     {
         self.relabelled_graph_as::<G, G>(input)
     }

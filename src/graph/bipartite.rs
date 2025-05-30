@@ -7,7 +7,7 @@ pub trait BipartiteTest {
     /// ```
     /// use dss::prelude::*;
     /// let mut graph = AdjArray::new(2);
-    /// graph.add_edge(0, 1, EdgeColor::Black);
+    /// graph.add_edge(0, 1);
     ///
     /// assert!(graph.is_bipartition(&BitSet::new_with_bits_set(2, [0u32])));
     /// assert!(!graph.is_bipartition(&BitSet::new(2)));
@@ -20,12 +20,12 @@ pub trait BipartiteTest {
     /// ```
     /// use dss::prelude::*;
     /// let mut graph = AdjArray::new(4); // path graph
-    /// graph.add_edges([(0, 1), (1, 2), (2, 3)], EdgeColor::Black);
+    /// graph.add_edges([(0, 1), (1, 2), (2, 3)]);
     ///
     /// let partition = graph.compute_bipartition().unwrap();
     /// assert!(graph.is_bipartition(&partition));
     ///
-    /// graph.add_edge(0, 2, EdgeColor::Black);
+    /// graph.add_edge(0, 2);
     /// assert!(graph.compute_bipartition().is_none());
     /// ```
     fn compute_bipartition(&self) -> Option<BitSet>;
@@ -36,11 +36,11 @@ pub trait BipartiteTest {
     /// ```
     /// use dss::prelude::*;
     /// let mut graph = AdjArray::new(4); // path graph
-    /// graph.add_edges([(0, 1), (1, 2), (2, 3)], EdgeColor::Black);
+    /// graph.add_edges([(0, 1), (1, 2), (2, 3)]);
     ///
     /// assert!(graph.is_bipartite());
     ///
-    /// graph.add_edge(0, 2, EdgeColor::Black);
+    /// graph.add_edge(0, 2);
     /// assert!(!graph.is_bipartite());
     /// ```
     fn is_bipartite(&self) -> bool {
@@ -71,7 +71,7 @@ pub trait BipartiteEdit {
     /// ```
     /// use dss::prelude::*;
     /// let mut graph = AdjArray::new(4);
-    /// graph.add_edges([(0, 1), (1, 2), (2, 3)], EdgeColor::Black);
+    /// graph.add_edges([(0, 1), (1, 2), (2, 3)]);
     /// let partition = BitSet::new_with_bits_set(4, [0u32, 2]);
     ///
     /// // no change, since it's actually bipartite
@@ -79,7 +79,7 @@ pub trait BipartiteEdit {
     /// assert_eq!(graph.number_of_edges(), 3);
     ///
     /// // add non-bipartite edges
-    /// graph.add_edges([(0, 2), (1, 3)], EdgeColor::Black);
+    /// graph.add_edges([(0, 2), (1, 3)]);
     /// assert_eq!(graph.number_of_edges(), 5);
     /// graph.remove_edges_within_bipartition_class(&partition);
     /// assert_eq!(graph.number_of_edges(), 3);
@@ -134,7 +134,7 @@ mod test {
         for n in 1..10 {
             let mut graph = AdjArray::new(n);
             for u in 0..n - 1 {
-                graph.add_edge(u, u + 1, EdgeColor::Black);
+                graph.add_edge(u, u + 1);
             }
 
             assert!(graph.compute_bipartition().is_some());
@@ -147,7 +147,7 @@ mod test {
 
             if n > 2 {
                 let mut graph = graph.clone();
-                graph.add_edge(1 - (n % 2), n - 1, EdgeColor::Black);
+                graph.add_edge(1 - (n % 2), n - 1);
                 assert!(graph.compute_bipartition().is_none());
             }
         }

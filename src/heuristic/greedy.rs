@@ -112,7 +112,7 @@ mod tests {
     fn full_graph() {
         let mut rng = Pcg64Mcg::seed_from_u64(123456);
         for _ in 0..1000 {
-            let graph = AdjArray::random_black_gnp(&mut rng, 100, 0.03);
+            let graph = AdjArray::random_gnp(&mut rng, 100, 0.03);
             let mut domset = DominatingSet::new(graph.number_of_nodes());
             super::greedy_approximation(
                 &graph,
@@ -129,7 +129,7 @@ mod tests {
     fn graph_with_partial_solution() {
         let mut rng = Pcg64Mcg::seed_from_u64(123456);
         for i in 0..1000 {
-            let org_graph = AdjArray::random_black_gnp(&mut rng, 100, 0.03);
+            let org_graph = AdjArray::random_gnp(&mut rng, 100, 0.03);
             let graph = org_graph.clone(); // TODO: this should be mut
             let mut domset = DominatingSet::new(graph.number_of_nodes());
 

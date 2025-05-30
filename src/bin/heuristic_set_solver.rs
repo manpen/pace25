@@ -255,7 +255,12 @@ fn main() -> anyhow::Result<()> {
     }
 
     let mut covered = state.domset.compute_covered(&input_graph);
-    reducer.post_process(&mut input_graph.clone(), &mut state.domset, &mut covered);
+    reducer.post_process(
+        &mut input_graph.clone(),
+        &mut state.domset,
+        &mut covered,
+        &mut state.redundant,
+    );
 
     let switches: Vec<(Node, Node)> = state
         .domset

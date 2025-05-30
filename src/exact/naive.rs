@@ -91,10 +91,15 @@ fn naive_solver_impl<G: Clone + AdjacencyList + GraphEdgeEditing>(
     if covered.cardinality() + 1 == graph.number_of_nodes() {
         let uncovered = covered.iter_cleared_bits().next().unwrap();
 
-        let cand = *candidates
+        let cand = if let Some(x) = candidates
             .iter()
-            .find(|&&c| graph.closed_neighbors_of(c).contains(&uncovered))
-            .unwrap();
+            .copied()
+            .find(|&c| graph.closed_neighbors_of(c).contains(&uncovered))
+        {
+            x
+        } else {
+            return Err(ExactError::Infeasible);
+        };
 
         work_domset.push(cand);
         assert!(work_domset.len() <= upper_bound_incl as usize);
@@ -222,7 +227,7 @@ mod test {
     fn randomized() {
         let mut rng = Pcg64Mcg::seed_from_u64(1234567);
         for _ in 0..100 {
-            let graph = AdjArray::random_black_gnp(&mut rng, 20, 4. / 20.);
+            let graph = AdjArray::random_gnp(&mut rng, 20, 4. / 20.);
 
             let solution = naive_solver(
                 &graph,

@@ -9,16 +9,12 @@ pub trait DotWriter {
 
 impl<T> DotWriter for T
 where
-    T: ColoredAdjacencyList,
+    T: AdjacencyList,
 {
     fn try_write_dot<W: Write>(&self, mut writer: W) -> Result<(), std::io::Error> {
         write!(writer, "graph G {{")?;
-        for ColoredEdge(u, v, c) in self.ordered_colored_edges(true) {
-            if c.is_red() {
-                write!(writer, "v{u}--v{v}[color=red]; ")?;
-            } else {
-                write!(writer, "v{u}--v{v}; ")?;
-            }
+        for Edge(u, v) in self.ordered_edges(true) {
+            write!(writer, "v{u}--v{v}; ")?;
         }
         write!(writer, r"}}")
     }

@@ -134,7 +134,7 @@ mod test {
         let mut rng = Pcg64Mcg::seed_from_u64(123456);
         for n in 1..100 {
             let p = rng.gen_range(0.5..(10.min(n) as f64)) / (n as f64);
-            let graph = AdjArray::random_black_gnp(&mut rng, n, p);
+            let graph = AdjArray::random_gnp(&mut rng, n, p);
             let mapping = graph.cuthill_mckee();
             assert_eq!(
                 mapping.len(),
@@ -148,7 +148,7 @@ mod test {
         let mut rng = Pcg64Mcg::seed_from_u64(1234567);
         for n in 1..100 {
             let p = rng.gen_range(0.5..(2.min(n) as f64)) / (n as f64);
-            let graph = AdjArray::random_black_gnp(&mut rng, n, p);
+            let graph = AdjArray::random_gnp(&mut rng, n, p);
             let (mapping, ccs) = graph.cuthill_mckee_cc(true);
             let partition = graph.partition_into_connected_components(true);
 

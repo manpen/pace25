@@ -47,9 +47,9 @@ mod test {
 
     #[test]
     fn hard_coded() {
-        let mut graph = AdjMatrix::new(4);
-        graph.add_edge(0, 1, EdgeColor::Black);
-        graph.add_edge(3, 2, EdgeColor::Black);
+        let mut graph = AdjArray::new(4);
+        graph.add_edge(0, 1);
+        graph.add_edge(3, 2);
 
         let output = {
             let mut buffer: Vec<u8> = Vec::new();
@@ -78,17 +78,17 @@ mod test {
         for n in 0..100 {
             let p = rng.gen_range(0.01..0.99);
 
-            let org = AdjMatrix::random_black_gnp(&mut rng, n, p);
+            let org = AdjArray::random_gnp(&mut rng, n, p);
 
             let mut buffer: Vec<u8> = Vec::new();
             org.try_write_pace(&mut buffer).expect("Failed to write");
 
-            let read = AdjMatrix::try_read_pace(buffer.as_slice()).expect("Failed to read");
+            let read = AdjArray::try_read_pace(buffer.as_slice()).expect("Failed to read");
 
             assert_eq!(org.number_of_nodes(), read.number_of_nodes());
             assert_eq!(
-                org.ordered_colored_edges(true).collect_vec(),
-                read.ordered_colored_edges(true).collect_vec()
+                org.ordered_edges(true).collect_vec(),
+                read.ordered_edges(true).collect_vec()
             );
         }
     }
