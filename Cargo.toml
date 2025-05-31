@@ -52,6 +52,13 @@ debug=false
 panic="abort"
 strip=true
 
+[profile.optildebug]
+inherits="release"
+lto="fat"
+codegen-units=1
+debug=true
+
+
 [[bin]]
 name = "heuristic"
 path = "src/bin/heuristic_solver.rs"
