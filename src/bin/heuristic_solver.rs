@@ -278,7 +278,12 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
 
 type MainHeuristic = GreedyReverseSearch<CsrGraph, 10, 10>;
 
-fn build_heuristic(rng: &mut impl Rng, mapped: State<CsrGraph>, opts: &Opts) -> MainHeuristic {
+fn build_heuristic(
+    rng: &mut impl Rng,
+    mapped: State<CsrGraph>,
+    opts: &Opts,
+    id: u32,
+) -> MainHeuristic {
     let State {
         graph,
         mut domset,
@@ -292,6 +297,10 @@ fn build_heuristic(rng: &mut impl Rng, mapped: State<CsrGraph>, opts: &Opts) -> 
         info!("Start Greedy");
 
         let mut algo = IterativeGreedy::new(rng, &graph, &covered, &redundant);
+
+        if id % 2 == 1 {
+            algo.set_strategy(dss::heuristic::iterative_greedy::GreedyStrategy::DegreeValue);
+        }
 
         let mut remaining_iterations = opts.greedy_iterations.max(1);
         let start_time = Instant::now();
@@ -347,7 +356,7 @@ fn main() -> anyhow::Result<()> {
         let mut best_heuristic: Option<MainHeuristic> = None;
 
         for ls_attempt in 0..opts.ls_attempts {
-            let mut heuristic = build_heuristic(&mut rng, mapped.clone(), &opts);
+            let mut heuristic = build_heuristic(&mut rng, mapped.clone(), &opts, ls_attempt as u32);
 
             let start = Instant::now();
             let mut last_update_time = start;
