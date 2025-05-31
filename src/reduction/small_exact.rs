@@ -81,8 +81,8 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         covered: &mut BitSet,
         redundant: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
-        const MAX_CC_SIZE: Node = 80;
-        const MAX_UNCOVERED_SIZE: Node = 10;
+        const MAX_CC_SIZE: Node = 150;
+        const MAX_UNCOVERED_SIZE: Node = 30;
         const MAX_DURATION: Duration = Duration::from_secs(30);
 
         let mut small_ccs = Vec::with_capacity(128);
@@ -279,10 +279,6 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
                     solution.fix_node(oldv);
                 }
                 covered.set_bit(oldv);
-            }
-
-            for u in nodes {
-                graph.remove_edges_at_node(u);
             }
 
             modified = true;
