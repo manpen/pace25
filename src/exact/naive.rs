@@ -172,6 +172,10 @@ fn naive_solver_impl<G: Clone + AdjacencyList + GraphEdgeEditing>(
         finish_until,
     );
 
+    if matches!(size_without, Err(ExactError::Timeout)) {
+        return Err(ExactError::Timeout);
+    }
+
     match (size_without, size_with) {
         (Ok(res), _) => Ok(res),
         (Err(e), None) => Err(e),
