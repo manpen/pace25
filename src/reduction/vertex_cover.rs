@@ -75,18 +75,65 @@ impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph>
         );
         let mut changed = false;
 
-        let mut marker = old_to_new;
-        marker.fill(NOT_SET);
+        let mut marker = vec![NOT_SET; vc_graph.len()];
 
         // search for cliques
-        for u in vc_graph.vertices_range() {
+        'reject: for u in vc_graph.vertices_range() {
+            // we need a clique of ... at least three nodes
             let deg = vc_graph.degree_of(u);
-            if deg < 2 || 2 * deg != graph.degree_of(new_to_old[u as usize]) {
+            if deg < 2 {
+                continue;
+            }
+
+            // where u is the smallest node
+            if vc_graph
+                .neighbors_of(u)
+                .any(|v| vc_graph.degree_of(v) > deg)
+            {
                 continue;
             }
 
             for v in vc_graph.closed_neighbors_of(u) {
                 marker[v as usize] = u;
+            }
+
+            let mut org_has_int_edge = false;
+            let ou = new_to_old[u as usize];
+            for ov in graph.neighbors_of(ou) {
+                // case 1: there is a mapped neighbor (then it's in the clique)
+                let nv = old_to_new[ov as usize];
+                if nv != NOT_SET {
+                    // if it's in our clique: then we have the edge, we need
+                    if marker[nv as usize] == u {
+                        org_has_int_edge = true;
+                        continue;
+                    } else {
+                        // otherwise we do not have a clique (which me happen, since we check that only after this loop!s)
+                        continue 'reject;
+                    }
+                }
+
+                // case 2: the neighbor is covered (then we can ignore it)
+                if covered.get_bit(ov) {
+                    continue;
+                }
+
+                // case 3: it's redundant ... then at least one other neighbor needs to be in the clique (other than u)
+                if redundant.get_bit(ov)
+                    && graph.neighbors_of(ov).any(|w| {
+                        w != ou
+                            && old_to_new[w as usize] != NOT_SET
+                            && marker[old_to_new[w as usize] as usize] == u
+                    })
+                {
+                    continue;
+                }
+
+                continue 'reject;
+            }
+
+            if !org_has_int_edge {
+                continue;
             }
 
             if vc_graph.neighbors_of(u).any(|v| {
