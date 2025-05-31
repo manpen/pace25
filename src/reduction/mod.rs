@@ -10,6 +10,8 @@ pub mod subset;
 pub use subset::RuleSubsetReduction;
 pub mod isolated;
 pub use isolated::RuleIsolatedReduction;
+pub mod vertex_cover;
+pub use vertex_cover::RuleVertexCover;
 
 use crate::{graph::BitSet, utils::DominatingSet};
 

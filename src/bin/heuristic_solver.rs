@@ -10,7 +10,7 @@ use dss::{
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
     reduction::{
         LongPathReduction, Reducer, RuleIsolatedReduction, RuleOneReduction,
-        RuleSmallExactReduction, RuleSubsetReduction,
+        RuleSmallExactReduction, RuleSubsetReduction, RuleVertexCover,
     },
     utils::{DominatingSet, signal_handling},
 };
@@ -167,6 +167,12 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
     loop {
         let mut changed = false;
 
+        changed |= reducer.apply_rule::<RuleVertexCover<_>>(
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
         changed |= reducer.apply_rule::<RuleOneReduction<_>>(
             &mut graph,
             &mut domset,

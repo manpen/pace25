@@ -1,6 +1,6 @@
 use std::{fs::File, path::PathBuf};
 
-use dss::reduction::RuleIsolatedReduction;
+use dss::reduction::{RuleIsolatedReduction, RuleVertexCover};
 #[allow(unused_imports)]
 use dss::{
     exact::{naive::naive_solver, sat_solver::SolverBackend},
@@ -121,6 +121,13 @@ fn main() -> anyhow::Result<()> {
 
     loop {
         let mut changed = false;
+
+        changed |= reducer.apply_rule::<RuleVertexCover<_>>(
+            &mut graph,
+            &mut solution,
+            &mut covered,
+            &mut redundant,
+        );
 
         changed |= reducer.apply_rule::<RuleOneReduction<_>>(
             &mut graph,
