@@ -136,7 +136,7 @@ impl<'a, G: AdjacencyList + AdjacencyTest, R: Rng> IterativeGreedy<'a, G, R> {
                     let value: u32 = self
                         .graph
                         .closed_neighbors_of(u)
-                        .map(|v| node_values[v as usize] as u32)
+                        .map(|v| node_values[v as usize])
                         .sum();
 
                     if value > 0 {
