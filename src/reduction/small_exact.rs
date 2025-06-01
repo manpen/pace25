@@ -3,7 +3,7 @@ use log::{debug, info};
 use smallvec::SmallVec;
 
 use super::*;
-use crate::{exact::naive::naive_solver, graph::*};
+use crate::{exact, graph::*};
 use std::{
     collections::HashMap,
     marker::PhantomData,
@@ -81,8 +81,16 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         covered: &mut BitSet,
         redundant: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
-        const MAX_CC_SIZE: Node = 150;
-        const MAX_UNCOVERED_SIZE: Node = 30;
+        const MAX_CC_SIZE: Node = if exact::DEFAULT_SOLVER_IS_FAST {
+            300
+        } else {
+            100
+        };
+        const MAX_UNCOVERED_SIZE: Node = if exact::DEFAULT_SOLVER_IS_FAST {
+            150
+        } else {
+            30
+        };
         const MAX_DURATION: Duration = Duration::from_secs(30);
 
         let mut small_ccs = Vec::with_capacity(128);
@@ -256,7 +264,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
                 }
             );
 
-            let solution_mapped = match naive_solver(
+            let solution_mapped = match exact::default_exact_solver(
                 &graph_mapped,
                 &covered_mapped,
                 &redundant_mapped,
