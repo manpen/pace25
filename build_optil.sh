@@ -1,8 +1,19 @@
 #!/usr/bin/env bash 
 set -e 
-export RUSTFLAGS='-C target-feature=+crt-static -C target-cpu=haswell -C target-feature=+bmi2,+bmi1 -Zlocation-detail=none -Zfmt-debug=none' 
-BUILD_CMD="cargo build --target=x86_64-unknown-linux-musl --profile optil -F optil" 
+DOCKER_IMAGE=rust_on_ubuntu
+CARGO_PROFILE=optil
 
-$BUILD_CMD --bin heuristic
+docker build \
+    --build-arg USER_ID=$(id -u) \
+    --build-arg GROUP_ID=$(id -g) \
+    -t $DOCKER_IMAGE \
+    rust_on_ubuntu
 
-ls -ahl target/x86_64-unknown-linux-musl/optil/heuristic
+docker run --rm -it \
+  -v "$(pwd)":/crate \
+  -w /crate \
+  -e RUSTFLAGS='-C target-cpu=haswell -C target-feature=+bmi2,+bmi1 -Zlocation-detail=none -Zfmt-debug=none' \
+  $DOCKER_IMAGE \
+  cargo build --profile $CARGO_PROFILE -F optil -Z unstable-options --artifact-dir target_docker --bin heuristic
+
+ls -ahl target/target_docker/heuristic

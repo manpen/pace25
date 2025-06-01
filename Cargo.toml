@@ -9,7 +9,7 @@ edition = "2024"
 goodlp = ["good_lp"]
 par = ["rayon"]
 highs = ["dep:highs"]
-optil = ["log/max_level_off"]
+optil = ["log/max_level_off", "highs"]
 
 
 [dependencies]
