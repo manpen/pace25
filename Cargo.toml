@@ -8,7 +8,8 @@ edition = "2024"
 [features]
 goodlp = ["good_lp"]
 par = ["rayon"]
-optil = ["log/max_level_off"]
+highs = ["dep:highs"]
+optil = ["log/max_level_off", "highs"]
 
 
 [dependencies]
@@ -32,6 +33,7 @@ structopt = "0.3.26"
 smallvec = "1.13.2"
 thiserror = "2.0.12"
 tempfile = "3.19.1"
+highs = {version = "1.8.0", optional=true}
 
 [dev-dependencies]
 regex = "1.11.1"
