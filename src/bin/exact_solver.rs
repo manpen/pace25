@@ -11,6 +11,7 @@ use dss::{
     },
 };
 use itertools::Itertools;
+use log::info;
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
@@ -24,10 +25,21 @@ pub enum SatSolverOptsEnum {
 #[derive(StructOpt)]
 pub struct NaiveSolver {}
 
-#[derive(StructOpt)]
+#[derive(StructOpt, Default)]
 
 pub enum NaiveSolverOptsEnum {
+    #[default]
     Naive,
+}
+
+#[derive(StructOpt)]
+pub struct HighsSolver {}
+
+#[derive(StructOpt, Default)]
+
+pub enum HighsSolverSolverOptsEnum {
+    #[default]
+    Highs,
 }
 
 #[derive(StructOpt)]
@@ -37,6 +49,18 @@ pub enum Commands {
     SatSolverEnum(SatSolverOptsEnum),
     #[structopt(flatten)]
     NaiveSolverEnum(NaiveSolverOptsEnum),
+    #[structopt(flatten)]
+    HighsSolverEnum(HighsSolverSolverOptsEnum),
+}
+
+impl Default for Commands {
+    fn default() -> Self {
+        #[cfg(feature = "highs")]
+        return Commands::HighsSolverEnum(Default::default());
+
+        #[cfg(not(feature = "highs"))]
+        return Commands::NaiveSolverEnum(Default::default());
+    }
 }
 
 #[derive(StructOpt)]
@@ -48,7 +72,17 @@ struct Opts {
     output: Option<PathBuf>,
 
     #[structopt(subcommand)]
-    cmd: Commands,
+    cmd: Option<Commands>,
+}
+
+impl Default for Opts {
+    fn default() -> Self {
+        Self {
+            instance: None,
+            output: None,
+            cmd: None,
+        }
+    }
 }
 
 fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<AdjArray> {
@@ -77,9 +111,13 @@ fn write_solution(ds: &DominatingSet, path: &Option<PathBuf>) -> anyhow::Result<
 
 fn main() -> anyhow::Result<()> {
     build_pace_logger_for_level(log::LevelFilter::Info);
-    let opt = Opts::from_args();
+    #[cfg(feature = "optil")]
+    let opts = Opts::default();
 
-    let mut graph = load_graph(&opt.instance)?;
+    #[cfg(not(feature = "optil"))]
+    let opts = Opts::from_args();
+
+    let mut graph = load_graph(&opts.instance)?;
     let org_graph = graph.clone();
 
     let mut covered = graph.vertex_bitset_unset();
@@ -152,7 +190,9 @@ fn main() -> anyhow::Result<()> {
 
     let mut solution = if graph.number_of_edges() > 0 {
         let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
-        match opt.cmd {
+        let cmd = opts.cmd.unwrap_or_default();
+
+        match cmd {
             Commands::SatSolverEnum(SatSolverOptsEnum::Sat(_)) => dss::exact::sat_solver::solve(
                 &csr_graph,
                 covered,
@@ -160,9 +200,24 @@ fn main() -> anyhow::Result<()> {
                 SolverBackend::MAXSAT,
             )?,
             Commands::NaiveSolverEnum(_) => {
+                info!("Start Naive Solver");
+                signal_handling::initialize();
                 let local_sol = naive_solver(&graph, &covered, &redundant, None, None).unwrap();
                 solution.add_nodes(local_sol.iter());
                 solution
+            }
+            Commands::HighsSolverEnum(_) => {
+                info!("Start Highs Solver");
+                #[cfg(feature = "highs")]
+                {
+                    let local_sol =
+                        dss::exact::highs::highs_solver(&graph, &covered, &redundant, None, None)
+                            .unwrap();
+                    solution.add_nodes(local_sol.iter());
+                    solution
+                }
+                #[cfg(not(feature = "highs"))]
+                panic!("Compiled without highs feature");
             }
         }
     } else {
@@ -173,7 +228,7 @@ fn main() -> anyhow::Result<()> {
     reducer.post_process(&mut graph, &mut solution, &mut covered, &mut redundant);
 
     assert!(solution.is_valid(&org_graph), "Produced DS is not valid");
-    write_solution(&solution, &opt.output)?;
+    write_solution(&solution, &opts.output)?;
 
     Ok(())
 }

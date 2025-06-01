@@ -11,7 +11,7 @@ pub fn highs_solver<G: Clone + AdjacencyList + GraphEdgeEditing>(
     never_select: &BitSet,
     _upper_bound_incl: Option<NumNodes>,
     timeout: Option<Duration>,
-) -> DominatingSet {
+) -> anyhow::Result<DominatingSet> {
     // TODO: RowProblems seems to get converted to a ColProblem --- so encode it directly as such
     let mut pb = RowProblem::default();
 
@@ -58,7 +58,7 @@ pub fn highs_solver<G: Clone + AdjacencyList + GraphEdgeEditing>(
 
     debug_assert!(domset.is_valid_given_previous_cover(graph, is_perm_covered));
 
-    domset
+    Ok(domset)
 }
 
 #[cfg(test)]
