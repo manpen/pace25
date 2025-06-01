@@ -1,3 +1,4 @@
+use core::panic;
 use std::time::Duration;
 
 use highs::{HighsModelStatus, Model, RowProblem};
@@ -9,9 +10,9 @@ pub fn highs_solver<G: Clone + AdjacencyList + GraphEdgeEditing>(
     graph: &G,
     is_perm_covered: &BitSet,
     never_select: &BitSet,
-    _upper_bound_incl: Option<NumNodes>,
+    upper_bound_incl: Option<NumNodes>,
     timeout: Option<Duration>,
-) -> anyhow::Result<DominatingSet> {
+) -> super::Result<DominatingSet> {
     // TODO: RowProblems seems to get converted to a ColProblem --- so encode it directly as such
     let mut pb = RowProblem::default();
 
@@ -43,6 +44,13 @@ pub fn highs_solver<G: Clone + AdjacencyList + GraphEdgeEditing>(
     model.set_sense(highs::Sense::Minimise);
 
     let solved = model.solve();
+    match solved.status() {
+        HighsModelStatus::Optimal => {}
+        HighsModelStatus::Infeasible => return Err(crate::exact::ExactError::Infeasible),
+        HighsModelStatus::ReachedTimeLimit => return Err(crate::exact::ExactError::Timeout),
+        e => panic!("Unhandled HighsStatus: {e:?}"),
+    };
+
     assert_eq!(solved.status(), HighsModelStatus::Optimal);
 
     let solution = solved.get_solution();
@@ -55,6 +63,10 @@ pub fn highs_solver<G: Clone + AdjacencyList + GraphEdgeEditing>(
             .enumerate()
             .filter_map(|(i, &v)| (v > 0.5).then_some(i as Node)),
     );
+
+    if upper_bound_incl.is_some_and(|b| b < domset.len() as NumNodes) {
+        return Err(crate::exact::ExactError::Infeasible);
+    }
 
     debug_assert!(domset.is_valid_given_previous_cover(graph, is_perm_covered));
 
@@ -110,7 +122,7 @@ mod test {
             let naive = naive_solver(&graph, &covered, &redundant, None, None).unwrap();
 
             let start_highs = Instant::now();
-            let highs = highs_solver(&graph, &covered, &redundant, None, None);
+            let highs = highs_solver(&graph, &covered, &redundant, None, None).unwrap();
 
             duration_highs += start_highs.elapsed().as_secs_f64();
             duration_naive += start_highs.duration_since(start_naive).as_secs_f64();

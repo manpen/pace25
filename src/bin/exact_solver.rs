@@ -63,7 +63,7 @@ impl Default for Commands {
     }
 }
 
-#[derive(StructOpt)]
+#[derive(Default, StructOpt)]
 struct Opts {
     #[structopt(short, long)]
     instance: Option<PathBuf>,
@@ -73,16 +73,6 @@ struct Opts {
 
     #[structopt(subcommand)]
     cmd: Option<Commands>,
-}
-
-impl Default for Opts {
-    fn default() -> Self {
-        Self {
-            instance: None,
-            output: None,
-            cmd: None,
-        }
-    }
 }
 
 fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<AdjArray> {

@@ -3,19 +3,9 @@ use std::time::{Duration, Instant};
 use itertools::Itertools;
 #[allow(unused_imports)]
 use log::{info, trace};
-use thiserror::Error;
 
+use super::*;
 use crate::prelude::*;
-
-#[derive(Debug, PartialEq, PartialOrd, Error)]
-pub enum ExactError {
-    #[error("upper bound infeasible")]
-    Infeasible,
-    #[error("timeout")]
-    Timeout,
-}
-
-pub type Result<T> = std::result::Result<T, ExactError>;
 
 pub fn naive_solver<G: Clone + AdjacencyList + GraphEdgeEditing>(
     graph: &G,
@@ -23,7 +13,7 @@ pub fn naive_solver<G: Clone + AdjacencyList + GraphEdgeEditing>(
     never_select: &BitSet,
     upper_bound_incl: Option<NumNodes>,
     timeout: Option<Duration>,
-) -> Result<DominatingSet> {
+) -> super::Result<DominatingSet> {
     if is_perm_covered.are_all_set() {
         return Ok(DominatingSet::new(graph.number_of_nodes()));
     }
@@ -76,7 +66,7 @@ fn naive_solver_impl<G: Clone + AdjacencyList + GraphEdgeEditing>(
     covered: &BitSet,
     mut upper_bound_incl: NumNodes,
     finish_until: Option<Instant>,
-) -> Result<NumNodes> {
+) -> super::Result<NumNodes> {
     if covered.are_all_set() {
         // solved
         assert!(work_domset.len() <= upper_bound_incl as usize);
