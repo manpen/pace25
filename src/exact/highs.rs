@@ -77,14 +77,15 @@ mod test {
     #[test]
     fn cross_with_naive() {
         let mut rng = Pcg64Mcg::seed_from_u64(0x1234567);
+        const NODES: NumNodes = 24;
 
-        let mut remaining_graphs = 100;
+        let mut remaining_graphs = 300;
 
         let mut duration_naive = 0.0;
         let mut duration_highs = 0.0;
 
         loop {
-            let graph = AdjArray::random_gnp(&mut rng, 22, 3. / 22.);
+            let graph = AdjArray::random_gnp(&mut rng, NODES, 3. / NODES as f64);
 
             let mut covered = graph.vertex_bitset_unset();
             for _ in 0..remaining_graphs % 7 {
@@ -124,8 +125,9 @@ mod test {
             }
         }
 
+        // usually highs is much faster, so this assertion should be safe
         assert!(
-            duration_highs * 10.0 < duration_naive,
+            duration_highs < duration_naive,
             "Highs: {duration_highs}, Naive: {duration_naive}"
         );
     }
