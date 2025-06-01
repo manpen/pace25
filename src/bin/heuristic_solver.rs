@@ -2,14 +2,14 @@ use dss::{
     graph::{
         AdjArray, AdjacencyList, BitSet, Connectivity as _, CsrGraph, CuthillMcKee, Edge, EdgeOps,
         ExtractCsrRepr, Getter, GraphEdgeOrder, GraphFromReader, GraphNodeOrder, NodeMapper,
-        NumNodes,
+        NumEdges, NumNodes,
     },
     heuristic::{iterative_greedy::IterativeGreedy, reverse_greedy_search::GreedyReverseSearch},
     io::PaceWriter as _,
     log::build_pace_logger_for_level,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
     reduction::{
-        LongPathReduction, Reducer, RuleIsolatedReduction, RuleOneReduction,
+        LongPathReduction, Reducer, RuleIsolatedReduction, RuleOneReduction, RuleRedundantCover,
         RuleSmallExactReduction, RuleSubsetReduction, RuleVertexCover,
     },
     utils::{DominatingSet, signal_handling},
@@ -164,8 +164,15 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
     let mut reducer = Reducer::new();
     let mut redundant = BitSet::new(graph.number_of_nodes());
 
-    loop {
+    for iter in 0.. {
         let mut changed = false;
+
+        changed |= reducer.apply_rule::<RuleRedundantCover<_>>(
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
 
         changed |= reducer.apply_rule::<RuleVertexCover<_>>(
             &mut graph,
@@ -192,7 +199,7 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
             &mut redundant,
         );
 
-        if changed {
+        if iter < 4 && changed {
             continue;
         }
 

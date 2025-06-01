@@ -12,6 +12,8 @@ pub mod isolated;
 pub use isolated::RuleIsolatedReduction;
 pub mod vertex_cover;
 pub use vertex_cover::RuleVertexCover;
+pub mod red_cover;
+pub use red_cover::RuleRedundantCover;
 
 use crate::{graph::BitSet, utils::DominatingSet};
 
