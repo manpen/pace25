@@ -82,12 +82,12 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         redundant: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
         const MAX_CC_SIZE: Node = if exact::DEFAULT_SOLVER_IS_FAST {
-            300
+            400
         } else {
             100
         };
         const MAX_UNCOVERED_SIZE: Node = if exact::DEFAULT_SOLVER_IS_FAST {
-            150
+            MAX_CC_SIZE
         } else {
             30
         };
