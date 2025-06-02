@@ -9,8 +9,8 @@ use dss::{
     log::build_pace_logger_for_level,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
     reduction::{
-        LongPathReduction, Reducer, RuleIsolatedReduction, RuleOneReduction,
-        RuleSmallExactReduction, RuleSubsetReduction,
+        LongPathReduction, Reducer, RuleIsolatedReduction, RuleOneReduction, RuleRedundantCover,
+        RuleSmallExactReduction, RuleSubsetReduction, RuleVertexCover,
     },
     utils::{DominatingSet, signal_handling},
 };
@@ -164,9 +164,22 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
     let mut reducer = Reducer::new();
     let mut redundant = BitSet::new(graph.number_of_nodes());
 
-    loop {
+    for iter in 0.. {
         let mut changed = false;
 
+        changed |= reducer.apply_rule::<RuleRedundantCover<_>>(
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+
+        changed |= reducer.apply_rule::<RuleVertexCover<_>>(
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
         changed |= reducer.apply_rule::<RuleOneReduction<_>>(
             &mut graph,
             &mut domset,
@@ -186,7 +199,7 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
             &mut redundant,
         );
 
-        if changed {
+        if iter < 4 && changed {
             continue;
         }
 
@@ -278,7 +291,12 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
 
 type MainHeuristic = GreedyReverseSearch<CsrGraph, 10, 10>;
 
-fn build_heuristic(rng: &mut impl Rng, mapped: State<CsrGraph>, opts: &Opts) -> MainHeuristic {
+fn build_heuristic(
+    rng: &mut impl Rng,
+    mapped: State<CsrGraph>,
+    opts: &Opts,
+    id: u32,
+) -> MainHeuristic {
     let State {
         graph,
         mut domset,
@@ -292,6 +310,10 @@ fn build_heuristic(rng: &mut impl Rng, mapped: State<CsrGraph>, opts: &Opts) -> 
         info!("Start Greedy");
 
         let mut algo = IterativeGreedy::new(rng, &graph, &covered, &redundant);
+
+        if id % 2 == 1 {
+            algo.set_strategy(dss::heuristic::iterative_greedy::GreedyStrategy::DegreeValue);
+        }
 
         let mut remaining_iterations = opts.greedy_iterations.max(1);
         let start_time = Instant::now();
@@ -347,7 +369,7 @@ fn main() -> anyhow::Result<()> {
         let mut best_heuristic: Option<MainHeuristic> = None;
 
         for ls_attempt in 0..opts.ls_attempts {
-            let mut heuristic = build_heuristic(&mut rng, mapped.clone(), &opts);
+            let mut heuristic = build_heuristic(&mut rng, mapped.clone(), &opts, ls_attempt as u32);
 
             let start = Instant::now();
             let mut last_update_time = start;

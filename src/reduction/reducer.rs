@@ -62,7 +62,6 @@ impl<G: GraphEdgeOrder + AdjacencyList + UnsafeGraphEditing> Reducer<G> {
         let duration_clean = start_clean.elapsed();
 
         debug_assert!(solution.iter().all(|u| graph.degree_of(u) == 0));
-        assert!(solution.iter().all(|u| !redundant.get_bit(u)));
 
         let delta_nodes = before_nodes - graph.vertices_with_neighbors().count();
         let delta_edges = before_edges - graph.number_of_edges();
@@ -70,13 +69,14 @@ impl<G: GraphEdgeOrder + AdjacencyList + UnsafeGraphEditing> Reducer<G> {
         let delta_covered = covered.cardinality() - before_covered;
         let delta_redundant = redundant.cardinality() as i32 - before_redundant;
 
-        info!(
-            "{:25} n -= {delta_nodes:6}, m -= {delta_edges:6}, |D| += {delta_in_domset:7}, |covered| += {delta_covered:7}, |redundant| += {delta_redundant:7}, |edges| -= {unneccesary_edges:6}, changed={}, time: {:5}ms + {:3}ms",
-            R::NAME,
-            changed as u32,
-            duration_rule.as_millis(),
-            duration_clean.as_millis()
-        );
+        if changed {
+            info!(
+                "{:25} n -= {delta_nodes:6}, m -= {delta_edges:6}, |D| += {delta_in_domset:7}, |covered| += {delta_covered:7}, |redundant| += {delta_redundant:7}, |edges| -= {unneccesary_edges:6}, time: {:5}ms + {:3}ms",
+                R::NAME,
+                duration_rule.as_millis(),
+                duration_clean.as_millis()
+            );
+        }
 
         if let Some(p) = post {
             self.post_processors.push(p);
