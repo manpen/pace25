@@ -61,6 +61,10 @@ impl AdjacencyTest for AdjArray {
     fn has_edge(&self, u: Node, v: Node) -> bool {
         self.adj[u as usize].has_neighbor(v)
     }
+
+    fn has_neighbors<const N: usize>(&self, u: Node, neighbors: [Node; N]) -> [bool; N] {
+        self.adj[u as usize].has_neighbors(neighbors)
+    }
 }
 
 impl GraphNew for AdjArray {
@@ -186,6 +190,18 @@ impl Neighborhood {
 
     fn has_neighbor(&self, v: Node) -> bool {
         self.neighbors().any(|u| u == v)
+    }
+
+    fn has_neighbors<const N: usize>(&self, neighbors: [Node; N]) -> [bool; N] {
+        let mut res = [false; N];
+        for &node in &self.nodes {
+            for i in 0..N {
+                if neighbors[i] == node {
+                    res[i] = true;
+                }
+            }
+        }
+        res
     }
 
     fn try_add_edge(&mut self, v: Node) -> bool {

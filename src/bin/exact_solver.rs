@@ -1,6 +1,7 @@
 use std::{fs::File, path::PathBuf};
 
-use dss::reduction::{RuleIsolatedReduction, RuleRedundantCover, RuleVertexCover};
+use dss::reduction::*;
+
 #[allow(unused_imports)]
 use dss::{
     exact::{naive::naive_solver, sat_solver::SolverBackend},
@@ -148,6 +149,12 @@ fn main() -> anyhow::Result<()> {
             &mut rule_long_path,
             &mut graph,
             &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+        changed |= reducer.apply_rule::<TwoHopRuleTwoReduction<_>>(
+            &mut graph,
+            &mut solution,
             &mut covered,
             &mut redundant,
         );
