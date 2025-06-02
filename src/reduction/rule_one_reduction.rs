@@ -3,7 +3,6 @@ use std::marker::PhantomData;
 use super::*;
 use crate::{graph::*, utils::DominatingSet};
 
-use log::debug;
 use smallvec::SmallVec;
 
 /// Rule1
@@ -146,7 +145,6 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
 
         processed.clear_all();
         parent = vec![NOT_SET; n];
-        let mut removable_nodes = graph.vertex_bitset_unset();
 
         let mut selected = Vec::with_capacity(128);
         // (3) Mark candidates as possible Type2-Nodes if their neighborhoods are subsets
@@ -187,51 +185,28 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
             }
         }
 
-        for u in graph.vertices() {
-            if processed.get_bit(u)
-                && !domset.is_in_domset(u)
-                && graph
-                    .neighbors_of(u)
-                    .filter(|x| !processed.get_bit(*x) && !covered.get_bit(*x))
-                    .count()
-                    <= 1
-            {
-                removable_nodes.set_bit(u);
-            }
-        }
+        let modified = !selected.is_empty();
 
-        let mut modified = !selected.is_empty() || removable_nodes.cardinality() > 0;
+        // Delete edges between nodes (u,v) where u is covered and v is the *only* uncovered neighbor of u
+        //
+        // Rest of deletions are done in post-processing
+        for u in processed
+            .iter_set_bits()
+            .filter(|&u| !domset.is_in_domset(u))
+        {
+            let mut nbs = graph
+                .neighbors_of(u)
+                .filter(|x| !processed.get_bit(*x) && !covered.get_bit(*x));
 
-        assert!(removable_nodes.cardinality() >= selected.len() as NumNodes);
-        debug!(
-            "RuleOne removeable nodes: {}",
-            removable_nodes.cardinality()
-        );
-        debug_assert!(removable_nodes.iter_set_bits().all(|u| covered.get_bit(u)));
+            let nb1 = nbs.next();
+            let nb2 = nbs.next();
 
-        for u in removable_nodes.iter_set_bits() {
-            graph.remove_edges_at_node(u);
-        }
+            // Iterator no longer needed; potentially save time by not consuming fully
+            std::mem::drop(nbs);
 
-        let mut neighbors_to_remove = Vec::new();
-        processed -= &removable_nodes;
-
-        for u in processed.iter_set_bits() {
-            // TODO: We want to have a drain_neighbors function in graph!
-            neighbors_to_remove.extend(graph.neighbors_of(u).filter(|&v| processed.get_bit(v)));
-            if neighbors_to_remove.is_empty() {
-                continue;
-            }
-
-            for &v in &neighbors_to_remove {
+            if let (Some(v), None) = (nb1, nb2) {
                 graph.remove_edge(u, v);
             }
-            modified = true;
-            neighbors_to_remove.clear();
-        }
-
-        for u in selected {
-            graph.remove_edges_at_node(u);
         }
 
         covered.update_cleared_bits(|u| {
