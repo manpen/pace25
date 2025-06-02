@@ -42,8 +42,6 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + 'static> Reductio
                 let nb1 = nbs.next();
                 let nb2 = nbs.next();
 
-                std::mem::drop(nbs);
-
                 if let (Some(cand), None) = (nb1, nb2) {
                     candidates.push((u.min(cand), u.max(cand), v));
                 }
