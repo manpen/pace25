@@ -185,7 +185,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
             }
         }
 
-        let mut modified = !selected.is_empty();
+        let modified = !selected.is_empty();
 
         // Delete edges between nodes (u,v) where u is covered and v is the *only* uncovered neighbor of u
         //
@@ -223,7 +223,6 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
                 // flagging this as unintended behavior
                 redundant.clear_bit(u);
                 domset.fix_node(u);
-                modified = true;
             }
             is_singleton
         });
