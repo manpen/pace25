@@ -10,6 +10,7 @@ goodlp = ["good_lp"]
 par = ["rayon"]
 highs = ["dep:highs"]
 optil = ["log/max_level_off", "highs"]
+default = ["highs"]
 
 
 [dependencies]

@@ -2,7 +2,7 @@ use dss::{
     graph::{
         AdjArray, AdjacencyList, BitSet, Connectivity as _, CsrGraph, CuthillMcKee, Edge, EdgeOps,
         ExtractCsrRepr, Getter, GraphEdgeOrder, GraphFromReader, GraphNodeOrder, NodeMapper,
-        NumEdges, NumNodes,
+        NumNodes,
     },
     heuristic::{iterative_greedy::IterativeGreedy, reverse_greedy_search::GreedyReverseSearch},
     io::PaceWriter as _,

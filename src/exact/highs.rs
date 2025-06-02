@@ -5,10 +5,10 @@ use highs::{HighsModelStatus, Model, RowProblem};
 use itertools::Itertools;
 use log::info;
 
-use crate::{graph::*, utils::DominatingSet};
+use crate::{exact::ExactError, graph::*, utils::DominatingSet};
 const NOT_SET: Node = Node::MAX;
 
-pub fn highs_solver<G: Clone + AdjacencyTest + AdjacencyList + GraphEdgeEditing>(
+pub fn highs_solver<G: Clone + AdjacencyTest + AdjacencyList>(
     graph: &G,
     is_perm_covered: &BitSet,
     never_select: &BitSet,
@@ -20,14 +20,11 @@ pub fn highs_solver<G: Clone + AdjacencyTest + AdjacencyList + GraphEdgeEditing>
 
     let mut skip_constraints_of = graph.vertex_bitset_unset();
     let mut skip_terms = 0;
-    for u in never_select.iter_set_bits() {
-        if graph.degree_of(u) != 2 {
-            continue;
-        }
 
+    for u in never_select.iter_set_bits() {
         if let Some((a, b)) = graph
             .neighbors_of(u)
-            .filter(|&v| !never_select.get_bit(v))
+            .filter(|&v| v != u && !never_select.get_bit(v))
             .collect_tuple()
             && graph.has_edge(a, b)
         {
@@ -85,18 +82,24 @@ pub fn highs_solver<G: Clone + AdjacencyTest + AdjacencyList + GraphEdgeEditing>
     if let Some(tme) = timeout {
         model.set_option("time_limit", tme.as_secs_f64());
     }
-    model.set_option("parallel", "off");
+
+    #[cfg(not(feature = "par"))]
+    {
+        model.set_option("parallel", "off");
+        model.set_option("threads", "1");
+    }
     model.set_sense(highs::Sense::Minimise);
 
     let solved = model.solve();
+    let mut subopt = false;
     match solved.status() {
         HighsModelStatus::Optimal => {}
-        HighsModelStatus::Infeasible => return Err(crate::exact::ExactError::Infeasible),
-        HighsModelStatus::ReachedTimeLimit => return Err(crate::exact::ExactError::Timeout),
+        HighsModelStatus::Infeasible => return Err(ExactError::Infeasible),
+        HighsModelStatus::ReachedTimeLimit => {
+            subopt = true;
+        }
         e => panic!("Unhandled HighsStatus: {e:?}"),
     };
-
-    assert_eq!(solved.status(), HighsModelStatus::Optimal);
 
     let solution = solved.get_solution();
 
@@ -110,7 +113,15 @@ pub fn highs_solver<G: Clone + AdjacencyTest + AdjacencyList + GraphEdgeEditing>
     );
 
     if upper_bound_incl.is_some_and(|b| b < domset.len() as NumNodes) {
-        return Err(crate::exact::ExactError::Infeasible);
+        return Err(ExactError::Infeasible);
+    }
+
+    if subopt {
+        if domset.is_valid_given_previous_cover(graph, is_perm_covered) {
+            return Err(ExactError::TimeoutWithSolution(domset));
+        } else {
+            return Err(ExactError::Timeout);
+        }
     }
 
     debug_assert!(domset.is_valid_given_previous_cover(graph, is_perm_covered));
