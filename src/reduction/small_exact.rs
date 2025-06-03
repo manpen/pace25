@@ -76,7 +76,7 @@ impl ConnectedComponentWalker {
 }
 
 const MAX_CC_SIZE: Node = if exact::DEFAULT_SOLVER_IS_FAST {
-    1000
+    1500
 } else {
     100
 };
@@ -85,6 +85,9 @@ const MAX_UNCOVERED_SIZE: Node = if exact::DEFAULT_SOLVER_IS_FAST {
 } else {
     30
 };
+
+const COMBINE_CCS_UPTO: Node = 100;
+
 const MAX_DURATION: Duration = Duration::from_secs(30);
 
 impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
@@ -104,6 +107,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         let mut uncovered = Vec::with_capacity(1 + MAX_UNCOVERED_SIZE as usize);
 
         let ds_size_before = solution.len();
+
         while let Some(nodes) = walker.next_cc(graph) {
             match nodes.len() {
                 // we have special cases for really small ccs
@@ -157,6 +161,23 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         }
 
         small_ccs.sort_by_key(|(u, cc)| (*u, cc.len()));
+
+        if small_ccs.len() > 1 {
+            let mut doner = 0;
+            let mut receiver = small_ccs.len() - 1;
+            while doner < receiver {
+                if small_ccs[doner].1.len() + small_ccs[receiver].1.len()
+                    < COMBINE_CCS_UPTO as usize
+                {
+                    let d = std::mem::take(&mut small_ccs[doner].1);
+                    small_ccs[receiver].1.extend(d.into_iter());
+                    doner += 1
+                } else {
+                    receiver -= 1;
+                }
+            }
+        }
+
         Self::process_small_ccs(
             graph,
             solution,
@@ -250,10 +271,14 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> RuleSmallExactReduction<
         let start = Instant::now();
         #[allow(clippy::while_let_on_iterator)]
         while let Some(nodes) = ccs.next() {
+            let n = nodes.len() as NumNodes;
+            if n == 0 {
+                continue;
+            }
+
             if start.elapsed() > MAX_DURATION {
                 break;
             }
-            let n = nodes.len() as NumNodes;
 
             for (i, &u) in nodes.iter().enumerate() {
                 debug_assert_eq!(org_to_small[u as usize], NOT_SET);
@@ -296,14 +321,21 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> RuleSmallExactReduction<
                 Some(Duration::from_secs(1)),
             ) {
                 Ok(x) => {
+                    debug!(
+                        "Solved n={} m={} covered={}",
+                        graph_mapped.number_of_nodes(),
+                        graph_mapped.number_of_edges(),
+                        covered_mapped.cardinality()
+                    );
                     num_solved += 1;
                     x
                 }
                 Err(_) => {
-                    info!(
-                        "No solution for n={} covered={}",
+                    debug!(
+                        "No solution for n={} m={} covered={}",
                         graph_mapped.number_of_nodes(),
-                        covered.cardinality()
+                        graph_mapped.number_of_edges(),
+                        covered_mapped.cardinality()
                     );
                     num_timeout += 1;
                     continue;
@@ -313,8 +345,8 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> RuleSmallExactReduction<
             for newu in solution_mapped.iter() {
                 let oldu = nodes[newu as usize];
                 solution.fix_node(oldu);
-                covered.set_bits(graph.closed_neighbors_of(oldu));
             }
+            covered.set_bits(nodes.iter().copied());
         }
 
         let num_unconsidered = ccs.count();
