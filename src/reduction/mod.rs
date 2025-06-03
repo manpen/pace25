@@ -2,6 +2,8 @@ pub mod long_path;
 pub use long_path::LongPathReduction;
 pub mod rule_one_reduction;
 pub use rule_one_reduction::RuleOneReduction;
+pub mod subset_rule_two;
+pub use subset_rule_two::SubsetRuleTwoReduction;
 pub mod small_exact;
 pub use small_exact::RuleSmallExactReduction;
 pub mod reducer;
