@@ -45,7 +45,7 @@ impl<'a, T: AdjacencyList> ArticulationPointSearch<'a, T> {
     }
 
     pub fn compute(mut self) -> BitSet {
-        let start = self.visited.iter_set_bits().next().unwrap();
+        let start = self.visited.iter_cleared_bits().next().unwrap();
         let _ = self.compute_recursive(start, 0);
         self.articulation_points
     }

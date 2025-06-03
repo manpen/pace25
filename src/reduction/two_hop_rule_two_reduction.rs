@@ -17,6 +17,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + 'static> Reductio
     const NAME: &str = "TwoHopRuleTwo";
 
     fn apply_rule(
+        &mut self,
         graph: &mut Graph,
         domset: &mut DominatingSet,
         covered: &mut BitSet,

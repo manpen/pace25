@@ -125,6 +125,7 @@ fn main() -> anyhow::Result<()> {
     let mut rule_long_path = LongPathReduction;
     let mut rule_isolated = RuleIsolatedReduction;
     let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
+    let mut rule_articulation = RuleArticulationPoint::new(graph.number_of_nodes());
 
     loop {
         let mut changed = false;
@@ -152,12 +153,6 @@ fn main() -> anyhow::Result<()> {
             &mut covered,
             &mut redundant,
         );
-        changed |= reducer.apply_rule::<TwoHopRuleTwoReduction<_>>(
-            &mut graph,
-            &mut solution,
-            &mut covered,
-            &mut redundant,
-        );
 
         changed |= reducer.apply_rule(
             &mut rule_isolated,
@@ -169,6 +164,18 @@ fn main() -> anyhow::Result<()> {
 
         changed |= reducer.apply_rule(
             &mut rule_redundant,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+
+        if changed {
+            continue;
+        }
+
+        changed |= reducer.apply_rule(
+            &mut rule_articulation,
             &mut graph,
             &mut domset,
             &mut covered,
