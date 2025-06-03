@@ -3,7 +3,8 @@ use std::time::Duration;
 
 use highs::{HighsModelStatus, Model, RowProblem};
 use itertools::Itertools;
-use log::info;
+
+use log::debug;
 
 use crate::{exact::ExactError, graph::*, utils::DominatingSet};
 const NOT_SET: Node = Node::MAX;
@@ -38,7 +39,7 @@ pub fn highs_solver<G: Clone + AdjacencyTest + AdjacencyList>(
             }
         }
     }
-    info!(
+    debug!(
         "Skip constraints of {} nodes with {skip_terms} edges",
         skip_constraints_of.cardinality()
     );
@@ -71,7 +72,7 @@ pub fn highs_solver<G: Clone + AdjacencyTest + AdjacencyList>(
 
         pb.add_row(1.., coverable_by);
     }
-    info!(
+    debug!(
         "Remaining constraints: {}, Remaining terms: {num_terms}, Remaining vars: {}",
         pb.num_rows(),
         pb.num_cols()
