@@ -2,6 +2,9 @@ use std::{fs::File, path::PathBuf};
 
 use dss::{exact::highs_advanced::*, reduction::*};
 
+use dss::reduction::{
+    RuleIsolatedReduction, RuleRedundantCover, RuleVertexCover, SubsetRuleTwoReduction,
+};
 #[allow(unused_imports)]
 use dss::{
     exact::{naive::naive_solver, sat_solver::SolverBackend},
@@ -166,6 +169,22 @@ fn main() -> anyhow::Result<()> {
             &mut never_select,
         );
 
+        // /*
+        changed |= reducer.apply_rule::<SubsetRuleTwoReduction<_>>(
+            &mut graph,
+            &mut solution,
+            &mut covered,
+            &mut redundant,
+        );
+
+        if reducer.remove_unnecessary_edges(&mut graph, &covered, &redundant) == 0 && !changed {
+            break;
+        }
+
+        // */
+
+        /*
+
         if changed {
             continue;
         }
@@ -195,6 +214,7 @@ fn main() -> anyhow::Result<()> {
         }
 
         break;
+        */
     }
 
     let mut rule_small_exact = RuleSmallExactReduction;
