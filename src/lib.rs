@@ -21,6 +21,7 @@ pub mod prelude {
     pub use super::graph::*;
     pub use super::io::*;
     pub use super::utils::*;
+    pub use log::{debug, info};
 }
 
 #[cfg(test)]

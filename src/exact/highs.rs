@@ -1,15 +1,17 @@
 use core::panic;
+use std::fmt::Debug;
 use std::time::Duration;
 
 use highs::{HighsModelStatus, Model, RowProblem};
 use itertools::Itertools;
 
-use log::debug;
+use crate::prelude::*;
+use stream_bitset::prelude::{BitmaskStreamConsumer, ToBitmaskStream};
 
 use crate::{exact::ExactError, graph::*, utils::DominatingSet};
 const NOT_SET: Node = Node::MAX;
 
-pub fn highs_solver<G: Clone + AdjacencyTest + AdjacencyList>(
+pub fn highs_solver<G: Clone + AdjacencyTest + AdjacencyList + Debug>(
     graph: &G,
     is_perm_covered: &BitSet,
     never_select: &BitSet,
@@ -26,7 +28,7 @@ pub fn highs_solver<G: Clone + AdjacencyTest + AdjacencyList>(
     )
 }
 
-pub fn highs_solver_with_precious<G: Clone + AdjacencyTest + AdjacencyList>(
+pub fn highs_solver_with_precious<G: Clone + AdjacencyTest + AdjacencyList + Debug>(
     graph: &G,
     precious: &[Node],
     is_perm_covered: &BitSet,
@@ -40,7 +42,7 @@ pub fn highs_solver_with_precious<G: Clone + AdjacencyTest + AdjacencyList>(
     let mut skip_constraints_of = graph.vertex_bitset_unset();
     let mut skip_terms = 0;
 
-    for u in never_select.iter_set_bits() {
+    for u in (never_select.bitmask_stream() - is_perm_covered).iter_set_bits() {
         if let Some((a, b)) = graph
             .neighbors_of(u)
             .filter(|&v| v != u && !never_select.get_bit(v))

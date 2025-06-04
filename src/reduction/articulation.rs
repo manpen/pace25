@@ -42,6 +42,21 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> ReductionRule<Graph
         if aps.are_all_unset() {
             return (false, None::<Box<dyn Postprocessor<Graph>>>);
         }
+
+        //if false {
+        //    // THIS IS A HEURISTIC!
+        //    let mut changed = false;
+        //    for u in aps.iter_set_bits() {
+        //        let deg = graph.degree_of(u);
+        //        if deg > 150 && !solution.is_in_domset(u) {
+        //            changed = true;
+        //            info!("Heuristically fix articulation point {u} of degree {deg}");
+        //            solution.add_node(u);
+        //            covered.set_bits(graph.closed_neighbors_of(u));
+        //        }
+        //    }
+        //}
+
         aps &= redundant;
         if aps.are_all_unset() {
             return (false, None::<Box<dyn Postprocessor<Graph>>>);
@@ -76,10 +91,13 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> ReductionRule<Graph
                 let mut search = DFS::new(graph, v);
                 search.exclude_node(u);
 
-                let cc = search.take(1 + MAX_CC_SIZE as usize).collect_vec();
+                let mut cc = search.take(1 + MAX_CC_SIZE as usize).collect_vec();
                 if cc.len() > MAX_CC_SIZE as usize {
                     continue;
                 }
+
+                cc.push(u);
+                covered.set_bit(u);
 
                 let precious = cc
                     .iter()
@@ -95,11 +113,16 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> ReductionRule<Graph
                     precious.as_slice(),
                     solver_buffer.as_mut_slice(),
                     SOLVER_TIMEOUT,
-                ) && precious.into_iter().any(|w| solved.iter().contains(&w))
+                )
+                // && precious.into_iter().any(|w| solved.iter().contains(&w))
                 {
                     solution.add_nodes(solved.iter().cloned());
                     covered.set_bits(cc.into_iter());
-                    covered.set_bit(u);
+
+                    if !precious.into_iter().any(|w| solved.iter().contains(&w)) {
+                        covered.clear_bit(u);
+                    }
+
                     changed = true;
                     break;
                 }
