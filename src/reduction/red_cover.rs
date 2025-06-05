@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use itertools::Itertools;
 use num::Integer;
 
@@ -7,8 +5,16 @@ use crate::graph::*;
 
 use super::*;
 
-pub struct RuleRedundantCover<G> {
-    _graph: PhantomData<G>,
+pub struct RuleRedundantCover {
+    alt_node: BitSet,
+}
+
+impl RuleRedundantCover {
+    pub fn new(n: NumNodes) -> Self {
+        Self {
+            alt_node: BitSet::new(n),
+        }
+    }
 }
 
 impl<
@@ -19,11 +25,12 @@ impl<
         + UnsafeGraphEditing
         + GraphEdgeOrder
         + 'static,
-> ReductionRule<Graph> for RuleRedundantCover<Graph>
+> ReductionRule<Graph> for RuleRedundantCover
 {
     const NAME: &str = "RedundantCover";
 
     fn apply_rule(
+        &mut self,
         graph: &mut Graph,
         _solution: &mut DominatingSet,
         covered: &mut BitSet,
@@ -33,7 +40,7 @@ impl<
             return (false, None::<Box<dyn Postprocessor<Graph>>>);
         }
 
-        let mut alt_node = graph.vertex_bitset_unset();
+        self.alt_node.clear_all();
         for red in redundant.iter_set_bits() {
             if covered.get_bit(red) {
                 continue;
@@ -48,22 +55,25 @@ impl<
                 continue;
             }
 
-            alt_node.set_bit(a);
-            alt_node.set_bit(b);
+            self.alt_node.set_bit(a);
+            self.alt_node.set_bit(b);
         }
 
-        if alt_node.cardinality() == 0 {
+        if self.alt_node.cardinality() == 0 {
             return (false, None::<Box<dyn Postprocessor<Graph>>>);
         }
 
         let mut num_removed = 0;
         for u in graph.vertices_range() {
-            if alt_node.get_bit(u) {
+            if self.alt_node.get_bit(u) {
                 num_removed += unsafe {
-                    graph.remove_half_edges_at_if(u, |v| !alt_node.get_bit(v) && covered.get_bit(v))
+                    graph.remove_half_edges_at_if(u, |v| {
+                        !self.alt_node.get_bit(v) && covered.get_bit(v)
+                    })
                 };
             } else if covered.get_bit(u) {
-                num_removed += unsafe { graph.remove_half_edges_at_if(u, |v| alt_node.get_bit(v)) };
+                num_removed +=
+                    unsafe { graph.remove_half_edges_at_if(u, |v| self.alt_node.get_bit(v)) };
             }
         }
 

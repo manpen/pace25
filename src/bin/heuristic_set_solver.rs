@@ -1,15 +1,15 @@
 use dss::{
     graph::{
         AdjArray, AdjacencyList, BitSet, CsrGraph, CuthillMcKee, Edge, EdgeOps, ExtractCsrRepr,
-        Getter, GraphEdgeEditing, GraphEdgeOrder, GraphFromReader, GraphNodeOrder, Node,
-        NodeMapper, NumNodes,
+        Getter, GraphEdgeOrder, GraphFromReader, GraphNodeOrder, Node, NodeMapper, NumNodes,
     },
-    heuristic::{greedy_approximation, reverse_greedy_search::GreedyReverseSearch},
+    heuristic::{iterative_greedy::IterativeGreedy, reverse_greedy_search::GreedyReverseSearch},
     io::set_reader::SetPaceReader,
     log::build_pace_logger_for_level,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
     reduction::{
-        LongPathReduction, Reducer, RuleOneReduction, RuleSmallExactReduction, RuleSubsetReduction,
+        LongPathReduction, Reducer, RuleIsolatedReduction, RuleOneReduction, RuleRedundantCover,
+        RuleSmallExactReduction, RuleSubsetReduction, RuleVertexCover,
     },
     utils::{DominatingSet, signal_handling},
 };
@@ -17,7 +17,10 @@ use itertools::Itertools;
 use log::info;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64Mcg;
-use std::{path::PathBuf, time::Duration};
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 use structopt::StructOpt;
 
 #[derive(StructOpt, Default)]
@@ -30,6 +33,24 @@ struct Opts {
 
     #[structopt(short = "q")]
     no_output: bool,
+
+    #[structopt(short = "v")]
+    verbose: bool,
+
+    #[structopt(short = "g", default_value = "6")]
+    greedy_timeout: f64,
+
+    #[structopt(short = "G", default_value = "20")]
+    greedy_iterations: u64,
+
+    #[structopt(short = "a", default_value = "6")]
+    ls_attempts: u64,
+
+    #[structopt(short = "p", default_value = "13")]
+    ls_presolve_timeout: f64,
+
+    #[structopt(short = "m", default_value = "2")]
+    ls_presolve_max_gap: f64,
 }
 
 fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<(AdjArray, NumNodes)> {
@@ -43,7 +64,8 @@ fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<(AdjArray, NumNodes)> {
     }
 }
 
-struct State<G> {
+#[derive(Clone)]
+struct State<G: Clone> {
     graph: G,
     domset: DominatingSet,
     covered: BitSet,
@@ -59,59 +81,95 @@ fn apply_reduction_rules(
     let mut covered = BitSet::new_with_bits_set(graph.number_of_nodes(), 0..orig_number_nodes);
     let mut domset = DominatingSet::new(graph.number_of_nodes());
 
-    // singleton nodes need to be fixed
-    // -> there should never exist a set-node that has degree 0
     domset.fix_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
 
     let mut reducer = Reducer::new();
-    let mut redundant = BitSet::new_with_bits_set(
-        graph.number_of_nodes(),
-        orig_number_nodes..graph.number_of_nodes(),
-    );
+    let mut redundant = BitSet::new(graph.number_of_nodes());
 
-    reducer.apply_rule_exhaustively::<RuleOneReduction<_>>(
-        &mut graph,
-        &mut domset,
-        &mut covered,
-        &mut redundant,
-    );
-    reducer.apply_rule::<LongPathReduction<_>>(
-        &mut graph,
-        &mut domset,
-        &mut covered,
-        &mut redundant,
-    );
+    let mut rule_vertex_cover = RuleVertexCover::new(graph.number_of_nodes());
+    let mut rule_one = RuleOneReduction::new(graph.number_of_nodes());
+    let mut rule_long_path = LongPathReduction;
+    let mut rule_isolated = RuleIsolatedReduction;
+    let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
 
-    {
-        let csr_edges = graph.extract_csr_repr();
-        RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut redundant)
+    loop {
+        let mut changed = false;
+
+        changed |= reducer.apply_rule(
+            &mut rule_vertex_cover,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+
+        changed |= reducer.apply_rule(
+            &mut rule_one,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+
+        changed |= reducer.apply_rule(
+            &mut rule_long_path,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+
+        changed |= reducer.apply_rule(
+            &mut rule_isolated,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+
+        changed |= reducer.apply_rule(
+            &mut rule_redundant,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+
+        if changed {
+            continue;
+        }
+
+        if true {
+            let csr_edges = graph.extract_csr_repr();
+            RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut redundant);
+            assert!(!domset.iter().any(|u| redundant.get_bit(u)));
+            if reducer.remove_unnecessary_edges(
+                &mut graph,
+                &mut domset,
+                &mut covered,
+                &mut redundant,
+            ) > 0
+            {
+                continue;
+            }
+        }
+
+        break;
     }
 
-    let mut num_removed_edges = 0;
-    redundant.iter_set_bits().for_each(|u| {
-        let redundant_neighbors = graph
-            .neighbors_of(u)
-            .filter(|&v| redundant.get_bit(v))
-            .collect_vec();
-        num_removed_edges += redundant_neighbors.len();
-        for v in redundant_neighbors {
-            graph.remove_edge(u, v);
-        }
-    });
+    let mut rule_small_exact = RuleSmallExactReduction;
 
-    info!(
-        "Subset n ~= {}, m -= {num_removed_edges}, |D| += 0, |covered| += 0",
-        redundant.cardinality()
-    );
+    if graph.number_of_edges() > 0 {
+        reducer.apply_rule(
+            &mut rule_small_exact,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+    }
 
-    reducer.apply_rule::<RuleSmallExactReduction<_>>(
-        &mut graph,
-        &mut domset,
-        &mut covered,
-        &mut redundant,
-    );
-
-    info!("Preprocessing completed");
+    reducer.report_summary();
 
     (
         State {
@@ -179,34 +237,50 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
     }
 }
 
-fn run_search(rng: &mut impl Rng, mapped: State<CsrGraph>, timeout: Option<f64>) -> DominatingSet {
+type MainHeuristic = GreedyReverseSearch<CsrGraph, 10, 10>;
+
+fn build_heuristic(
+    rng: &mut impl Rng,
+    mapped: State<CsrGraph>,
+    opts: &Opts,
+    id: u32,
+) -> MainHeuristic {
     let State {
         graph,
-        domset,
+        mut domset,
         covered,
         redundant,
     } = mapped;
 
-    let mut search = GreedyReverseSearch::<_, 10, 10>::new(
-        graph.clone(),
-        domset,
-        covered.clone(),
-        redundant.clone(),
-        rng,
-    );
+    // Greedy
+    {
+        assert!(domset.is_empty());
+        info!("Start Greedy");
 
-    let domset = if let Some(seconds) = timeout {
-        search.run_until_timeout(Duration::from_secs_f64(seconds));
-        search.best_known_solution()
-    } else {
-        search.run_to_completion()
+        let mut algo = IterativeGreedy::new(rng, &graph, &covered, &redundant);
+
+        if id % 2 == 1 {
+            algo.set_strategy(dss::heuristic::iterative_greedy::GreedyStrategy::DegreeValue);
+        }
+
+        let mut remaining_iterations = opts.greedy_iterations.max(1);
+        let start_time = Instant::now();
+        algo.run_while(|_| {
+            remaining_iterations -= 1;
+            (remaining_iterations > 0) && (start_time.elapsed().as_secs_f64() < opts.greedy_timeout)
+        });
+
+        domset = algo.best_known_solution().unwrap();
     }
-    .unwrap();
 
-    assert!(redundant.iter_set_bits().all(|u| !domset.is_in_domset(u)));
-    assert!(domset.is_valid_given_previous_cover(&graph, &covered));
+    info!("Start GreedyReverseSearch");
+    let mut search = MainHeuristic::new(graph, domset, covered, redundant, rng);
 
-    domset
+    if opts.verbose {
+        search.enable_verbose_logging();
+    }
+
+    search
 }
 
 fn main() -> anyhow::Result<()> {
@@ -232,19 +306,64 @@ fn main() -> anyhow::Result<()> {
 
     let mapping = state.graph.cuthill_mckee();
     if mapping.len() > 0 {
-        info!("Start greedy");
         // if the reduction rules are VERY successful, no nodes remain
-        let mut mapped = remap_state(&state, &mapping);
-        greedy_approximation(
-            &mapped.graph,
-            &mut mapped.domset,
-            &mapped.covered,
-            &mapped.redundant,
-        );
-        info!("Greedy found solution size {}", mapped.domset.len());
+        let mapped = remap_state(&state, &mapping);
 
-        info!("Start local search");
-        let domset_mapped = run_search(&mut rng, mapped, opts.timeout);
+        let mut best_heuristic: Option<MainHeuristic> = None;
+
+        for ls_attempt in 0..opts.ls_attempts {
+            let mut heuristic = build_heuristic(&mut rng, mapped.clone(), &opts, ls_attempt as u32);
+
+            let start = Instant::now();
+            let mut last_update_time = start;
+            let mut last_update_score = heuristic.current_score();
+            heuristic.run_while(|a| {
+                let now = Instant::now();
+                if now.duration_since(start) > Duration::from_secs_f64(opts.ls_presolve_timeout) {
+                    info!(" Stop presolve due to timeout");
+                    return false;
+                }
+
+                if a.current_score() < last_update_score {
+                    last_update_score = a.current_score();
+                    last_update_time = now;
+                } else if now.duration_since(last_update_time)
+                    > Duration::from_secs_f64(opts.ls_presolve_max_gap)
+                {
+                    info!(" Stop presolve due to max gap");
+                    return false;
+                }
+
+                true
+            });
+
+            info!(
+                "Heuristic presolve attempt {ls_attempt} with score {}",
+                heuristic.current_score()
+            );
+
+            if best_heuristic
+                .as_ref()
+                .is_none_or(|x| x.current_score() > heuristic.current_score())
+            {
+                best_heuristic = Some(heuristic);
+            }
+        }
+
+        let mut best_heuristic = best_heuristic.unwrap();
+
+        info!(
+            "Start final run at score {}",
+            best_heuristic.current_score()
+        );
+
+        let domset_mapped = if let Some(timeout) = opts.timeout {
+            best_heuristic.run_until_timeout(Duration::from_secs_f64(timeout));
+            best_heuristic.best_known_solution().unwrap()
+        } else {
+            best_heuristic.run_to_completion().unwrap()
+        };
+
         info!("Local search found solution size {}", domset_mapped.len());
 
         let size_before = state.domset.len();
@@ -296,12 +415,6 @@ fn main() -> anyhow::Result<()> {
             .is_valid_given_previous_cover(&input_graph, &reduction_cover)
     );
 
-    // FIXME: remove later
-    assert!((orig_number_nodes..input_graph.number_of_nodes()).all(|u| {
-        input_graph
-            .neighbors_of(u)
-            .any(|v| state.domset.is_in_domset(v))
-    }));
     if !opts.no_output {
         state.domset.write(std::io::stdout())?;
     }

@@ -164,49 +164,70 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
     let mut reducer = Reducer::new();
     let mut redundant = BitSet::new(graph.number_of_nodes());
 
-    for iter in 0.. {
+    let mut rule_vertex_cover = RuleVertexCover::new(graph.number_of_nodes());
+    let mut rule_one = RuleOneReduction::new(graph.number_of_nodes());
+    let mut rule_long_path = LongPathReduction;
+    let mut rule_isolated = RuleIsolatedReduction;
+    let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
+
+    loop {
         let mut changed = false;
 
-        changed |= reducer.apply_rule::<RuleRedundantCover<_>>(
+        changed |= reducer.apply_rule(
+            &mut rule_vertex_cover,
             &mut graph,
             &mut domset,
             &mut covered,
             &mut redundant,
         );
 
-        changed |= reducer.apply_rule::<RuleVertexCover<_>>(
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut redundant,
-        );
-        changed |= reducer.apply_rule::<RuleOneReduction<_>>(
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut redundant,
-        );
-        changed |= reducer.apply_rule::<LongPathReduction<_>>(
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut redundant,
-        );
-        changed |= reducer.apply_rule::<RuleIsolatedReduction<_>>(
+        changed |= reducer.apply_rule(
+            &mut rule_one,
             &mut graph,
             &mut domset,
             &mut covered,
             &mut redundant,
         );
 
-        if iter < 4 && changed {
+        changed |= reducer.apply_rule(
+            &mut rule_long_path,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+
+        changed |= reducer.apply_rule(
+            &mut rule_isolated,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+
+        changed |= reducer.apply_rule(
+            &mut rule_redundant,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+
+        if changed {
             continue;
         }
 
-        {
+        if true {
             let csr_edges = graph.extract_csr_repr();
             RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut redundant);
-            if reducer.remove_unnecessary_edges(&mut graph, &covered, &redundant) > 0 {
+            assert!(!domset.iter().any(|u| redundant.get_bit(u)));
+            if reducer.remove_unnecessary_edges(
+                &mut graph,
+                &mut domset,
+                &mut covered,
+                &mut redundant,
+            ) > 0
+            {
                 continue;
             }
         }
@@ -214,12 +235,17 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
         break;
     }
 
-    reducer.apply_rule::<RuleSmallExactReduction<_>>(
-        &mut graph,
-        &mut domset,
-        &mut covered,
-        &mut redundant,
-    );
+    let mut rule_small_exact = RuleSmallExactReduction;
+
+    if graph.number_of_edges() > 0 {
+        reducer.apply_rule(
+            &mut rule_small_exact,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+    }
 
     reducer.report_summary();
 

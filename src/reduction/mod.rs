@@ -20,11 +20,16 @@ use crate::{graph::BitSet, utils::DominatingSet};
 pub trait ReductionRule<Graph> {
     const NAME: &str;
 
+    /// If true, *always* try to delete unnecessary edges afterwards;
+    /// signals that this edge removal is part of the rule itself
+    const REMOVAL: bool = false;
+
     /// Applies the rule to the given graph and a partial solution.
     /// The rule may modify either. The first value return is true
     /// if the rule modified the graph; the second is Some(..) if
     /// the rule needs a post processing step.
     fn apply_rule(
+        &mut self,
         graph: &mut Graph,
         solution: &mut DominatingSet,
         covered: &mut BitSet,

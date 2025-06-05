@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use super::*;
 use crate::{graph::*, utils::DominatingSet};
 
@@ -27,18 +25,44 @@ use smallvec::SmallVec;
 /// Here, we break ties in the opposite direction and prefer dominating nodes with smaller degrees.
 /// (3) We iterate over each candidate-pair (u,v) and confirm whether u is truly a Type3-Neighbor
 /// for u. If true, we mark u as redundant and fix v as a dominating node.
-pub struct RuleOneReduction<G> {
-    _graph: PhantomData<G>,
+pub struct RuleOneReduction {
+    /// Inverse mappings of step (1) and (2)
+    inv_mappings: Vec<SmallVec<[Node; 4]>>,
+    /// Used for confirming whether neighborhoods of nodes are subsets of other neighborhoods.
+    marked: Vec<Node>,
+    /// Parent[u] = v if (u,v) is a possible candidate
+    parent: Vec<Node>,
+    /// BitSet indicating that a node is a Type(2 or 3)-Candidate (not confirmed yet)
+    type2_nodes: BitSet,
+    /// Helper-BitSet to ensure we only process each node once later
+    processed: BitSet,
+    /// Number of uncovered nodes in closed neighborhood
+    non_perm_degree: Vec<NumNodes>,
+    /// List of nodes with at least one Type3-Neighbor
+    selected: Vec<Node>,
+}
+
+impl RuleOneReduction {
+    pub fn new(n: NumNodes) -> Self {
+        Self {
+            inv_mappings: vec![Default::default(); n as usize],
+            marked: vec![NOT_SET; n as usize],
+            parent: vec![NOT_SET; n as usize],
+            type2_nodes: BitSet::new(n),
+            processed: BitSet::new(n),
+            non_perm_degree: vec![NOT_SET; n as usize],
+            selected: Vec::with_capacity(n as usize),
+        }
+    }
 }
 
 const NOT_SET: Node = Node::MAX;
 
-impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
-    for RuleOneReduction<Graph>
-{
+impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph> for RuleOneReduction {
     const NAME: &str = "RuleOne";
 
     fn apply_rule(
+        &mut self,
         graph: &mut Graph,
         domset: &mut DominatingSet,
         covered: &mut BitSet,
@@ -47,29 +71,21 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         let n = graph.len();
         assert!(NOT_SET as usize >= n);
 
-        // Inverse mappings of step (1) and (2)
-        let mut inv_mappings: Vec<SmallVec<[Node; 4]>> = vec![Default::default(); n];
-
-        // Parent[u] = v if (u,v) is a possible candidate
-        let mut parent: Vec<Node> = vec![NOT_SET; n];
-
-        // Used for confirming whether neighborhoods of nodes are subsets of other neighborhoods.
-        let mut marked: Vec<Node> = vec![NOT_SET; n];
-
-        // BitSet indicating that a node is a Type(2 or 3)-Candidate (not confirmed yet)
-        let mut type2_nodes: BitSet = graph.vertex_bitset_unset();
-
-        // Helper-BitSet to ensure we only process each node once later
-        let mut processed: BitSet = graph.vertex_bitset_unset();
+        // Reset variables
+        for u in 0..graph.number_of_nodes() {
+            self.inv_mappings[u as usize].clear();
+            self.marked[u as usize] = NOT_SET;
+            self.parent[u as usize] = NOT_SET;
+            self.non_perm_degree[u as usize] = graph.degree_of(u) + 1;
+        }
+        self.type2_nodes.clear_all();
+        self.processed.clear_all();
+        self.selected.clear();
 
         // Compute permanently covered nodes and degrees
-        let mut non_perm_degree: Vec<NumNodes> = (0..graph.number_of_nodes())
-            .map(|u| graph.degree_of(u) + 1)
-            .collect();
-
         for u in covered.iter_set_bits() {
             for v in graph.closed_neighbors_of(u) {
-                non_perm_degree[v as usize] -= 1;
+                self.non_perm_degree[v as usize] -= 1;
             }
         }
 
@@ -81,13 +97,13 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
 
             let max_neighbor = graph
                 .closed_neighbors_of(u)
-                .map(|u| (non_perm_degree[u as usize], u))
+                .map(|u| (self.non_perm_degree[u as usize], u))
                 .max()
                 .map(|(_, u)| u)
                 .unwrap();
 
             if max_neighbor != u {
-                inv_mappings[max_neighbor as usize].push(u);
+                self.inv_mappings[max_neighbor as usize].push(u);
             }
         }
 
@@ -95,108 +111,108 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
         for u in graph.vertices() {
             // Mark closed neighborhood N[u] of u (SelfLoop marker)
             for v in graph.closed_neighbors_of(u) {
-                marked[v as usize] = u;
+                self.marked[v as usize] = u;
             }
 
             // Check whether N[v] is a subset of N[u]
-            for v in inv_mappings[u as usize].drain(..) {
+            for v in self.inv_mappings[u as usize].drain(..) {
                 if graph
                     .closed_neighbors_of(v)
-                    .all(|x| marked[x as usize] == u || covered.get_bit(x))
+                    .all(|x| self.marked[x as usize] == u || covered.get_bit(x))
                 {
-                    parent[v as usize] = u;
-                    type2_nodes.set_bit(v);
+                    self.parent[v as usize] = u;
+                    self.type2_nodes.set_bit(v);
                 }
             }
         }
 
         // We drained inv_mappings earlier completely, so we can now reuse it
-        debug_assert!(inv_mappings.iter().all(|vec| vec.is_empty()));
+        debug_assert!(self.inv_mappings.iter().all(|vec| vec.is_empty()));
 
         // (2) Compute second mapping from list of candidate-pairs
-        for u in type2_nodes.iter_set_bits() {
+        for u in self.type2_nodes.iter_set_bits() {
             for v in graph.closed_neighbors_of(u) {
                 // Only process each node once
-                if processed.set_bit(v) {
+                if self.processed.set_bit(v) {
                     continue;
                 }
 
                 // Mark closed neighborhood N[v] of v (SelfLoop marker)
                 for x in graph.closed_neighbors_of(v) {
-                    marked[x as usize] = v;
+                    self.marked[x as usize] = v;
                 }
 
                 // Find minimum dominating node of neighbors in neighborhood of v
                 if let Some((_, min_node)) = graph
                     .closed_neighbors_of(v)
                     .filter_map(|x| {
-                        let pt = parent[x as usize];
-                        (pt != NOT_SET && pt != v && marked[pt as usize] == v)
-                            .then(|| (non_perm_degree[pt as usize], pt))
+                        let pt = self.parent[x as usize];
+                        (pt != NOT_SET && pt != v && self.marked[pt as usize] == v)
+                            .then(|| (self.non_perm_degree[pt as usize], pt))
                     })
                     .min()
                     && !redundant.get_bit(min_node)
                 {
                     // We drained inv_mappings earlier completely, so we can now reuse it
-                    inv_mappings[min_node as usize].push(v);
+                    self.inv_mappings[min_node as usize].push(v);
                 }
             }
         }
 
-        processed.clear_all();
-        parent = vec![NOT_SET; n];
+        self.processed.clear_all();
+        self.parent = vec![NOT_SET; n];
 
-        let mut selected = Vec::with_capacity(128);
         // (3) Mark candidates as possible Type2-Nodes if their neighborhoods are subsets
         for u in graph.vertices() {
-            if inv_mappings[u as usize].is_empty() {
+            if self.inv_mappings[u as usize].is_empty() {
                 continue;
             }
 
             // Mark closed neighborhood N[u] of u (SelfLoop marker)
             for v in graph.closed_neighbors_of(u) {
-                marked[v as usize] = u;
+                self.marked[v as usize] = u;
             }
 
-            for &v in &inv_mappings[u as usize] {
+            for &v in &self.inv_mappings[u as usize] {
                 if graph
                     .closed_neighbors_of(v)
-                    .all(|x| marked[x as usize] == u || covered.get_bit(x))
+                    .all(|x| self.marked[x as usize] == u || covered.get_bit(x))
                 {
-                    parent[v as usize] = u;
+                    self.parent[v as usize] = u;
                 }
             }
 
-            for v in inv_mappings[u as usize].drain(..) {
+            for v in self.inv_mappings[u as usize].drain(..) {
                 if covered.get_bit(v) {
                     continue;
                 }
                 if graph
                     .closed_neighbors_of(v)
-                    .all(|x| parent[x as usize] == u || x == u)
+                    .all(|x| self.parent[x as usize] == u || x == u)
                 {
                     assert!(!redundant.get_bit(u));
                     domset.fix_node(u);
-                    selected.push(u);
+                    self.selected.push(u);
                     covered.set_bits(graph.closed_neighbors_of(u));
-                    processed.set_bits(graph.closed_neighbors_of(u));
+                    self.processed.set_bits(graph.closed_neighbors_of(u));
                     break;
                 }
             }
         }
 
-        let modified = !selected.is_empty();
+        let modified = !self.selected.is_empty();
 
         // Delete edges between nodes (u,v) where u is covered and v is the *only* uncovered neighbor of u
         //
         // Rest of deletions are done in post-processing
-        for u in processed
+        for u in self
+            .processed
             .iter_set_bits()
             .filter(|&u| !domset.is_in_domset(u))
         {
             let mut nbs = graph
                 .neighbors_of(u)
-                .filter(|x| !processed.get_bit(*x) && !covered.get_bit(*x));
+                .filter(|x| !self.processed.get_bit(*x) && !covered.get_bit(*x));
 
             let nb1 = nbs.next();
             let nb2 = nbs.next();
@@ -339,8 +355,8 @@ mod tests {
                 }
 
                 let mut red = adj_graph.vertex_bitset_unset();
-                let _ =
-                    RuleOneReduction::apply_rule(&mut adj_graph, &mut sol1, &mut covered, &mut red);
+                let mut rule1 = RuleOneReduction::new(n);
+                let _ = rule1.apply_rule(&mut adj_graph, &mut sol1, &mut covered, &mut red);
             }
             naive_rule1_impl(&csr_graph, &mut sol2);
 

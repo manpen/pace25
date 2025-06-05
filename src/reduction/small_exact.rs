@@ -6,16 +6,12 @@ use log::{debug, info};
 
 use super::*;
 use crate::{exact, graph::*};
-use std::{
-    marker::PhantomData,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 const NOT_SET: Node = Node::MAX;
 
-pub struct RuleSmallExactReduction<G> {
-    _graph: PhantomData<G>,
-}
+pub struct RuleSmallExactReduction;
+
 struct ConnectedComponentWalker {
     visited: BitSet,
     start_at: Node,
@@ -91,11 +87,14 @@ const COMBINE_CCS_UPTO: Node = 100;
 const MAX_DURATION: Duration = Duration::from_secs(30);
 
 impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
-    for RuleSmallExactReduction<Graph>
+    for RuleSmallExactReduction
 {
     const NAME: &str = "SmallExact";
 
+    /// We expect to run this ReductionRule only once; hence, we do not cache any variables in
+    /// RuleSmallExactReduction itself
     fn apply_rule(
+        &mut self,
         graph: &mut Graph,
         solution: &mut DominatingSet,
         covered: &mut BitSet,
@@ -193,8 +192,8 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph>
     }
 }
 
-impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> RuleSmallExactReduction<Graph> {
-    fn process_3nodes(
+impl RuleSmallExactReduction {
+    fn process_3nodes<Graph: AdjacencyList + GraphEdgeEditing + 'static>(
         graph: &Graph,
         solution: &mut DominatingSet,
         covered: &mut BitSet,
@@ -210,7 +209,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> RuleSmallExactReduction<
         }
     }
 
-    fn process_4nodes(
+    fn process_4nodes<Graph: AdjacencyList + GraphEdgeEditing + 'static>(
         graph: &Graph,
         solution: &mut DominatingSet,
         covered: &mut BitSet,
@@ -256,13 +255,15 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> RuleSmallExactReduction<
         }
     }
 
-    fn process_small_ccs(
+    fn process_small_ccs<Graph: AdjacencyList + GraphEdgeEditing + 'static>(
         graph: &Graph,
         solution: &mut DominatingSet,
         covered: &mut BitSet,
         redundant: &BitSet,
         mut ccs: impl Iterator<Item = CC>,
-    ) {
+    ) where
+        Self: ReductionRule<Graph>,
+    {
         let mut num_timeout = 0;
         let mut num_solved = 0;
 
