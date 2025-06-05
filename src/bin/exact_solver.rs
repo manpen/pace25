@@ -169,7 +169,6 @@ fn main() -> anyhow::Result<()> {
             &mut never_select,
         );
 
-        // /*
         changed |= reducer.apply_rule::<SubsetRuleTwoReduction<_>>(
             &mut graph,
             &mut solution,
