@@ -193,6 +193,9 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
         // Offsets used for faster binary search
         let mut offsets = Vec::new();
 
+        // Which nodes are newly covered
+        let mut processed = graph.vertex_bitset_unset();
+
         let mut modified = false;
         for ((ref_u, ref_v), mut cand) in possible_reductions {
             // Nodes marked as redundant can not act as witnesses here
@@ -340,6 +343,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
             if ref_u_fixable {
                 domset.fix_node(ref_u);
                 covered.set_bits(graph.closed_neighbors_of(ref_u));
+                processed.set_bits(graph.closed_neighbors_of(ref_u));
                 modified = true;
             }
 
@@ -347,9 +351,48 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
             if ref_v_fixable {
                 domset.fix_node(ref_v);
                 covered.set_bits(graph.closed_neighbors_of(ref_v));
+                processed.set_bits(graph.closed_neighbors_of(ref_v));
                 modified = true;
             }
         }
+
+        // Delete edges between nodes (u,v) where u is covered and v is the *only* uncovered neighbor of u
+        //
+        // Rest of deletions are done in post-processing
+        for u in processed
+            .iter_set_bits()
+            .filter(|&u| !domset.is_in_domset(u))
+        {
+            let mut nbs = graph.neighbors_of(u).filter(|x| !covered.get_bit(*x));
+
+            let nb1 = nbs.next();
+            let nb2 = nbs.next();
+
+            // Iterator no longer needed; potentially save time by not consuming fully
+            std::mem::drop(nbs);
+
+            if let (Some(v), None) = (nb1, nb2) {
+                graph.remove_edge(u, v);
+            }
+        }
+
+        covered.update_cleared_bits(|u| {
+            let is_singleton = graph.degree_of(u) == 0;
+            if is_singleton {
+                // If redundant[u] = 1, then u was dominated by another node v that was removed in
+                // this iteration along with every other neighbor of u because u was the only
+                // uncovered neighbor of those nodes.
+                //
+                // It would be equally optimal to put v into the dominating set instead, but at
+                // this point, it does not matter.
+                //
+                // We nonetheless mark u was not-redundant anymore to prevent further checks from
+                // flagging this as unintended behavior
+                redundant.clear_bit(u);
+                domset.fix_node(u);
+            }
+            is_singleton
+        });
 
         (modified, None::<Box<dyn Postprocessor<Graph>>>)
     }

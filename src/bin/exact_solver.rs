@@ -176,7 +176,10 @@ fn main() -> anyhow::Result<()> {
             &mut redundant,
         );
 
-        if reducer.remove_unnecessary_edges(&mut graph, &covered, &redundant) == 0 && !changed {
+        if reducer.remove_unnecessary_edges(&mut graph, &mut solution, &mut covered, &mut redundant)
+            == 0
+            && !changed
+        {
             break;
         }
 
