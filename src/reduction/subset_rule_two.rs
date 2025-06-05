@@ -356,44 +356,6 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
             }
         }
 
-        // Delete edges between nodes (u,v) where u is covered and v is the *only* uncovered neighbor of u
-        //
-        // Rest of deletions are done in post-processing
-        for u in processed
-            .iter_set_bits()
-            .filter(|&u| !domset.is_in_domset(u))
-        {
-            let mut nbs = graph.neighbors_of(u).filter(|x| !covered.get_bit(*x));
-
-            let nb1 = nbs.next();
-            let nb2 = nbs.next();
-
-            // Iterator no longer needed; potentially save time by not consuming fully
-            std::mem::drop(nbs);
-
-            if let (Some(v), None) = (nb1, nb2) {
-                graph.remove_edge(u, v);
-            }
-        }
-
-        covered.update_cleared_bits(|u| {
-            let is_singleton = graph.degree_of(u) == 0;
-            if is_singleton {
-                // If redundant[u] = 1, then u was dominated by another node v that was removed in
-                // this iteration along with every other neighbor of u because u was the only
-                // uncovered neighbor of those nodes.
-                //
-                // It would be equally optimal to put v into the dominating set instead, but at
-                // this point, it does not matter.
-                //
-                // We nonetheless mark u was not-redundant anymore to prevent further checks from
-                // flagging this as unintended behavior
-                redundant.clear_bit(u);
-                domset.fix_node(u);
-            }
-            is_singleton
-        });
-
         (modified, None::<Box<dyn Postprocessor<Graph>>>)
     }
 }
