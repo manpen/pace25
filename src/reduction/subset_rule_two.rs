@@ -113,9 +113,12 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + std::fmt::Debug +
                     continue;
                 }
 
-                // v has at least one covered neighbor that is not a neighbor to u
+                // All uncovered neighbors of v are marked by u, ie. u subset-dominates v
                 if !covered_neighbors.is_empty() {
-                    // TBD: implement Subset-Part
+                    // TBD: possibly check if non_perm_degree[u] == non_perm_degree[v] and we
+                    // should break ties in favor of v instead?
+                    redundant.set_bit(v);
+                    type2[u as usize].push(v);
                 }
 
                 // |covered_neighbors| > 0 iff there was no uncovered node in N found
@@ -195,7 +198,10 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + std::fmt::Debug +
             let (mut ref_u_fixable, mut ref_v_fixable) = (false, false);
 
             for &u in &cand {
-                if graph.neighbors_of(u).all(|v| marked[v as usize] == marker || covered.get_bit(v)) {
+                if graph
+                    .neighbors_of(u)
+                    .all(|v| marked[v as usize] == marker || covered.get_bit(v))
+                {
                     marked2[u as usize] = marker;
                 }
             }
@@ -286,14 +292,20 @@ mod test {
 
     use super::*;
 
-    fn base_graph(n: NumNodes) -> AdjArray {
-        let mut graph = AdjArray::new(2 + n);
+    fn base_graph(n: NumNodes) -> (AdjArray, NumNodes) {
+        let mut graph = AdjArray::new(5 + n);
         for u in 0..n {
-            graph.add_edge(0, u + 2);
-            graph.add_edge(1, u + 2);
+            graph.add_edge(0, u + 5);
+            graph.add_edge(1, u + 5);
         }
 
-        graph
+        // Add Path with length 3 to prevent reductions of 0/1
+        graph.add_edge(0, 2);
+        graph.add_edge(2, 3);
+        graph.add_edge(3, 4);
+        graph.add_edge(4, 1);
+
+        (graph, 5)
     }
 
     #[test]
@@ -303,9 +315,9 @@ mod test {
         // 2-Paths only
         {
             for n in 2..100 {
-                let mut graph = base_graph(n);
+                let (mut graph, off) = base_graph(n);
 
-                let mut domset = DominatingSet::new(2 + n);
+                let mut domset = DominatingSet::new(off + n);
                 let mut covered = graph.vertex_bitset_unset();
                 let mut redundant = graph.vertex_bitset_unset();
 
@@ -320,29 +332,31 @@ mod test {
                 assert_eq!(domset.len(), 0);
                 assert_eq!(covered.cardinality(), 0);
                 assert_eq!(redundant.cardinality(), n);
-                assert!(!redundant.get_bit(0) && !redundant.get_bit(1));
+                assert!((0..n).all(|u| redundant.get_bit(u + off)));
             }
         }
 
         // Redundant only with in-between edges
         {
             for n in 4..100 {
-                let mut graph = base_graph(n);
+                let (mut graph, off) = base_graph(n);
 
                 // Insert random edges without creating a node that covers everything
                 for _ in 0..(n * n - n / 4) {
                     let u = rng.gen_range(0..n);
                     let v = rng.gen_range(0..n);
 
-                    if u == v || graph.degree_of(2 + u) >= n - 1 || graph.degree_of(2 + v) >= n - 1
+                    if u == v
+                        || graph.degree_of(off + u) >= n - 1
+                        || graph.degree_of(off + v) >= n - 1
                     {
                         continue;
                     }
 
-                    graph.try_add_edge(2 + u, 2 + v);
+                    graph.try_add_edge(off + u, off + v);
                 }
 
-                let mut domset = DominatingSet::new(2 + n);
+                let mut domset = DominatingSet::new(off + n);
                 let mut covered = graph.vertex_bitset_unset();
                 let mut redundant = graph.vertex_bitset_unset();
 
@@ -357,34 +371,36 @@ mod test {
                 assert_eq!(domset.len(), 0);
                 assert_eq!(covered.cardinality(), 0);
                 assert_eq!(redundant.cardinality(), n);
-                assert!(!redundant.get_bit(0) && !redundant.get_bit(1));
+                assert!((0..n).all(|u| redundant.get_bit(u + off)));
             }
         }
 
         // One fixed node
         {
             for n in 3..100 {
-                let mut graph = base_graph(n);
+                let (mut graph, off) = base_graph(n);
 
                 // Insert random edges without creating a node that covers everything
                 for _ in 0..(n * n - n / 4) {
                     let u = rng.gen_range(0..n);
                     let v = rng.gen_range(0..n);
 
-                    if u == v || graph.degree_of(2 + u) >= n - 1 || graph.degree_of(2 + v) >= n - 1
+                    if u == v
+                        || graph.degree_of(off + u) >= n - 1
+                        || graph.degree_of(off + v) >= n - 1
                     {
                         continue;
                     }
 
-                    graph.try_add_edge(2 + u, 2 + v);
+                    graph.try_add_edge(off + u, off + v);
                 }
 
-                if graph.degree_of(2) == 2 {
-                    graph.add_edge(2, 3);
+                if graph.degree_of(off) == 2 {
+                    graph.add_edge(off, off + 1);
                 }
-                graph.remove_edge(1, 2);
+                graph.remove_edge(1, off);
 
-                let mut domset = DominatingSet::new(2 + n);
+                let mut domset = DominatingSet::new(off + n);
                 let mut covered = graph.vertex_bitset_unset();
                 let mut redundant = graph.vertex_bitset_unset();
 
@@ -398,43 +414,45 @@ mod test {
                 assert!(modified);
                 assert_eq!(domset.len(), 1);
                 assert!(domset.is_in_domset(0));
-                assert_eq!(covered.cardinality(), n + 1);
+                assert_eq!(covered.cardinality(), graph.degree_of(0) + 1);
                 assert_eq!(redundant.cardinality(), n);
-                assert!(!redundant.get_bit(0) && !redundant.get_bit(1));
+                assert!((0..n).all(|u| redundant.get_bit(u + off)));
             }
         }
 
         // Two fixed nodes
         {
             for n in 4..100 {
-                let mut graph = base_graph(n);
+                let (mut graph, off) = base_graph(n);
 
                 // Insert random edges without creating a node that covers everything
                 for _ in 0..(n * n - n / 4) {
                     let u = rng.gen_range(0..n);
                     let v = rng.gen_range(0..n);
 
-                    if u == v || graph.degree_of(2 + u) >= n - 1 || graph.degree_of(2 + v) >= n - 1
+                    if u == v
+                        || graph.degree_of(off + u) >= n - 1
+                        || graph.degree_of(off + v) >= n - 1
                     {
                         continue;
                     }
 
-                    graph.try_add_edge(2 + u, 2 + v);
+                    graph.try_add_edge(off + u, off + v);
                 }
 
-                graph.try_remove_edge(2, 3);
+                graph.try_remove_edge(off, off + 1);
 
-                if graph.degree_of(2) == 2 {
-                    graph.add_edge(2, 5);
+                if graph.degree_of(off) == 2 {
+                    graph.add_edge(off, off + 3);
                 }
-                graph.remove_edge(1, 2);
+                graph.remove_edge(1, off);
 
-                if graph.degree_of(3) == 2 {
-                    graph.add_edge(3, 4);
+                if graph.degree_of(off + 1) == 2 {
+                    graph.add_edge(off + 1, off + 2);
                 }
-                graph.remove_edge(0, 3);
+                graph.remove_edge(0, off + 1);
 
-                let mut domset = DominatingSet::new(2 + n);
+                let mut domset = DominatingSet::new(off + n);
                 let mut covered = graph.vertex_bitset_unset();
                 let mut redundant = graph.vertex_bitset_unset();
 
@@ -448,9 +466,9 @@ mod test {
                 assert!(modified);
                 assert_eq!(domset.len(), 2);
                 assert!(domset.is_in_domset(0) && domset.is_in_domset(1));
-                assert_eq!(covered.cardinality(), n + 2);
+                assert_eq!(covered.cardinality(), n + off - 1);
                 assert_eq!(redundant.cardinality(), n);
-                assert!(!redundant.get_bit(0) && !redundant.get_bit(1));
+                assert!((0..n).all(|u| redundant.get_bit(u + off)));
             }
         }
 
@@ -486,12 +504,12 @@ mod test {
         // No Reductions - 2
         {
             for n in 3..100 {
-                let mut graph = base_graph(n);
+                let (mut graph, off) = base_graph(n);
                 for u in 1..n {
-                    graph.add_edge(2, 2 + u);
+                    graph.add_edge(off, off + u);
                 }
 
-                let mut domset = DominatingSet::new(2 + n + n);
+                let mut domset = DominatingSet::new(off + n);
                 let mut covered = graph.vertex_bitset_unset();
                 let mut redundant = graph.vertex_bitset_unset();
 
@@ -505,7 +523,7 @@ mod test {
                 assert!(!modified);
                 assert_eq!(domset.len(), 0);
                 assert_eq!(covered.cardinality(), 0);
-                assert_eq!(redundant.cardinality(), 1 + n);
+                assert_eq!(redundant.cardinality(), n - 1);
             }
         }
     }
