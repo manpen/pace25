@@ -70,7 +70,7 @@ pub fn highs_solver_with_precious<G: Clone + AdjacencyTest + AdjacencyList + Deb
     let mut old_to_new = vec![NOT_SET; graph.len()];
     let mut new_to_old = Vec::with_capacity(vars.len());
 
-    let precious_weight = 1.0 - 1.0 / vars.capacity() as f64;
+    let precious_weight = 1.0 - 1.0 / (1 + precious.len()) as f64;
 
     for old in never_select.iter_cleared_bits() {
         old_to_new[old as usize] = new_to_old.len() as Node;
