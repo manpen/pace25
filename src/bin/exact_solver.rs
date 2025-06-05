@@ -56,11 +56,7 @@ pub enum Commands {
 
 impl Default for Commands {
     fn default() -> Self {
-        #[cfg(feature = "highs")]
-        return Commands::HighsSolverEnum(Default::default());
-
-        #[cfg(not(feature = "highs"))]
-        return Commands::NaiveSolverEnum(Default::default());
+        Commands::HighsSolverEnum(Default::default())
     }
 }
 
@@ -247,16 +243,11 @@ fn main() -> anyhow::Result<()> {
             }
             Commands::HighsSolverEnum(_) => {
                 info!("Start Highs Solver");
-                #[cfg(feature = "highs")]
-                {
-                    let local_sol =
-                        dss::exact::highs::highs_solver(&graph, &covered, &redundant, None, None)
-                            .unwrap();
-                    domset.add_nodes(local_sol.iter());
-                    domset
-                }
-                #[cfg(not(feature = "highs"))]
-                panic!("Compiled without highs feature");
+                let local_sol =
+                    dss::exact::highs::highs_solver(&graph, &covered, &redundant, None, None)
+                        .unwrap();
+                domset.add_nodes(local_sol.iter());
+                domset
             }
         }
     } else {
