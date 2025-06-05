@@ -286,12 +286,9 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
                 }
             }
 
-            // SLOW: consider sorting as in SubSetRule
-            for &u in &cand[1..] {
-                if covered.get_bit(u) {
-                    continue;
-                }
+            cand.sort_unstable();
 
+            for &u in &cand {
                 for i in (0..check_nbs.len()).rev() {
                     let nb = check_nbs[i];
                     if nb == u {
@@ -340,14 +337,14 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
             }
 
             // Fix ref_u if possible
-            if ref_u_fixable {
+            if ref_u_fixable && false {
                 domset.fix_node(ref_u);
                 covered.set_bits(graph.closed_neighbors_of(ref_u));
                 modified = true;
             }
 
             // Fix ref_v if possible
-            if ref_v_fixable {
+            if ref_v_fixable && false {
                 domset.fix_node(ref_v);
                 covered.set_bits(graph.closed_neighbors_of(ref_v));
                 modified = true;
