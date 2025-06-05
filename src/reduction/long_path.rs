@@ -9,10 +9,11 @@ use log::{debug, info};
 
 type SmallNodeBuffer = SmallVec<[Node; 8]>;
 
+pub struct LongPathReduction;
+
 #[must_use] // this rule has a post-processing step and may cause invalid results if not applied
-pub struct LongPathReduction<G> {
+pub struct LongPathPostProcessor<G> {
     removed_paths: Vec<Vec<Node>>,
-    total_nodes_deleted: NumNodes,
     _graph: PhantomData<G>,
 }
 
@@ -20,11 +21,12 @@ pub struct LongPathReduction<G> {
 /// until as long as at least 2 nodes remain. It is a two-staged rule that requires post-processing
 /// once a domset for the modified graph was computed.
 impl<G: AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> ReductionRule<G>
-    for LongPathReduction<G>
+    for LongPathReduction
 {
     const NAME: &str = "LongPathReduction";
 
     fn apply_rule(
+        &mut self,
         graph: &mut G,
         solution: &mut DominatingSet,
         covered: &mut BitSet,
@@ -90,16 +92,15 @@ impl<G: AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> ReductionRul
         if modified {
             debug!(
                 "{} Cycle: {num_cycle:4} Path (w/o pp): {num_path:4} Path (w pp): {num_path_with_pp:4}",
-                Self::NAME
+                <Self as ReductionRule<G>>::NAME
             );
         }
 
         (
             modified,
             (!post_process_paths.is_empty()).then(|| -> Box<dyn Postprocessor<G>> {
-                Box::new(Self {
+                Box::new(LongPathPostProcessor {
                     removed_paths: post_process_paths,
-                    total_nodes_deleted: 0,
                     _graph: Default::default(),
                 })
             }),
@@ -320,7 +321,7 @@ impl<G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'_, G> {
 }
 
 impl<G: AdjacencyList + AdjacencyTest + GraphEdgeEditing> Postprocessor<G>
-    for LongPathReduction<G>
+    for LongPathPostProcessor<G>
 {
     fn post_process(
         &mut self,
@@ -340,12 +341,6 @@ impl<G: AdjacencyList + AdjacencyTest + GraphEdgeEditing> Postprocessor<G>
             info!("PP: {path:?}");
             rule_impl.post_process_path(&path);
         }
-    }
-}
-
-impl<G> LongPathReduction<G> {
-    pub fn total_nodes_deleted(&self) -> NumNodes {
-        self.total_nodes_deleted
     }
 }
 

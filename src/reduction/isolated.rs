@@ -1,17 +1,14 @@
-use std::marker::PhantomData;
-
 use crate::graph::AdjacencyList;
 
 use super::*;
 
-pub struct RuleIsolatedReduction<G> {
-    _graph: PhantomData<G>,
-}
+pub struct RuleIsolatedReduction;
 
-impl<Graph: AdjacencyList + 'static> ReductionRule<Graph> for RuleIsolatedReduction<Graph> {
+impl<Graph: AdjacencyList + 'static> ReductionRule<Graph> for RuleIsolatedReduction {
     const NAME: &str = "RuleIsolated";
 
     fn apply_rule(
+        &mut self,
         graph: &mut Graph,
         solution: &mut DominatingSet,
         covered: &mut BitSet,

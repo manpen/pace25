@@ -111,47 +111,59 @@ fn main() -> anyhow::Result<()> {
     let org_graph = graph.clone();
 
     let mut covered = graph.vertex_bitset_unset();
-    let mut solution = DominatingSet::new(graph.number_of_nodes());
+    let mut domset = DominatingSet::new(graph.number_of_nodes());
 
     // singleton nodes need to be fixed
-    solution.fix_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
+    domset.fix_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
 
     let mut reducer = Reducer::new();
     let mut redundant = BitSet::new(graph.number_of_nodes());
 
+    let mut rule_vertex_cover = RuleVertexCover::new(graph.number_of_nodes());
+    let mut rule_one = RuleOneReduction::new(graph.number_of_nodes());
+    let mut rule_long_path = LongPathReduction;
+    let mut rule_isolated = RuleIsolatedReduction;
+    let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
+
     loop {
         let mut changed = false;
 
-        changed |= reducer.apply_rule::<RuleVertexCover<_>>(
+        changed |= reducer.apply_rule(
+            &mut rule_vertex_cover,
             &mut graph,
-            &mut solution,
+            &mut domset,
             &mut covered,
             &mut redundant,
         );
 
-        changed |= reducer.apply_rule::<RuleOneReduction<_>>(
+        changed |= reducer.apply_rule(
+            &mut rule_one,
             &mut graph,
-            &mut solution,
-            &mut covered,
-            &mut redundant,
-        );
-        changed |= reducer.apply_rule::<LongPathReduction<_>>(
-            &mut graph,
-            &mut solution,
+            &mut domset,
             &mut covered,
             &mut redundant,
         );
 
-        changed |= reducer.apply_rule::<RuleIsolatedReduction<_>>(
+        changed |= reducer.apply_rule(
+            &mut rule_long_path,
             &mut graph,
-            &mut solution,
+            &mut domset,
             &mut covered,
             &mut redundant,
         );
 
-        changed |= reducer.apply_rule::<RuleRedundantCover<_>>(
+        changed |= reducer.apply_rule(
+            &mut rule_isolated,
             &mut graph,
-            &mut solution,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+
+        changed |= reducer.apply_rule(
+            &mut rule_redundant,
+            &mut graph,
+            &mut domset,
             &mut covered,
             &mut redundant,
         );
@@ -163,8 +175,13 @@ fn main() -> anyhow::Result<()> {
         if true {
             let csr_edges = graph.extract_csr_repr();
             RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut redundant);
-            assert!(!solution.iter().any(|u| redundant.get_bit(u)));
-            if reducer.remove_unnecessary_edges(&mut graph, &covered, &redundant) > 0 {
+            if reducer.remove_unnecessary_edges(
+                &mut graph,
+                &mut domset,
+                &mut covered,
+                &mut redundant,
+            ) > 0
+            {
                 continue;
             }
         }
@@ -184,16 +201,19 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    let mut rule_small_exact = RuleSmallExactReduction;
+
     if graph.number_of_edges() > 0 {
-        reducer.apply_rule::<RuleSmallExactReduction<_>>(
+        reducer.apply_rule(
+            &mut rule_small_exact,
             &mut graph,
-            &mut solution,
+            &mut domset,
             &mut covered,
             &mut redundant,
         );
     }
 
-    let mut solution = if graph.number_of_edges() > 0 {
+    let mut domset = if graph.number_of_edges() > 0 {
         let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
         let cmd = opts.cmd.unwrap_or_default();
 
@@ -201,15 +221,15 @@ fn main() -> anyhow::Result<()> {
             Commands::SatSolverEnum(SatSolverOptsEnum::Sat(_)) => dss::exact::sat_solver::solve(
                 &csr_graph,
                 covered,
-                Some(solution),
+                Some(domset),
                 SolverBackend::MAXSAT,
             )?,
             Commands::NaiveSolverEnum(_) => {
                 info!("Start Naive Solver");
                 signal_handling::initialize();
                 let local_sol = naive_solver(&graph, &covered, &redundant, None, None).unwrap();
-                solution.add_nodes(local_sol.iter());
-                solution
+                domset.add_nodes(local_sol.iter());
+                domset
             }
             Commands::HighsSolverEnum(_) => {
                 info!("Start Highs Solver");
@@ -218,22 +238,22 @@ fn main() -> anyhow::Result<()> {
                     let local_sol =
                         dss::exact::highs::highs_solver(&graph, &covered, &redundant, None, None)
                             .unwrap();
-                    solution.add_nodes(local_sol.iter());
-                    solution
+                    domset.add_nodes(local_sol.iter());
+                    domset
                 }
                 #[cfg(not(feature = "highs"))]
                 panic!("Compiled without highs feature");
             }
         }
     } else {
-        solution
+        domset
     };
 
-    let mut covered = solution.compute_covered(&org_graph);
-    reducer.post_process(&mut graph, &mut solution, &mut covered, &mut redundant);
+    let mut covered = domset.compute_covered(&org_graph);
+    reducer.post_process(&mut graph, &mut domset, &mut covered, &mut redundant);
 
-    assert!(solution.is_valid(&org_graph), "Produced DS is not valid");
-    write_solution(&solution, &opts.output)?;
+    assert!(domset.is_valid(&org_graph), "Produced DS is not valid");
+    write_solution(&domset, &opts.output)?;
 
     Ok(())
 }

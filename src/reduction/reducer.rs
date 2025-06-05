@@ -1,5 +1,7 @@
 use super::*;
-use crate::graph::{AdjacencyList, GraphEdgeOrder, NumEdges, NumNodes, UnsafeGraphEditing};
+use crate::graph::{
+    AdjacencyList, GraphEdgeEditing, GraphEdgeOrder, NumEdges, NumNodes, UnsafeGraphEditing,
+};
 use std::{
     cmp::Reverse,
     collections::HashMap,
@@ -26,7 +28,7 @@ impl<G> Default for Reducer<G> {
     }
 }
 
-impl<G: GraphEdgeOrder + AdjacencyList + UnsafeGraphEditing> Reducer<G> {
+impl<G: GraphEdgeOrder + AdjacencyList + GraphEdgeEditing + UnsafeGraphEditing> Reducer<G> {
     pub fn new() -> Self {
         Default::default()
     }
@@ -35,37 +37,40 @@ impl<G: GraphEdgeOrder + AdjacencyList + UnsafeGraphEditing> Reducer<G> {
     /// Returns `true` iff the rule reported that it applied some change
     pub fn apply_rule<R: ReductionRule<G>>(
         &mut self,
+        rule: &mut R,
         graph: &mut G,
-        solution: &mut DominatingSet,
+        domset: &mut DominatingSet,
         covered: &mut BitSet,
         redundant: &mut BitSet,
     ) -> bool {
         let before_nodes = graph.vertices_with_neighbors().count();
         let before_edges = graph.number_of_edges();
-        let before_in_domset = solution.len();
+        let before_in_domset = domset.len();
         let before_covered = covered.cardinality();
         let before_redundant = redundant.cardinality() as i32;
 
-        debug_assert!(solution.iter().all(|u| graph.degree_of(u) == 0));
+        debug_assert!(domset.iter().all(|u| graph.degree_of(u) == 0));
 
         let start_rule = Instant::now();
-        let (changed, post) = R::apply_rule(graph, solution, covered, redundant);
+        let (mut changed, post) = rule.apply_rule(graph, domset, covered, redundant);
         assert!(changed || post.is_none());
 
         let start_clean = Instant::now();
         let duration_rule = start_clean.duration_since(start_rule);
-        let unneccesary_edges = if changed {
-            self.remove_unnecessary_edges(graph, covered, redundant)
+        let unneccesary_edges = if changed || R::REMOVAL {
+            let removed_edges = self.remove_unnecessary_edges(graph, domset, covered, redundant);
+            changed |= removed_edges > 0;
+            removed_edges
         } else {
             0
         };
         let duration_clean = start_clean.elapsed();
 
-        debug_assert!(solution.iter().all(|u| graph.degree_of(u) == 0));
+        debug_assert!(domset.iter().all(|u| graph.degree_of(u) == 0));
 
         let delta_nodes = before_nodes - graph.vertices_with_neighbors().count();
         let delta_edges = before_edges - graph.number_of_edges();
-        let delta_in_domset = solution.len() - before_in_domset;
+        let delta_in_domset = domset.len() - before_in_domset;
         let delta_covered = covered.cardinality() - before_covered;
         let delta_redundant = redundant.cardinality() as i32 - before_redundant;
 
@@ -99,14 +104,15 @@ impl<G: GraphEdgeOrder + AdjacencyList + UnsafeGraphEditing> Reducer<G> {
     /// Returns the number of applications of the rule
     pub fn apply_rule_exhaustively<R: ReductionRule<G>>(
         &mut self,
+        rule: &mut R,
         graph: &mut G,
-        solution: &mut DominatingSet,
+        domset: &mut DominatingSet,
         covered: &mut BitSet,
         redundant: &mut BitSet,
     ) -> NumNodes {
         let mut iters = 1;
 
-        while self.apply_rule::<R>(graph, solution, covered, redundant) {
+        while self.apply_rule(rule, graph, domset, covered, redundant) {
             iters += 1;
         }
 
@@ -116,8 +122,9 @@ impl<G: GraphEdgeOrder + AdjacencyList + UnsafeGraphEditing> Reducer<G> {
     pub fn remove_unnecessary_edges(
         &self,
         graph: &mut G,
-        covered: &BitSet,
-        redundant: &BitSet,
+        domset: &mut DominatingSet,
+        covered: &mut BitSet,
+        redundant: &mut BitSet,
     ) -> NumEdges {
         let mut delete_node = covered.clone();
         delete_node &= redundant;
@@ -152,6 +159,42 @@ impl<G: GraphEdgeOrder + AdjacencyList + UnsafeGraphEditing> Reducer<G> {
         unsafe {
             graph.set_number_of_edges(graph.number_of_edges() - half_edges_removed / 2);
         }
+
+        // Delete edges between nodes (u,v) where u is covered and v is the *only* uncovered neighbor of u
+        //
+        // Rest of deletions are done in post-processing
+        for u in covered.iter_set_bits().filter(|&u| !domset.is_in_domset(u)) {
+            let mut nbs = graph.neighbors_of(u).filter(|x| !covered.get_bit(*x));
+
+            let nb1 = nbs.next();
+            let nb2 = nbs.next();
+
+            // Iterator no longer needed; potentially save time by not consuming fully
+            std::mem::drop(nbs);
+
+            if let (Some(v), None) = (nb1, nb2) {
+                graph.remove_edge(u, v);
+                half_edges_removed += 2;
+            }
+        }
+
+        covered.update_cleared_bits(|u| {
+            let is_singleton = graph.degree_of(u) == 0;
+            if is_singleton {
+                // If redundant[u] = 1, then u was dominated by another node v that was removed in
+                // this iteration along with every other neighbor of u because u was the only
+                // uncovered neighbor of those nodes.
+                //
+                // It would be equally optimal to put v into the dominating set instead, but at
+                // this point, it does not matter.
+                //
+                // We nonetheless mark u was not-redundant anymore to prevent further checks from
+                // flagging this as unintended behavior
+                redundant.clear_bit(u);
+                domset.fix_node(u);
+            }
+            is_singleton
+        });
 
         half_edges_removed / 2
     }

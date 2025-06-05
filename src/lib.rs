@@ -4,6 +4,7 @@
 #![feature(linked_list_cursors)]
 #![feature(impl_trait_in_assoc_type)]
 #![feature(vec_push_within_capacity)]
+#![feature(iter_collect_into)]
 
 pub mod algorithm;
 pub mod errors;

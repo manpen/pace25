@@ -1,23 +1,35 @@
-use std::marker::PhantomData;
-
 use itertools::Itertools;
 
-use crate::graph::*;
+use crate::{graph::*, utils::NodeMarker};
 
 use super::*;
 
-pub struct RuleVertexCover<G> {
-    _graph: PhantomData<G>,
+#[derive(Default)]
+pub struct RuleVertexCover {
+    edges: Vec<Edge>,
+    old_to_new: NodeMarker,
+    new_to_old: Vec<Node>,
+    marker: NodeMarker,
+    neighbors: Vec<Node>,
+}
+
+impl RuleVertexCover {
+    pub fn new(n: NumNodes) -> Self {
+        Self {
+            old_to_new: NodeMarker::new(n, NOT_SET),
+            marker: NodeMarker::new(n, NOT_SET),
+            ..Default::default()
+        }
+    }
 }
 
 const NOT_SET: Node = Node::MAX;
 
-impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph>
-    for RuleVertexCover<Graph>
-{
+impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph> for RuleVertexCover {
     const NAME: &str = "RuleVertexCover";
 
     fn apply_rule(
+        &mut self,
         graph: &mut Graph,
         solution: &mut DominatingSet,
         covered: &mut BitSet,
@@ -27,9 +39,11 @@ impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph>
             return (false, None::<Box<dyn Postprocessor<Graph>>>);
         }
 
+        self.edges.clear();
+
         // most graphs do not contain the gadgets, so let's first collect all edges
         // (i.e. usually an empty vec!)
-        let mut edges = redundant
+        redundant
             .iter_set_bits()
             .filter_map(|u| {
                 if graph.degree_of(u) != 2 || covered.get_bit(u) {
@@ -43,39 +57,39 @@ impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph>
 
                 Some(Edge(a, b).normalized())
             })
-            .collect_vec();
+            .collect_into(&mut self.edges);
 
-        edges.sort_unstable();
-        edges.dedup();
+        self.edges.sort_unstable();
+        self.edges.dedup();
 
-        if edges.len() < 3 {
+        if self.edges.len() < 3 {
             return (false, None::<Box<dyn Postprocessor<Graph>>>);
         }
 
-        let mut old_to_new = vec![NOT_SET; graph.len()];
-        let mut new_to_old = Vec::with_capacity(128);
+        self.old_to_new.reset();
+        self.new_to_old.clear();
 
-        for &Edge(u, v) in &edges {
-            if old_to_new[u as usize] == NOT_SET {
-                old_to_new[u as usize] = new_to_old.len() as Node;
-                new_to_old.push(u);
+        for &Edge(u, v) in &self.edges {
+            if !self.old_to_new.is_marked(u) {
+                self.old_to_new.mark_with(u, self.new_to_old.len() as Node);
+                self.new_to_old.push(u);
             }
 
-            if old_to_new[v as usize] == NOT_SET {
-                old_to_new[v as usize] = new_to_old.len() as Node;
-                new_to_old.push(v);
+            if !self.old_to_new.is_marked(v) {
+                self.old_to_new.mark_with(v, self.new_to_old.len() as Node);
+                self.new_to_old.push(v);
             }
         }
 
         let mut vc_graph = AdjArray::from_edges(
-            new_to_old.len() as Node,
-            edges
-                .into_iter()
-                .map(|Edge(u, v)| Edge(old_to_new[u as usize], old_to_new[v as usize])),
+            self.new_to_old.len() as Node,
+            self.edges
+                .iter()
+                .map(|&Edge(u, v)| Edge(self.old_to_new.get_mark(u), self.old_to_new.get_mark(v))),
         );
         let mut changed = false;
 
-        let mut marker = vec![NOT_SET; vc_graph.len()];
+        self.marker.reset_up_to(vc_graph.len() as NumNodes);
 
         // search for cliques
         'reject: for u in vc_graph.vertices_range() {
@@ -93,18 +107,17 @@ impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph>
                 continue;
             }
 
-            for v in vc_graph.closed_neighbors_of(u) {
-                marker[v as usize] = u;
-            }
+            self.marker
+                .mark_all_with(vc_graph.closed_neighbors_of(u), u);
 
             let mut org_has_int_edge = false;
-            let ou = new_to_old[u as usize];
+            let ou = self.new_to_old[u as usize];
             for ov in graph.neighbors_of(ou) {
                 // case 1: there is a mapped neighbor (then it's in the clique)
-                let nv = old_to_new[ov as usize];
+                let nv = self.old_to_new.get_mark(ov);
                 if nv != NOT_SET {
                     // if it's in our clique: then we have the edge, we need
-                    if marker[nv as usize] == u {
+                    if self.marker.is_marked_with(nv, u) {
                         org_has_int_edge = true;
                         continue;
                     } else {
@@ -122,8 +135,8 @@ impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph>
                 if redundant.get_bit(ov)
                     && graph.neighbors_of(ov).any(|w| {
                         w != ou
-                            && old_to_new[w as usize] != NOT_SET
-                            && marker[old_to_new[w as usize] as usize] == u
+                            && self.old_to_new.is_marked(w)
+                            && self.marker.is_marked_with(self.old_to_new.get_mark(w), u)
                     })
                 {
                     continue;
@@ -140,22 +153,24 @@ impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph>
                 solution.is_in_domset(v)
                     || vc_graph
                         .neighbors_of(v)
-                        .filter(|w| marker[*w as usize] == u)
+                        .filter(|&w| self.marker.is_marked_with(w, u))
                         .count()
                         != deg as usize
             }) {
                 continue;
             }
 
-            let neighbors = vc_graph.closed_neighbors_of(u).collect_vec();
+            vc_graph
+                .closed_neighbors_of(u)
+                .collect_into(&mut self.neighbors);
 
             for v in vc_graph.neighbors_of(u) {
-                let v = new_to_old[v as usize];
+                let v = self.new_to_old[v as usize];
                 solution.add_node(v);
                 covered.set_bits(graph.closed_neighbors_of(v));
             }
 
-            for u in neighbors {
+            for u in self.neighbors.drain(..) {
                 vc_graph.remove_edges_at_node(u);
             }
 
