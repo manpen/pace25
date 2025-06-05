@@ -1,22 +1,59 @@
-use std::marker::PhantomData;
-
 use smallvec::SmallVec;
 
 use super::*;
-use crate::{graph::*, utils::DominatingSet};
+use crate::{
+    graph::*,
+    utils::{DominatingSet, Marker, NodeMarker},
+};
 
-pub struct SubsetRuleTwoReduction<G> {
-    _graph: PhantomData<G>,
+type PairMarker = Marker<(Node, Node), Node>;
+
+pub struct SubsetRuleTwoReduction {
+    /// Used for marking neighborhoods of a node to do subset-checks
+    node_marker: NodeMarker,
+    /// Marker used for Type2-Neighborhood-Check of reference-pair
+    pair_marker: PairMarker,
+    /// Marker used for Type3-Neighborhood-Check of reference-pair
+    pair_marker2: PairMarker,
+    /// List of all possible reduction-candidates (u, v, t) where u < v with edges {u,t},{t,v}
+    candidates: Vec<(Node, Node, Node)>,
+    /// Helper list to keep track of all covered neighbors in a single iteration
+    /// AS WELL AS used for computing whether a type3-neighborhood can be covered by a single node
+    nbs: Vec<Node>,
+    /// type2[u] stores a list of all nodes v that are subset-dominated by u and are thus not
+    /// catched in the Rule2-scheme in candidates
+    type2: Vec<SmallVec<[Node; 4]>>,
+    /// List of all reductions that might be applicable
+    #[allow(clippy::type_complexity)]
+    possible_reductions: Vec<((Node, Node), SmallVec<[Node; 4]>)>,
+    /// Offsets used for faster binary search
+    offsets: Vec<usize>,
+}
+
+impl SubsetRuleTwoReduction {
+    pub fn new(n: NumNodes) -> Self {
+        Self {
+            node_marker: NodeMarker::new(n, NOT_SET),
+            pair_marker: PairMarker::new(n, (NOT_SET, NOT_SET)),
+            pair_marker2: PairMarker::new(n, (NOT_SET, NOT_SET)),
+            candidates: Vec::new(),
+            nbs: Vec::new(),
+            type2: vec![Default::default(); n as usize],
+            possible_reductions: Vec::new(),
+            offsets: Vec::new(),
+        }
+    }
 }
 
 const NOT_SET: Node = Node::MAX;
 
 impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 'static>
-    ReductionRule<Graph> for SubsetRuleTwoReduction<Graph>
+    ReductionRule<Graph> for SubsetRuleTwoReduction
 {
     const NAME: &str = "SubsetRuleTwoReduction";
 
     fn apply_rule(
+        &mut self,
         graph: &mut Graph,
         domset: &mut DominatingSet,
         covered: &mut BitSet,
@@ -25,18 +62,12 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
         let n = graph.len();
         assert!(NOT_SET as usize >= n);
 
-        // Used for marking neighborhoods of a node to do subset-checks
-        let mut node_marker = vec![NOT_SET; n];
+        self.node_marker.reset();
+        self.nbs.clear();
 
-        // List of all possible reduction-candidates (u, v, t) where u < v with edges {u,t},{t,v}
-        let mut candidates: Vec<(Node, Node, Node)> = Vec::new();
-
-        // Helper list to keep track of all covered neighbors in a single iteration
-        let mut covered_neighbors: Vec<Node> = Vec::new();
-
-        // type2[u] stores a list of all nodes v that are subset-dominated by u and are thus not
-        // catched in the Rule2-scheme in candidates
-        let mut type2: Vec<SmallVec<[Node; 4]>> = vec![Default::default(); n];
+        for u in 0..n {
+            self.type2[u].clear();
+        }
 
         // Reset redundant as the definition might have changed due to new covered nodes
         redundant.clear_all();
@@ -48,9 +79,8 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
             }
 
             // Mark closed neighborhood of u
-            for v in graph.closed_neighbors_of(u) {
-                node_marker[v as usize] = u;
-            }
+            self.node_marker
+                .mark_all_with(graph.closed_neighbors_of(u), u);
 
             for v in graph.neighbors_of(u) {
                 // Let N be the neighborhood of v that is *not* covered by u.
@@ -66,11 +96,11 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
                 // If multiple exist, we also make sure that covered_neighbors is empty, otherwise
                 // covered_neighbors = N.
                 let mut ref_node = NOT_SET;
-                debug_assert!(covered_neighbors.is_empty());
+                debug_assert!(self.nbs.is_empty());
 
                 let mut nbs = graph
                     .neighbors_of(v)
-                    .filter(|&x| node_marker[x as usize] != u);
+                    .filter(|&x| !self.node_marker.is_marked_with(x, u));
 
                 // See if N is empty, ie. every neighbor of v is marked by u
                 let first_neighbor = nbs.next();
@@ -89,7 +119,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
                     }
 
                     redundant.set_bit(v);
-                    type2[u as usize].push(v);
+                    self.type2[u as usize].push(v);
                     continue;
                 }
 
@@ -97,7 +127,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
                     if !covered.get_bit(x) {
                         // If we find at least one uncovered node in N, we no longer care for
                         // covered ones regardless of if there is one or multiple such nodes in N.
-                        covered_neighbors.clear();
+                        self.nbs.clear();
 
                         // First uncovered node found
                         if ref_node == NOT_SET {
@@ -112,7 +142,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
 
                     // No uncovered node was yet discovered, so save x for later
                     if ref_node == NOT_SET {
-                        covered_neighbors.push(x);
+                        self.nbs.push(x);
                     }
                 }
 
@@ -120,50 +150,48 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
                 //
                 // In this case, covered_neighbors is guaranteed to be empty for the next iteration
                 if ref_node != NOT_SET {
-                    candidates.push((ref_node.min(u), ref_node.max(u), v));
+                    self.candidates.push((ref_node.min(u), ref_node.max(u), v));
                     continue;
                 }
 
                 // All uncovered neighbors of v are marked by u, ie. u subset-dominates v
-                if !covered_neighbors.is_empty() {
+                if !self.nbs.is_empty() {
                     // TBD: possibly check if non_perm_degree[u] == non_perm_degree[v] and we
                     // should break ties in favor of v instead?
                     redundant.set_bit(v);
-                    type2[u as usize].push(v);
+                    self.type2[u as usize].push(v);
                 }
 
                 // |covered_neighbors| > 0 iff there was no uncovered node in N found
                 //
                 // Also makes sure that covered_neighbors is empty in the next iteration
-                for x in covered_neighbors.drain(..) {
-                    candidates.push((x.min(u), x.max(u), v));
+                for x in self.nbs.drain(..) {
+                    self.candidates.push((x.min(u), x.max(u), v));
                 }
             }
         }
 
         // Early return if no candidates were found (redundant-markers still could have been applied)
-        if candidates.is_empty() {
+        if self.candidates.is_empty() {
             return (false, None::<Box<dyn Postprocessor<Graph>>>);
         }
 
         // All candidates with the same reference-pair are now in succession
-        candidates.sort_unstable();
-        candidates.dedup();
+        self.candidates.sort_unstable();
+        self.candidates.dedup();
 
         // Current considered reference-pair and its type(2,3)-nodes
         let mut curr_ref_pair = (NOT_SET, NOT_SET);
         let mut curr_type3: SmallVec<[Node; 4]> = Default::default();
 
-        // List of all reductions that are not trivially false
-        let mut possible_reductions = Vec::new();
-
         // Merge all type3-nodes of a given reference pair
-        for (ref_u, ref_v, t3) in candidates {
+        for (ref_u, ref_v, t3) in self.candidates.drain(..) {
             if (ref_u, ref_v) == curr_ref_pair {
                 curr_type3.push(t3);
             } else {
                 if curr_ref_pair != (NOT_SET, NOT_SET) {
-                    possible_reductions.push((curr_ref_pair, curr_type3.clone()));
+                    self.possible_reductions
+                        .push((curr_ref_pair, curr_type3.clone()));
                 }
 
                 curr_ref_pair = (ref_u, ref_v);
@@ -174,30 +202,23 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
 
         // Last entry of candidates was not yet processed;
         // one entry in candidates is guaranteed, so curr_ref_pair is no longer (NOT_SET, NOT_SET)
-        possible_reductions.push((curr_ref_pair, curr_type3.clone()));
+        self.possible_reductions
+            .push((curr_ref_pair, curr_type3.clone()));
 
         // TBD: possible shuffle of reductions in case of conflicts
 
-        // Marker used for Type2-Neighborhood-Check of reference-pair
-        let mut marked = vec![(NOT_SET, NOT_SET); n];
-        // Marker used for Type3-Neighborhood-Check of reference-pair
-        let mut marked2 = vec![(NOT_SET, NOT_SET); n];
+        self.pair_marker.reset();
+        self.pair_marker2.reset();
 
         // Sort adjacency lists to allow for binary search
         for u in graph.vertices_range() {
             graph.as_neighbors_slice_mut(u).sort_unstable();
         }
 
-        // Neighbors to be checked for total coverage of N3
-        let mut check_nbs = Vec::new();
-        // Offsets used for faster binary search
-        let mut offsets = Vec::new();
-
-        // Which nodes are newly covered
-        let mut processed = graph.vertex_bitset_unset();
+        self.nbs.clear();
 
         let mut modified = false;
-        for ((ref_u, ref_v), mut cand) in possible_reductions {
+        for ((ref_u, ref_v), mut cand) in self.possible_reductions.drain(..) {
             // Nodes marked as redundant can not act as witnesses here
             if redundant.get_bit(ref_u) || redundant.get_bit(ref_v) {
                 continue;
@@ -206,25 +227,25 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
             let marker = (ref_u, ref_v);
 
             // Mark N[ref_u,ref_v]
-            for u in graph.closed_neighbors_of(ref_u) {
-                marked[u as usize] = marker;
-            }
+            self.pair_marker
+                .mark_all_with(graph.closed_neighbors_of(ref_u), marker);
+
             for u in graph.closed_neighbors_of(ref_v) {
                 // There are possibly nodes u that are type3-nodes to (ref_u,ref_v) but were not
                 // catched by our above scheme as they are neighbored to type2-nodes of both ref_u
                 // and ref_v
-                if marked[u as usize] == marker {
+                if self.pair_marker.is_marked_with(u, marker) {
                     // TBD: find faster method
                     cand.push(u);
                 } else {
-                    marked[u as usize] = marker;
+                    self.pair_marker.mark_with(u, marker);
                 }
             }
 
             // Type2-Nodes were also not catched for this specific pair and need to be checked in
             // their entirety if they are subject to this specific reference-pair
-            cand.extend_from_slice(&type2[ref_u as usize]);
-            cand.extend_from_slice(&type2[ref_v as usize]);
+            cand.extend_from_slice(&self.type2[ref_u as usize]);
+            cand.extend_from_slice(&self.type2[ref_v as usize]);
 
             // Remove duplicates
             cand.sort_unstable();
@@ -237,9 +258,9 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
             for &u in &cand {
                 if graph
                     .neighbors_of(u)
-                    .all(|v| marked[v as usize] == marker || covered.get_bit(v))
+                    .all(|v| self.pair_marker.is_marked_with(v, marker) || covered.get_bit(v))
                 {
-                    marked2[u as usize] = marker;
+                    self.pair_marker2.mark_with(u, marker);
                 }
             }
 
@@ -254,9 +275,9 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
                 //
                 // If not a type3-node, remove it from candidates
                 if covered.get_bit(u)
-                    || graph
-                        .closed_neighbors_of(u)
-                        .any(|v| marked2[v as usize] != marker && v != ref_u && v != ref_v)
+                    || graph.closed_neighbors_of(u).any(|v| {
+                        !self.pair_marker2.is_marked_with(v, marker) && v != ref_u && v != ref_v
+                    })
                 {
                     cand.swap_remove(i);
                 }
@@ -267,8 +288,8 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
                 continue;
             }
 
-            debug_assert!(check_nbs.is_empty());
-            debug_assert!(offsets.is_empty());
+            debug_assert!(self.nbs.is_empty());
+            debug_assert!(self.offsets.is_empty());
 
             // Check if there is any Type(2,3)-node that covers all type3-nodes
             //
@@ -284,36 +305,37 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
                 // Only nodes with degree at least |cand| could possibly cover cand in its
                 // entirety (at least one edge to ref_u,ref_v must exist)
                 if graph.degree_of(u) >= cand.len() as NumNodes && u != ref_u && u != ref_v {
-                    check_nbs.push(u);
-                    offsets.push(0);
+                    self.nbs.push(u);
+                    self.offsets.push(0);
                 }
             }
 
             cand.sort_unstable();
 
             for &u in &cand {
-                for i in (0..check_nbs.len()).rev() {
-                    let nb = check_nbs[i];
+                for i in (0..self.nbs.len()).rev() {
+                    let nb = self.nbs[i];
                     if nb == u {
                         continue;
                     }
 
-                    if let Ok(index) = graph.as_neighbors_slice(nb)[offsets[i]..].binary_search(&u)
+                    if let Ok(index) =
+                        graph.as_neighbors_slice(nb)[self.offsets[i]..].binary_search(&u)
                     {
                         // Since edge-lists are sorted, v is increasing and we can use offsets[i] to
                         // allow for faster binary searches in later iterations
-                        offsets[i] += index;
+                        self.offsets[i] += index;
                     } else {
-                        check_nbs.swap_remove(i);
-                        offsets.swap_remove(i);
+                        self.nbs.swap_remove(i);
+                        self.offsets.swap_remove(i);
                     }
                 }
             }
 
             // If check_nbs is empty, so is offsets
-            if !check_nbs.is_empty() {
-                check_nbs.clear();
-                offsets.clear();
+            if !self.nbs.is_empty() {
+                self.nbs.clear();
+                self.offsets.clear();
                 continue;
             }
 
@@ -321,7 +343,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
             redundant.set_bits(
                 prev_cand
                     .into_iter()
-                    .filter(|&u| marked2[u as usize] == marker),
+                    .filter(|&u| self.pair_marker2.is_marked_with(u, marker)),
             );
 
             // Compute whether ref_u and ref_v are fixable, ie. have a type3-neighbor that only
@@ -343,7 +365,6 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
             if ref_u_fixable {
                 domset.fix_node(ref_u);
                 covered.set_bits(graph.closed_neighbors_of(ref_u));
-                processed.set_bits(graph.closed_neighbors_of(ref_u));
                 modified = true;
             }
 
@@ -351,7 +372,6 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
             if ref_v_fixable {
                 domset.fix_node(ref_v);
                 covered.set_bits(graph.closed_neighbors_of(ref_v));
-                processed.set_bits(graph.closed_neighbors_of(ref_v));
                 modified = true;
             }
         }
@@ -396,12 +416,10 @@ mod test {
                 let mut covered = graph.vertex_bitset_unset();
                 let mut redundant = graph.vertex_bitset_unset();
 
-                let (modified, _) = SubsetRuleTwoReduction::apply_rule(
-                    &mut graph,
-                    &mut domset,
-                    &mut covered,
-                    &mut redundant,
-                );
+                let mut rule = SubsetRuleTwoReduction::new(off + n);
+
+                let (modified, _) =
+                    rule.apply_rule(&mut graph, &mut domset, &mut covered, &mut redundant);
 
                 assert!(!modified);
                 assert_eq!(domset.len(), 0);
@@ -435,12 +453,10 @@ mod test {
                 let mut covered = graph.vertex_bitset_unset();
                 let mut redundant = graph.vertex_bitset_unset();
 
-                let (modified, _) = SubsetRuleTwoReduction::apply_rule(
-                    &mut graph,
-                    &mut domset,
-                    &mut covered,
-                    &mut redundant,
-                );
+                let mut rule = SubsetRuleTwoReduction::new(off + n);
+
+                let (modified, _) =
+                    rule.apply_rule(&mut graph, &mut domset, &mut covered, &mut redundant);
 
                 assert!(!modified);
                 assert_eq!(domset.len(), 0);
@@ -479,12 +495,10 @@ mod test {
                 let mut covered = graph.vertex_bitset_unset();
                 let mut redundant = graph.vertex_bitset_unset();
 
-                let (modified, _) = SubsetRuleTwoReduction::apply_rule(
-                    &mut graph,
-                    &mut domset,
-                    &mut covered,
-                    &mut redundant,
-                );
+                let mut rule = SubsetRuleTwoReduction::new(off + n);
+
+                let (modified, _) =
+                    rule.apply_rule(&mut graph, &mut domset, &mut covered, &mut redundant);
 
                 assert!(modified);
                 assert_eq!(domset.len(), 1);
@@ -531,12 +545,10 @@ mod test {
                 let mut covered = graph.vertex_bitset_unset();
                 let mut redundant = graph.vertex_bitset_unset();
 
-                let (modified, _) = SubsetRuleTwoReduction::apply_rule(
-                    &mut graph,
-                    &mut domset,
-                    &mut covered,
-                    &mut redundant,
-                );
+                let mut rule = SubsetRuleTwoReduction::new(off + n);
+
+                let (modified, _) =
+                    rule.apply_rule(&mut graph, &mut domset, &mut covered, &mut redundant);
 
                 assert!(modified);
                 assert_eq!(domset.len(), 2);
@@ -562,12 +574,10 @@ mod test {
                 let mut covered = graph.vertex_bitset_unset();
                 let mut redundant = graph.vertex_bitset_unset();
 
-                let (modified, _) = SubsetRuleTwoReduction::apply_rule(
-                    &mut graph,
-                    &mut domset,
-                    &mut covered,
-                    &mut redundant,
-                );
+                let mut rule = SubsetRuleTwoReduction::new(2 + n + n);
+
+                let (modified, _) =
+                    rule.apply_rule(&mut graph, &mut domset, &mut covered, &mut redundant);
 
                 assert!(!modified);
                 assert_eq!(domset.len(), 0);
@@ -588,12 +598,10 @@ mod test {
                 let mut covered = graph.vertex_bitset_unset();
                 let mut redundant = graph.vertex_bitset_unset();
 
-                let (modified, _) = SubsetRuleTwoReduction::apply_rule(
-                    &mut graph,
-                    &mut domset,
-                    &mut covered,
-                    &mut redundant,
-                );
+                let mut rule = SubsetRuleTwoReduction::new(off + n);
+
+                let (modified, _) =
+                    rule.apply_rule(&mut graph, &mut domset, &mut covered, &mut redundant);
 
                 assert!(!modified);
                 assert_eq!(domset.len(), 0);

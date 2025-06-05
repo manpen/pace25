@@ -124,7 +124,7 @@ fn main() -> anyhow::Result<()> {
     let mut rule_isolated = RuleIsolatedReduction;
     let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
     let mut rule_articulation = RuleArticulationPoint::new(graph.number_of_nodes());
-    let mut rule_subset = RuleSubsetReduction::new(graph.number_of_nodes());
+    let mut rule_subset_two = SubsetRuleTwoReduction::new(graph.number_of_nodes());
 
     loop {
         let mut changed = false;
@@ -169,14 +169,15 @@ fn main() -> anyhow::Result<()> {
             &mut never_select,
         );
 
-        changed |= reducer.apply_rule::<SubsetRuleTwoReduction<_>>(
+        changed |= reducer.apply_rule(
+            &mut rule_subset_two,
             &mut graph,
-            &mut solution,
+            &mut domset,
             &mut covered,
-            &mut redundant,
+            &mut never_select,
         );
 
-        if reducer.remove_unnecessary_edges(&mut graph, &mut solution, &mut covered, &mut redundant)
+        if reducer.remove_unnecessary_edges(&mut graph, &mut domset, &mut covered, &mut never_select)
             == 0
             && !changed
         {

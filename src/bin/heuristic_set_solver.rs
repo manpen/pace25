@@ -87,6 +87,7 @@ fn apply_reduction_rules(
     let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
     let mut rule_articulation = RuleArticulationPoint::new(graph.number_of_nodes());
     let mut rule_subset = RuleSubsetReduction::new(graph.number_of_nodes());
+    let mut rule_subset_two = SubsetRuleTwoReduction::new(graph.number_of_nodes());
 
     loop {
         let mut changed = false;
@@ -131,9 +132,13 @@ fn apply_reduction_rules(
             &mut never_select,
         );
 
-        if changed {
-            continue;
-        }
+        changed |= reducer.apply_rule(
+            &mut rule_subset_two,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
 
         changed |= reducer.apply_rule(
             &mut rule_articulation,
