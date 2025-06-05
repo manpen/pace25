@@ -1,23 +1,23 @@
 use itertools::Itertools;
 
-use crate::graph::*;
+use crate::{graph::*, utils::NodeMarker};
 
 use super::*;
 
 #[derive(Default)]
 pub struct RuleVertexCover {
     edges: Vec<Edge>,
-    old_to_new: Vec<Node>,
+    old_to_new: NodeMarker,
     new_to_old: Vec<Node>,
-    marker: Vec<Node>,
+    marker: NodeMarker,
     neighbors: Vec<Node>,
 }
 
 impl RuleVertexCover {
     pub fn new(n: NumNodes) -> Self {
         Self {
-            old_to_new: vec![NOT_SET; n as usize],
-            marker: vec![NOT_SET; n as usize],
+            old_to_new: NodeMarker::new(n, NOT_SET),
+            marker: NodeMarker::new(n, NOT_SET),
             ..Default::default()
         }
     }
@@ -66,17 +66,17 @@ impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph> for Ru
             return (false, None::<Box<dyn Postprocessor<Graph>>>);
         }
 
-        self.old_to_new = vec![NOT_SET; graph.len()];
+        self.old_to_new.reset();
         self.new_to_old.clear();
 
         for &Edge(u, v) in &self.edges {
-            if self.old_to_new[u as usize] == NOT_SET {
-                self.old_to_new[u as usize] = self.new_to_old.len() as Node;
+            if !self.old_to_new.is_marked(u) {
+                self.old_to_new.mark_with(u, self.new_to_old.len() as Node);
                 self.new_to_old.push(u);
             }
 
-            if self.old_to_new[v as usize] == NOT_SET {
-                self.old_to_new[v as usize] = self.new_to_old.len() as Node;
+            if !self.old_to_new.is_marked(v) {
+                self.old_to_new.mark_with(v, self.new_to_old.len() as Node);
                 self.new_to_old.push(v);
             }
         }
@@ -85,11 +85,11 @@ impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph> for Ru
             self.new_to_old.len() as Node,
             self.edges
                 .iter()
-                .map(|&Edge(u, v)| Edge(self.old_to_new[u as usize], self.old_to_new[v as usize])),
+                .map(|&Edge(u, v)| Edge(self.old_to_new.get_mark(u), self.old_to_new.get_mark(v))),
         );
         let mut changed = false;
 
-        self.marker = vec![NOT_SET; vc_graph.len()];
+        self.marker.reset_up_to(vc_graph.len() as NumNodes);
 
         // search for cliques
         'reject: for u in vc_graph.vertices_range() {
@@ -107,18 +107,17 @@ impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph> for Ru
                 continue;
             }
 
-            for v in vc_graph.closed_neighbors_of(u) {
-                self.marker[v as usize] = u;
-            }
+            self.marker
+                .mark_all_with(vc_graph.closed_neighbors_of(u), u);
 
             let mut org_has_int_edge = false;
             let ou = self.new_to_old[u as usize];
             for ov in graph.neighbors_of(ou) {
                 // case 1: there is a mapped neighbor (then it's in the clique)
-                let nv = self.old_to_new[ov as usize];
+                let nv = self.old_to_new.get_mark(ov);
                 if nv != NOT_SET {
                     // if it's in our clique: then we have the edge, we need
-                    if self.marker[nv as usize] == u {
+                    if self.marker.is_marked_with(nv, u) {
                         org_has_int_edge = true;
                         continue;
                     } else {
@@ -136,8 +135,8 @@ impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph> for Ru
                 if redundant.get_bit(ov)
                     && graph.neighbors_of(ov).any(|w| {
                         w != ou
-                            && self.old_to_new[w as usize] != NOT_SET
-                            && self.marker[self.old_to_new[w as usize] as usize] == u
+                            && self.old_to_new.is_marked(w)
+                            && self.marker.is_marked_with(self.old_to_new.get_mark(w), u)
                     })
                 {
                     continue;
@@ -154,7 +153,7 @@ impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph> for Ru
                 solution.is_in_domset(v)
                     || vc_graph
                         .neighbors_of(v)
-                        .filter(|w| self.marker[*w as usize] == u)
+                        .filter(|&w| self.marker.is_marked_with(w, u))
                         .count()
                         != deg as usize
             }) {
