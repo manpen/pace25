@@ -22,8 +22,8 @@ pub struct HighsProblem<'a, G> {
     covered: &'a BitSet,
     nodes: Option<&'a [Node]>,
 
-    // TODO: ColProblems are a bit faster to construct, but more annoying to setup ... let's do this work later ;)
     problem: ColProblem,
+    num_terms: NumEdges,
 }
 
 impl HighsDominatingSetSolver {
@@ -53,14 +53,23 @@ impl HighsDominatingSetSolver {
             self.row_of_node[u as usize] = Some(problem.add_row(1..));
         }
 
+        let mut in_constraints = Vec::new();
+        let mut num_terms = 0;
         for u in redundant.iter_cleared_bits() {
+            in_constraints.extend(
+                graph
+                    .closed_neighbors_of(u)
+                    .filter_map(|v| Some((self.row_of_node[v as usize]?, 1.0))),
+            );
+
+            if in_constraints.is_empty() {
+                continue;
+            }
+
+            num_terms += in_constraints.len() as NumEdges;
+
             self.int_to_ext.push(u);
-
-            let in_constraints = graph
-                .closed_neighbors_of(u)
-                .filter_map(|v| Some((self.row_of_node[v as usize]?, 1.0)));
-
-            problem.add_integer_column(node_weights(u), 0..=1, in_constraints);
+            problem.add_integer_column(node_weights(u), 0..=1, in_constraints.drain(..));
         }
 
         HighsProblem {
@@ -68,6 +77,7 @@ impl HighsDominatingSetSolver {
             graph,
             covered,
             nodes: None,
+            num_terms,
             problem,
         }
     }
@@ -101,18 +111,27 @@ impl HighsDominatingSetSolver {
                 .all(|&u| self.row_of_node[u as usize].is_some())
         );
 
+        let mut in_constraints = Vec::new();
+        let mut num_terms = 0;
         for &u in nodes {
             if redundant.get_bit(u) {
                 continue;
             }
 
+            in_constraints.extend(
+                graph
+                    .closed_neighbors_of(u)
+                    .filter_map(|v| Some((self.row_of_node[v as usize]?, 1.0))),
+            );
+
+            if in_constraints.is_empty() {
+                continue;
+            }
+
+            num_terms += in_constraints.len() as NumEdges;
+
             self.int_to_ext.push(u);
-
-            let in_constraints = graph
-                .closed_neighbors_of(u)
-                .filter_map(|v| Some((self.row_of_node[v as usize]?, 1.0)));
-
-            problem.add_integer_column(node_weights(u), 0..=1, in_constraints);
+            problem.add_integer_column(node_weights(u), 0..=1, in_constraints.drain(..));
         }
 
         HighsProblem {
@@ -120,6 +139,7 @@ impl HighsDominatingSetSolver {
             graph,
             covered,
             nodes: Some(nodes),
+            num_terms,
             problem,
         }
     }
@@ -191,6 +211,14 @@ impl SolverResult {
 }
 
 impl<G: AdjacencyList> HighsProblem<'_, G> {
+    pub fn number_of_variables(&self) -> NumNodes {
+        self.problem.num_cols() as NumNodes
+    }
+
+    pub fn number_of_terms(&self) -> NumEdges {
+        self.num_terms
+    }
+
     pub fn solve_exact(mut self, timeout: Option<Duration>) -> SolverResult {
         self.solve_impl(false, timeout)
     }
@@ -220,6 +248,10 @@ impl<G: AdjacencyList> HighsProblem<'_, G> {
     }
 
     fn solve_impl(&mut self, allow_subopt: bool, timeout: Option<Duration>) -> SolverResult {
+        if self.num_terms == 0 {
+            return SolverResult::Optimal(Vec::new());
+        }
+
         // Prepare the model based on the previously computed problem
         let mut model = Model::new(std::mem::take(&mut self.problem));
         model.make_quiet();
@@ -268,14 +300,17 @@ impl<G: AdjacencyList> HighsProblem<'_, G> {
 
 impl<G> Drop for HighsProblem<'_, G> {
     fn drop(&mut self) {
-        if self.context.int_to_ext.len() > self.context.row_of_node.len() / 128 {
-            self.context.row_of_node.fill(None);
-            self.context.int_to_ext.clear();
-        } else {
-            for u in self.context.int_to_ext.drain(..) {
+        if let Some(nodes) = self.nodes
+            && nodes.len() < self.context.row_of_node.len() / 128
+        {
+            for &u in nodes {
                 self.context.row_of_node[u as usize] = None;
             }
+        } else {
+            self.context.row_of_node.fill(None);
         }
+
+        self.context.int_to_ext.clear();
     }
 }
 
