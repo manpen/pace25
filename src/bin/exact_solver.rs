@@ -124,6 +124,7 @@ fn main() -> anyhow::Result<()> {
     let mut rule_isolated = RuleIsolatedReduction;
     let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
     let mut rule_articulation = RuleArticulationPoint::new(graph.number_of_nodes());
+    let mut rule_subset = RuleSubsetReduction::new(graph.number_of_nodes());
     let mut rule_subset_two = SubsetRuleTwoReduction::new(graph.number_of_nodes());
 
     loop {
@@ -175,6 +176,18 @@ fn main() -> anyhow::Result<()> {
 
         changed |= reducer.apply_rule(
             &mut rule_articulation,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut never_select,
+        );
+
+        if changed {
+            continue;
+        }
+
+        changed |= reducer.apply_rule(
+            &mut rule_subset,
             &mut graph,
             &mut domset,
             &mut covered,

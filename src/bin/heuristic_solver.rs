@@ -209,13 +209,9 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
             &mut never_select,
         );
 
-        changed |= reducer.apply_rule(
-            &mut rule_subset_two,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
+        if changed {
+            continue;
+        }
 
         changed |= reducer.apply_rule(
             &mut rule_articulation,
@@ -231,6 +227,18 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
 
         changed |= reducer.apply_rule(
             &mut rule_subset,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut never_select,
+        );
+
+        if changed {
+            continue;
+        }
+
+        changed |= reducer.apply_rule(
+            &mut rule_subset_two,
             &mut graph,
             &mut domset,
             &mut covered,

@@ -70,10 +70,6 @@ impl<
             self.type2[u].clear();
         }
 
-        // Reset redundant as the definition might have changed due to new covered nodes & run
-        // SubsetRule (TBD: replace later)
-        RuleSubsetReduction::apply_rule(graph, covered, redundant);
-
         'outer: for u in graph.vertices() {
             // Nodes need to have at least degree 2 to be an applicable candidate for Rule2
             if graph.degree_of(u) < 2 || redundant.get_bit(u) {
