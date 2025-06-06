@@ -28,9 +28,9 @@ impl<G: AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> ReductionRul
     fn apply_rule(
         &mut self,
         graph: &mut G,
-        solution: &mut DominatingSet,
+        domset: &mut DominatingSet,
         covered: &mut BitSet,
-        redundant: &mut BitSet,
+        never_select: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<G>>>) {
         let long_paths = graph.path_iter_with_atleast_path_nodes(3).collect_vec();
         if long_paths.is_empty() {
@@ -57,7 +57,7 @@ impl<G: AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> ReductionRul
             // Same for redundant path
             if path
                 .iter()
-                .map(|&u| redundant.get_bit(u))
+                .map(|&u| never_select.get_bit(u))
                 .tuple_windows()
                 .any(|(x, y)| x && y)
             {
@@ -66,9 +66,9 @@ impl<G: AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> ReductionRul
 
             let mut rule_impl = RuleImpl {
                 graph,
-                solution,
+                domset,
                 covered,
-                redundant,
+                never_select,
             };
 
             if rule_impl.process_circle(&path) {
@@ -110,16 +110,16 @@ impl<G: AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> ReductionRul
 
 struct RuleImpl<'a, G> {
     graph: &'a mut G,
-    solution: &'a mut DominatingSet,
+    domset: &'a mut DominatingSet,
     covered: &'a mut BitSet,
-    redundant: &'a BitSet,
+    never_select: &'a BitSet,
 }
 
 impl<G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'_, G> {
     fn add_to_solution(&mut self, u: Node) {
-        assert!(!self.redundant.get_bit(u));
+        assert!(!self.never_select.get_bit(u));
         self.covered.set_bits(self.graph.closed_neighbors_of(u));
-        self.solution.add_node(u);
+        self.domset.add_node(u);
     }
 
     fn greedy_cover_into<T: Borrow<Node>>(
@@ -133,7 +133,7 @@ impl<G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'_, G> {
         for u in path {
             let u = *u.borrow();
             if needs_covering.is_some() {
-                if self.redundant.get_bit(u) {
+                if self.never_select.get_bit(u) {
                     result.push(previous_element.unwrap());
                 } else {
                     result.push(u);
@@ -148,7 +148,7 @@ impl<G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'_, G> {
             previous_element = Some(u);
         }
         if let Some((prev_prev, prev)) = needs_covering {
-            if !self.redundant.get_bit(prev) {
+            if !self.never_select.get_bit(prev) {
                 result.push(prev);
             } else {
                 result.push(prev_prev?);
@@ -185,7 +185,7 @@ impl<G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'_, G> {
         }
 
         // first assume that the center is put into the solution
-        if !self.redundant.get_bit(path[0]) {
+        if !self.never_select.get_bit(path[0]) {
             use_if_better!(path[1..len - 2].iter(), true);
             use_if_better!(path[2..len - 1].iter().rev(), true);
             if let Some(res) = best_result.as_mut() {
@@ -248,7 +248,7 @@ impl<G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'_, G> {
                 }
             }
 
-            if self.covered.get_bit(path[i]) && !self.redundant.get_bit(path[i + 2]) {
+            if self.covered.get_bit(path[i]) && !self.never_select.get_bit(path[i + 2]) {
                 self.add_to_solution(path[i + 2]);
                 modified = true;
                 i += 4;
@@ -289,7 +289,7 @@ impl<G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'_, G> {
         }
 
         if path.iter().any(|&u| self.covered.get_bit(u))
-            || path.iter().any(|&u| self.redundant.get_bit(u))
+            || path.iter().any(|&u| self.never_select.get_bit(u))
         {
             return false;
         }
@@ -311,7 +311,7 @@ impl<G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'_, G> {
             }
 
             let add = path[(i + 1).min(path.len() - 1)];
-            self.solution.add_node(add);
+            self.domset.add_node(add);
             self.covered.set_bit(add);
             if i + 2 < path.len() {
                 self.covered.set_bit(path[i + 2]);
@@ -326,15 +326,15 @@ impl<G: AdjacencyList + AdjacencyTest + GraphEdgeEditing> Postprocessor<G>
     fn post_process(
         &mut self,
         graph: &mut G,
-        solution: &mut DominatingSet,
+        domset: &mut DominatingSet,
         covered: &mut BitSet,
-        redundant: &mut BitSet,
+        never_select: &mut BitSet,
     ) {
         let mut rule_impl = RuleImpl {
             graph,
-            solution,
+            domset,
             covered,
-            redundant,
+            never_select,
         };
 
         while let Some(path) = self.removed_paths.pop() {
@@ -435,9 +435,9 @@ mod test {
 
                 let mut rule_impl = RuleImpl {
                     graph: &mut graph,
-                    solution: &mut solution,
+                    domset: &mut solution,
                     covered: &mut covered,
-                    redundant: &redundant,
+                    never_select: &redundant,
                 };
 
                 rule_impl.process_circle(&cycle);
@@ -473,9 +473,9 @@ mod test {
 
                 let mut rule_impl = RuleImpl {
                     graph: &mut graph,
-                    solution: &mut solution,
+                    domset: &mut solution,
                     covered: &mut covered,
-                    redundant: &redundant,
+                    never_select: &redundant,
                 };
 
                 let modified = rule_impl.process_path_without_postprocess(&mut path);
@@ -532,9 +532,9 @@ mod test {
 
                 let mut rule_impl = RuleImpl {
                     graph: &mut graph,
-                    solution: &mut solution,
+                    domset: &mut solution,
                     covered: &mut covered,
-                    redundant: &redundant,
+                    never_select: &redundant,
                 };
 
                 let modified = rule_impl.process_path_without_postprocess(&mut path);
@@ -581,9 +581,9 @@ mod test {
                 let modified = {
                     let mut rule_impl = RuleImpl {
                         graph: &mut graph,
-                        solution: &mut solution,
+                        domset: &mut solution,
                         covered: &mut covered,
-                        redundant: &redundant,
+                        never_select: &redundant,
                     };
 
                     rule_impl.process_path_with_uncovered_triples(&mut path)
@@ -630,9 +630,9 @@ mod test {
                 let modified = {
                     let mut rule_impl = RuleImpl {
                         graph: &mut graph,
-                        solution: &mut solution,
+                        domset: &mut solution,
                         covered: &mut covered,
-                        redundant: &redundant,
+                        never_select: &redundant,
                     };
 
                     rule_impl.process_path_with_postprocess(&mut path)
@@ -648,9 +648,9 @@ mod test {
                     let mut covered = solution.compute_covered(&graph);
                     let mut rule_impl = RuleImpl {
                         graph: &mut graph,
-                        solution: &mut solution,
+                        domset: &mut solution,
                         covered: &mut covered,
-                        redundant: &redundant,
+                        never_select: &redundant,
                     };
                     rule_impl.post_process_path(&path);
                 }

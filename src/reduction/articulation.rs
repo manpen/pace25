@@ -34,11 +34,11 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> ReductionRule<Graph
     fn apply_rule(
         &mut self,
         graph: &mut Graph,
-        solution: &mut DominatingSet,
+        domset: &mut DominatingSet,
         covered: &mut BitSet,
-        redundant: &mut BitSet,
+        never_select: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
-        if redundant.are_all_unset() {
+        if never_select.are_all_unset() {
             return (false, None::<Box<dyn Postprocessor<Graph>>>);
         }
 
@@ -64,16 +64,16 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> ReductionRule<Graph
 
         let mut solver = HighsDominatingSetSolver::new(graph.number_of_nodes());
 
-        debug_assert!(solution.iter().all(|u| covered.get_bit(u)));
+        debug_assert!(domset.iter().all(|u| covered.get_bit(u)));
 
         let mut changed = false;
         for u in aps.iter_set_bits() {
-            if redundant.get_bit(u) {
+            if never_select.get_bit(u) {
                 if Self::process_small_ccs_at_red_ap(
                     graph,
-                    solution,
+                    domset,
                     covered,
-                    redundant,
+                    never_select,
                     &mut solver,
                     u,
                 ) {
@@ -82,9 +82,9 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> ReductionRule<Graph
                 }
             } else if Self::process_small_ccs_at_ap(
                 graph,
-                solution,
+                domset,
                 covered,
-                redundant,
+                never_select,
                 &mut solver,
                 u,
             ) {
@@ -93,7 +93,7 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> ReductionRule<Graph
             }
         }
 
-        debug_assert!(solution.iter().all(|u| covered.get_bit(u)));
+        debug_assert!(domset.iter().all(|u| covered.get_bit(u)));
 
         (changed, None::<Box<dyn Postprocessor<Graph>>>)
     }
@@ -103,9 +103,9 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoi
     #[allow(unreachable_code, unused)]
     fn process_small_ccs_at_ap(
         graph: &mut Graph,
-        solution: &mut DominatingSet,
+        domset: &mut DominatingSet,
         covered: &mut BitSet,
-        redundant: &BitSet,
+        never_select: &BitSet,
         solver: &mut HighsDominatingSetSolver,
         art_point: u32,
     ) -> bool {
@@ -125,8 +125,12 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoi
 
             let eps = 0.3 / cc.len() as f64;
 
-            let problem =
-                solver.build_problem_of_subgraph(graph, covered, redundant, cc.as_slice(), |w| {
+            let problem = solver.build_problem_of_subgraph(
+                graph,
+                covered,
+                never_select,
+                cc.as_slice(),
+                |w| {
                     if w == art_point {
                         1.0 - eps - eps
                     } else if graph.has_edge(w, art_point) {
@@ -134,20 +138,21 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoi
                     } else {
                         1.0
                     }
-                });
+                },
+            );
 
             if let SolverResult::Optimal(solved) = problem.solve_exact(Some(SOLVER_TIMEOUT)) {
                 changed |= !solved.is_empty();
-                solution.add_nodes(solved.iter().cloned());
+                domset.add_nodes(solved.iter().cloned());
                 covered.set_bits(cc.into_iter());
 
-                if solution.is_in_domset(art_point) {
+                if domset.is_in_domset(art_point) {
                     covered.set_bits(graph.neighbors_of(art_point));
                     restore_u_covered_to = true;
                 } else {
                     restore_u_covered_to |= graph
                         .neighbors_of(art_point)
-                        .any(|v: u32| solution.is_in_domset(v));
+                        .any(|v: u32| domset.is_in_domset(v));
                 }
 
                 break;
@@ -163,9 +168,9 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoi
 
     fn process_small_ccs_at_red_ap(
         graph: &mut Graph,
-        solution: &mut DominatingSet,
+        domset: &mut DominatingSet,
         covered: &mut BitSet,
-        redundant: &BitSet,
+        never_select: &BitSet,
         solver: &mut HighsDominatingSetSolver,
         art_point: u32,
     ) -> bool {
@@ -188,14 +193,19 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoi
             cc.push(art_point);
 
             let eps = 0.3 / graph.degree_of(art_point) as f64;
-            let problem =
-                solver.build_problem_of_subgraph(graph, covered, redundant, cc.as_slice(), |w| {
+            let problem = solver.build_problem_of_subgraph(
+                graph,
+                covered,
+                never_select,
+                cc.as_slice(),
+                |w| {
                     if graph.has_edge(w, art_point) {
                         1.0 - eps
                     } else {
                         1.0
                     }
-                });
+                },
+            );
 
             if let SolverResult::Optimal(solved) = problem.solve_exact(Some(SOLVER_TIMEOUT))
                 && !solved.is_empty()
@@ -203,17 +213,17 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoi
                 debug!("Solved CC at {art_point} with nodes {cc:?}");
 
                 changed = true;
-                solution.add_nodes(solved.iter().cloned());
+                domset.add_nodes(solved.iter().cloned());
 
                 for &w in &solved {
                     covered.set_bits(graph.closed_neighbors_of(w));
                 }
                 debug_assert!(cc.iter().all(|&w| covered.get_bit(w)));
-                debug_assert!(!solution.is_in_domset(art_point));
+                debug_assert!(!domset.is_in_domset(art_point));
 
                 restore_u_covered_to |= graph
                     .neighbors_of(art_point)
-                    .any(|v: u32| solution.is_in_domset(v));
+                    .any(|v: u32| domset.is_in_domset(v));
 
                 break;
             }

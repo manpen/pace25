@@ -2,8 +2,6 @@ pub mod long_path;
 pub use long_path::LongPathReduction;
 pub mod rule_one_reduction;
 pub use rule_one_reduction::RuleOneReduction;
-pub mod two_hop_rule_two_reduction;
-pub use two_hop_rule_two_reduction::TwoHopRuleTwoReduction;
 pub mod small_exact;
 pub use small_exact::RuleSmallExactReduction;
 pub mod reducer;
@@ -35,9 +33,9 @@ pub trait ReductionRule<Graph> {
     fn apply_rule(
         &mut self,
         graph: &mut Graph,
-        solution: &mut DominatingSet,
+        domset: &mut DominatingSet,
         covered: &mut BitSet,
-        redundant: &mut BitSet,
+        never_select: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>);
 }
 
@@ -50,8 +48,8 @@ pub trait Postprocessor<Graph> {
     fn post_process(
         &mut self,
         graph: &mut Graph,
-        solution: &mut DominatingSet,
+        domset: &mut DominatingSet,
         covered: &mut BitSet,
-        redundant: &mut BitSet,
+        never_select: &mut BitSet,
     );
 }

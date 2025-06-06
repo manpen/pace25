@@ -96,26 +96,26 @@ impl<Graph: Clone + AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> 
     fn apply_rule(
         &mut self,
         graph: &mut Graph,
-        solution: &mut DominatingSet,
+        domset: &mut DominatingSet,
         covered: &mut BitSet,
-        redundant: &mut BitSet,
+        never_select: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
         let mut small_ccs = Vec::with_capacity(128);
         let mut walker = ConnectedComponentWalker::new(graph.number_of_nodes(), Some(MAX_CC_SIZE));
 
         let mut uncovered = Vec::with_capacity(1 + MAX_UNCOVERED_SIZE as usize);
 
-        let ds_size_before = solution.len();
+        let ds_size_before = domset.len();
 
         while let Some(nodes) = walker.next_cc(graph) {
             match nodes.len() {
                 // we have special cases for really small ccs
                 3 => {
-                    Self::process_3nodes(graph, solution, covered, redundant, &nodes);
+                    Self::process_3nodes(graph, domset, covered, never_select, &nodes);
                 }
 
                 4 => {
-                    Self::process_4nodes(graph, solution, covered, redundant, &nodes);
+                    Self::process_4nodes(graph, domset, covered, never_select, &nodes);
                 }
 
                 _ => {
@@ -134,7 +134,7 @@ impl<Graph: Clone + AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> 
 
                     if uncovered.len() == 1 {
                         // if there's only one uncovered node in a cc, it can be safely add to the solution
-                        solution.fix_node(uncovered[0]);
+                        domset.fix_node(uncovered[0]);
                         covered.set_bits(nodes.iter().copied());
                     } else if uncovered.len() == 2 {
                         // if there are two, there are two options: either there's one node u that can cover both:
@@ -146,9 +146,9 @@ impl<Graph: Clone + AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> 
                                 .count()
                                 == 2
                         }) {
-                            solution.fix_node(u);
+                            domset.fix_node(u);
                         } else {
-                            solution.fix_nodes(nodes.iter().copied());
+                            domset.fix_nodes(nodes.iter().copied());
                         }
                         covered.set_bits(uncovered.iter().copied());
                     } else {
@@ -179,14 +179,14 @@ impl<Graph: Clone + AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> 
 
         Self::process_small_ccs(
             graph,
-            solution,
+            domset,
             covered,
-            redundant,
+            never_select,
             small_ccs.into_iter().map(|(_, cc)| cc),
         );
 
         (
-            ds_size_before != solution.len(),
+            ds_size_before != domset.len(),
             None::<Box<dyn Postprocessor<Graph>>>,
         )
     }
@@ -195,25 +195,25 @@ impl<Graph: Clone + AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> 
 impl RuleSmallExactReduction {
     fn process_3nodes<Graph: Clone + AdjacencyList + GraphEdgeEditing + 'static>(
         graph: &Graph,
-        solution: &mut DominatingSet,
+        domset: &mut DominatingSet,
         covered: &mut BitSet,
-        _redundant: &BitSet,
+        _never_select: &BitSet,
         nodes: &[Node],
     ) {
         assert_eq!(nodes.len(), 3);
 
         if !nodes.iter().all(|&u| covered.get_bit(u)) {
             let deg2 = nodes.iter().find(|&&u| graph.degree_of(u) == 2).unwrap();
-            solution.fix_node(*deg2);
+            domset.fix_node(*deg2);
             covered.set_bits(nodes.iter().copied());
         }
     }
 
     fn process_4nodes<Graph: Clone + AdjacencyList + GraphEdgeEditing + 'static>(
         graph: &Graph,
-        solution: &mut DominatingSet,
+        domset: &mut DominatingSet,
         covered: &mut BitSet,
-        _redundant: &BitSet,
+        _never_select: &BitSet,
         nodes: &[Node],
     ) {
         assert_eq!(nodes.len(), 4);
@@ -221,9 +221,9 @@ impl RuleSmallExactReduction {
         let num_uncovered = nodes.iter().filter(|&&u| !covered.get_bit(u)).count();
         if num_uncovered > 0 {
             if let Some(u) = nodes.iter().find(|&&u| graph.degree_of(u) == 3) {
-                solution.fix_node(*u);
+                domset.fix_node(*u);
             } else if num_uncovered == 1 {
-                solution.fix_node(
+                domset.fix_node(
                     nodes
                         .iter()
                         .copied()
@@ -237,7 +237,7 @@ impl RuleSmallExactReduction {
                     .count()
                     == num_uncovered
             }) {
-                solution.fix_node(*u);
+                domset.fix_node(*u);
             } else {
                 let (a, b) = nodes
                     .iter()
@@ -247,8 +247,8 @@ impl RuleSmallExactReduction {
                     .collect_tuple()
                     .unwrap();
 
-                solution.fix_node(a);
-                solution.fix_node(b);
+                domset.fix_node(a);
+                domset.fix_node(b);
             }
 
             covered.set_bits(nodes.iter().copied());
@@ -259,9 +259,9 @@ impl RuleSmallExactReduction {
         Graph: Clone + AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static,
     >(
         graph: &Graph,
-        solution: &mut DominatingSet,
+        domset: &mut DominatingSet,
         covered: &mut BitSet,
-        redundant: &BitSet,
+        never_select: &BitSet,
         mut ccs: impl Iterator<Item = CC>,
     ) where
         Self: ReductionRule<Graph>,
@@ -286,13 +286,13 @@ impl RuleSmallExactReduction {
             if let Some(solved) = small_subgraph_exact(
                 graph,
                 covered,
-                redundant,
+                never_select,
                 &nodes,
                 &[],
                 org_to_small.as_mut_slice(),
                 Duration::from_secs(1),
             ) {
-                solution.add_nodes(solved.into_iter());
+                domset.add_nodes(solved.into_iter());
                 covered.set_bits(nodes.into_iter());
                 num_solved += 1;
             } else {
@@ -313,7 +313,7 @@ impl RuleSmallExactReduction {
 pub fn small_subgraph_exact<Graph: Clone + AdjacencyTest + AdjacencyList>(
     graph: &Graph,
     covered: &mut BitSet,
-    redundant: &BitSet,
+    never_select: &BitSet,
     nodes: &[Node],
     precious: &[Node],
     org_to_small: &mut [Node],
@@ -335,7 +335,7 @@ pub fn small_subgraph_exact<Graph: Clone + AdjacencyTest + AdjacencyList>(
         if ucovered {
             covered_mapped.set_bit(newu);
         }
-        if redundant.get_bit(oldu) {
+        if never_select.get_bit(oldu) {
             redundant_mapped.set_bit(newu);
         }
 

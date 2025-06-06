@@ -10,23 +10,23 @@ impl<Graph: AdjacencyList + 'static> ReductionRule<Graph> for RuleIsolatedReduct
     fn apply_rule(
         &mut self,
         graph: &mut Graph,
-        solution: &mut DominatingSet,
+        domset: &mut DominatingSet,
         covered: &mut BitSet,
-        redundant: &mut BitSet,
+        never_select: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
-        if redundant.cardinality() == 0 {
+        if never_select.cardinality() == 0 {
             return (false, None::<Box<dyn Postprocessor<Graph>>>);
         }
 
         let mut changed = false;
 
         for u in graph.vertices() {
-            if solution.is_in_domset(u) || redundant.get_bit(u) || covered.get_bit(u) {
+            if domset.is_in_domset(u) || never_select.get_bit(u) || covered.get_bit(u) {
                 continue;
             }
 
-            if graph.neighbors_of(u).all(|v| redundant.get_bit(v)) {
-                solution.add_node(u);
+            if graph.neighbors_of(u).all(|v| never_select.get_bit(v)) {
+                domset.add_node(u);
                 covered.set_bits(graph.closed_neighbors_of(u));
                 changed = true;
             }
