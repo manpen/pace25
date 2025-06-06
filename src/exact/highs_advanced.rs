@@ -1,10 +1,38 @@
-use std::time::Duration;
+use std::{
+    collections::HashSet,
+    hash::Hasher,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use ::highs::{ColProblem, HighsModelStatus, Model, Row};
+use fxhash::FxHasher64;
 use itertools::Itertools as _;
 use stream_bitset::prelude::*;
 
 use crate::prelude::*;
+
+type ProblemDigest = u64;
+
+#[derive(Default)]
+pub struct HighsCache {
+    failed_runs: Mutex<HashSet<u64>>,
+}
+
+impl HighsCache {
+    fn insert(&self, digest: ProblemDigest) {
+        info!("Register failed solve attempt with digest {digest:?}");
+        self.failed_runs.lock().unwrap().insert(digest);
+    }
+
+    fn contains(&self, digest: &ProblemDigest) -> bool {
+        let found = self.failed_runs.lock().unwrap().contains(digest);
+        if found {
+            info!("Found failed solve attempt with digest {digest:?}");
+        }
+        found
+    }
+}
 
 pub fn unit_weight(_: Node) -> f64 {
     1.0
@@ -13,17 +41,22 @@ pub fn unit_weight(_: Node) -> f64 {
 pub struct HighsDominatingSetSolver {
     row_of_node: Vec<Option<Row>>,
     int_to_ext: Vec<Node>,
+
+    con_buffer: Vec<(Node, Row)>, // prevent allocation during build
+
+    cache: Option<Arc<HighsCache>>,
 }
 
 pub struct HighsProblem<'a, G> {
+    digest: Option<ProblemDigest>,
     context: &'a mut HighsDominatingSetSolver,
 
     graph: &'a G,
     covered: &'a BitSet,
     nodes: Option<&'a [Node]>,
 
-    // TODO: ColProblems are a bit faster to construct, but more annoying to setup ... let's do this work later ;)
     problem: ColProblem,
+    num_terms: NumEdges,
 }
 
 impl HighsDominatingSetSolver {
@@ -31,7 +64,13 @@ impl HighsDominatingSetSolver {
         Self {
             row_of_node: vec![Default::default(); n as usize],
             int_to_ext: Vec::with_capacity(n as usize),
+            cache: None,
+            con_buffer: Vec::with_capacity(128),
         }
+    }
+
+    pub fn register_cache(&mut self, cache: Arc<HighsCache>) {
+        self.cache = Some(cache)
     }
 
     pub fn build_problem<'a, G, W>(
@@ -53,21 +92,26 @@ impl HighsDominatingSetSolver {
             self.row_of_node[u as usize] = Some(problem.add_row(1..));
         }
 
-        for u in redundant.iter_cleared_bits() {
-            self.int_to_ext.push(u);
+        let mut num_terms = 0;
+        let mut hasher = self.cache.as_ref().map(|_| FxHasher64::default());
 
-            let in_constraints = graph
-                .closed_neighbors_of(u)
-                .filter_map(|v| Some((self.row_of_node[v as usize]?, 1.0)));
-
-            problem.add_integer_column(node_weights(u), 0..=1, in_constraints);
+        for node in redundant.iter_cleared_bits() {
+            num_terms += self.add_column_to_problem(
+                graph,
+                &mut problem,
+                node,
+                node_weights(node),
+                hasher.as_mut(),
+            );
         }
 
         HighsProblem {
+            digest: hasher.map(|h| h.finish()),
             context: self,
             graph,
             covered,
             nodes: None,
+            num_terms,
             problem,
         }
     }
@@ -101,25 +145,29 @@ impl HighsDominatingSetSolver {
                 .all(|&u| self.row_of_node[u as usize].is_some())
         );
 
-        for &u in nodes {
-            if redundant.get_bit(u) {
+        let mut hasher = self.cache.as_ref().map(|_| FxHasher64::default());
+        let mut num_terms = 0;
+        for &node in nodes {
+            if redundant.get_bit(node) {
                 continue;
             }
 
-            self.int_to_ext.push(u);
-
-            let in_constraints = graph
-                .closed_neighbors_of(u)
-                .filter_map(|v| Some((self.row_of_node[v as usize]?, 1.0)));
-
-            problem.add_integer_column(node_weights(u), 0..=1, in_constraints);
+            num_terms += self.add_column_to_problem(
+                graph,
+                &mut problem,
+                node,
+                node_weights(node),
+                hasher.as_mut(),
+            );
         }
 
         HighsProblem {
+            digest: hasher.map(|h| h.finish()),
             context: self,
             graph,
             covered,
             nodes: Some(nodes),
+            num_terms,
             problem,
         }
     }
@@ -162,6 +210,50 @@ impl HighsDominatingSetSolver {
 
         skip_constraints_of
     }
+
+    fn add_column_to_problem<G>(
+        &mut self,
+        graph: &G,
+        problem: &mut ColProblem,
+        node: Node,
+        weight: f64,
+        hasher: Option<&mut FxHasher64>,
+    ) -> NumEdges
+    where
+        G: AdjacencyList + AdjacencyTest,
+    {
+        debug_assert!(self.con_buffer.is_empty());
+
+        self.con_buffer.extend(
+            graph
+                .closed_neighbors_of(node)
+                .filter_map(|v| Some((v, self.row_of_node[v as usize]?))),
+        );
+
+        if self.con_buffer.is_empty() {
+            return 0;
+        }
+
+        let num_terms = self.con_buffer.len() as NumEdges;
+        if let Some(hasher) = hasher {
+            hasher.write_u32(node);
+            hasher.write_u64(weight.to_bits());
+            self.con_buffer.sort_unstable_by_key(|(u, _)| *u);
+            for (v, _) in self.con_buffer.iter() {
+                hasher.write_u32(*v);
+            }
+            hasher.write_u32(Node::MAX);
+        }
+
+        self.int_to_ext.push(node);
+        problem.add_integer_column(
+            weight,
+            0..=1,
+            self.con_buffer.drain(..).map(|(_, r)| (r, 1.0)),
+        );
+
+        num_terms
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -191,6 +283,14 @@ impl SolverResult {
 }
 
 impl<G: AdjacencyList> HighsProblem<'_, G> {
+    pub fn number_of_variables(&self) -> NumNodes {
+        self.problem.num_cols() as NumNodes
+    }
+
+    pub fn number_of_terms(&self) -> NumEdges {
+        self.num_terms
+    }
+
     pub fn solve_exact(mut self, timeout: Option<Duration>) -> SolverResult {
         self.solve_impl(false, timeout)
     }
@@ -220,6 +320,20 @@ impl<G: AdjacencyList> HighsProblem<'_, G> {
     }
 
     fn solve_impl(&mut self, allow_subopt: bool, timeout: Option<Duration>) -> SolverResult {
+        if self.num_terms == 0 {
+            return SolverResult::Optimal(Vec::new());
+        }
+
+        if let Some(cache) = &self.context.cache {
+            let digest = self
+                .digest
+                .expect("A digest is computed iff a cacher is registered");
+            if cache.contains(&digest) {
+                info!("Skip previously failed solve attempt");
+                return SolverResult::Timeout;
+            }
+        }
+
         // Prepare the model based on the previously computed problem
         let mut model = Model::new(std::mem::take(&mut self.problem));
         model.make_quiet();
@@ -242,6 +356,7 @@ impl<G: AdjacencyList> HighsProblem<'_, G> {
             HighsModelStatus::Infeasible => return SolverResult::Infeasible,
             HighsModelStatus::ReachedTimeLimit => {
                 if !allow_subopt {
+                    self.try_to_cache_timeout();
                     return SolverResult::Timeout;
                 }
                 subopt = true;
@@ -264,18 +379,30 @@ impl<G: AdjacencyList> HighsProblem<'_, G> {
             SolverResult::Optimal(solution)
         }
     }
+
+    fn try_to_cache_timeout(&self) {
+        if let Some(cache) = &self.context.cache {
+            let digest = self
+                .digest
+                .expect("A digest is computed iff a cacher is registered");
+            cache.insert(digest);
+        }
+    }
 }
 
 impl<G> Drop for HighsProblem<'_, G> {
     fn drop(&mut self) {
-        if self.context.int_to_ext.len() > self.context.row_of_node.len() / 128 {
-            self.context.row_of_node.fill(None);
-            self.context.int_to_ext.clear();
-        } else {
-            for u in self.context.int_to_ext.drain(..) {
+        if let Some(nodes) = self.nodes
+            && nodes.len() < self.context.row_of_node.len() / 128
+        {
+            for &u in nodes {
                 self.context.row_of_node[u as usize] = None;
             }
+        } else {
+            self.context.row_of_node.fill(None);
         }
+
+        self.context.int_to_ext.clear();
     }
 }
 

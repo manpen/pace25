@@ -5,12 +5,35 @@ use smallvec::SmallVec;
 use log::{debug, info};
 
 use super::*;
-use crate::{exact, graph::*};
-use std::time::{Duration, Instant};
+use crate::{
+    exact::{
+        self,
+        highs_advanced::{HighsCache, HighsDominatingSetSolver, SolverResult, unit_weight},
+    },
+    graph::*,
+};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
-const NOT_SET: Node = Node::MAX;
+pub struct RuleSmallExactReduction {
+    #[allow(unused)]
+    highs_cache: Option<Arc<HighsCache>>,
+}
 
-pub struct RuleSmallExactReduction;
+impl RuleSmallExactReduction {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self { highs_cache: None }
+    }
+
+    pub fn new_with_cache(cache: Arc<HighsCache>) -> Self {
+        Self {
+            highs_cache: Some(cache),
+        }
+    }
+}
 
 struct ConnectedComponentWalker {
     visited: BitSet,
@@ -177,7 +200,7 @@ impl<Graph: Clone + AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> 
             }
         }
 
-        Self::process_small_ccs(
+        self.process_small_ccs(
             graph,
             domset,
             covered,
@@ -258,6 +281,7 @@ impl RuleSmallExactReduction {
     fn process_small_ccs<
         Graph: Clone + AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static,
     >(
+        &self,
         graph: &Graph,
         domset: &mut DominatingSet,
         covered: &mut BitSet,
@@ -269,7 +293,10 @@ impl RuleSmallExactReduction {
         let mut num_timeout = 0;
         let mut num_solved = 0;
 
-        let mut org_to_small = vec![NOT_SET; graph.len()];
+        let mut solver = HighsDominatingSetSolver::new(graph.number_of_nodes());
+        if let Some(cache) = &self.highs_cache {
+            solver.register_cache(cache.clone());
+        }
 
         let start = Instant::now();
         #[allow(clippy::while_let_on_iterator)]
@@ -283,15 +310,11 @@ impl RuleSmallExactReduction {
                 break;
             }
 
-            if let Some(solved) = small_subgraph_exact(
-                graph,
-                covered,
-                never_select,
-                &nodes,
-                &[],
-                org_to_small.as_mut_slice(),
-                Duration::from_secs(1),
-            ) {
+            let problem =
+                solver.build_problem_of_subgraph(graph, covered, never_select, &nodes, unit_weight);
+
+            if let SolverResult::Optimal(solved) = problem.solve_exact(Some(Duration::from_secs(1)))
+            {
                 domset.add_nodes(solved.into_iter());
                 covered.set_bits(nodes.into_iter());
                 num_solved += 1;
@@ -308,92 +331,4 @@ impl RuleSmallExactReduction {
             Self::NAME,
         );
     }
-}
-
-pub fn small_subgraph_exact<Graph: Clone + AdjacencyTest + AdjacencyList>(
-    graph: &Graph,
-    covered: &mut BitSet,
-    never_select: &BitSet,
-    nodes: &[Node],
-    precious: &[Node],
-    org_to_small: &mut [Node],
-    timeout: Duration,
-) -> Option<SmallVec<[Node; 8]>> {
-    let mut graph_mapped = AdjArray::new(nodes.len() as NumNodes);
-    let mut covered_mapped = graph_mapped.vertex_bitset_unset();
-    let mut redundant_mapped = graph_mapped.vertex_bitset_unset();
-
-    for (i, &u) in nodes.iter().enumerate() {
-        debug_assert_eq!(org_to_small[u as usize], NOT_SET);
-        org_to_small[u as usize] = i as Node;
-    }
-
-    for (newu, &oldu) in nodes.iter().enumerate() {
-        let newu = newu as Node;
-
-        let ucovered = covered.get_bit(oldu);
-        if ucovered {
-            covered_mapped.set_bit(newu);
-        }
-        if never_select.get_bit(oldu) {
-            redundant_mapped.set_bit(newu);
-        }
-
-        for oldv in graph.neighbors_of(oldu) {
-            if oldv >= oldu {
-                continue;
-            }
-
-            if !ucovered || !covered.get_bit(oldv) {
-                let newv = org_to_small[oldv as usize];
-                if org_to_small[oldv as usize] != NOT_SET {
-                    graph_mapped.add_edge(newu, newv);
-                }
-            }
-        }
-    }
-
-    let precious = precious
-        .iter()
-        .map(|&u| org_to_small[u as usize])
-        .collect_vec();
-
-    for &u in nodes {
-        org_to_small[u as usize] = NOT_SET;
-    }
-
-    let solution_mapped = match exact::highs::highs_solver_with_precious(
-        &graph_mapped,
-        precious.as_slice(),
-        &covered_mapped,
-        &redundant_mapped,
-        None,
-        Some(timeout),
-    ) {
-        Ok(x) => {
-            debug!(
-                "Solved n={} m={} covered={}",
-                graph_mapped.number_of_nodes(),
-                graph_mapped.number_of_edges(),
-                covered_mapped.cardinality()
-            );
-            x
-        }
-        Err(_) => {
-            debug!(
-                "No solution for n={} m={} covered={}",
-                graph_mapped.number_of_nodes(),
-                graph_mapped.number_of_edges(),
-                covered_mapped.cardinality()
-            );
-            return None;
-        }
-    };
-
-    Some(
-        solution_mapped
-            .iter()
-            .map(|newu| nodes[newu as usize])
-            .collect(),
-    )
 }

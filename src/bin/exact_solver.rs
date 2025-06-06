@@ -1,4 +1,4 @@
-use std::{fs::File, path::PathBuf};
+use std::{fs::File, path::PathBuf, sync::Arc};
 
 use dss::{exact::highs_advanced::*, reduction::*};
 
@@ -115,12 +115,14 @@ fn main() -> anyhow::Result<()> {
     let mut reducer = Reducer::new();
     let mut never_select = BitSet::new(graph.number_of_nodes());
 
+    let high_cache = Arc::new(HighsCache::default());
+
     let mut rule_vertex_cover = RuleVertexCover::new(graph.number_of_nodes());
     let mut rule_one = RuleOneReduction::new(graph.number_of_nodes());
     let mut rule_long_path = LongPathReduction;
     let mut rule_isolated = RuleIsolatedReduction;
     let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
-    let mut rule_articulation = RuleArticulationPoint::new(graph.number_of_nodes());
+    let mut rule_articulation = RuleArticulationPoint::new_with_cache(high_cache.clone());
     let mut rule_subset = RuleSubsetReduction::new(graph.number_of_nodes());
 
     loop {
@@ -197,7 +199,7 @@ fn main() -> anyhow::Result<()> {
         break;
     }
 
-    let mut rule_small_exact = RuleSmallExactReduction;
+    let mut rule_small_exact = RuleSmallExactReduction::new_with_cache(high_cache.clone());
 
     if graph.number_of_edges() > 0 {
         reducer.apply_rule(

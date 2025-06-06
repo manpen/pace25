@@ -1,11 +1,11 @@
-use std::{marker::PhantomData, time::Duration};
+use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use itertools::Itertools;
 #[allow(unused_imports)]
 use log::{debug, info};
 
 use crate::{
-    exact::highs_advanced::{HighsDominatingSetSolver, SolverResult},
+    exact::highs_advanced::{HighsCache, HighsDominatingSetSolver, SolverResult},
     graph::*,
 };
 
@@ -15,12 +15,22 @@ const SOLVER_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_CC_SIZE: Node = 200;
 
 pub struct RuleArticulationPoint<G> {
+    highs_cache: Option<Arc<HighsCache>>,
     _graph: PhantomData<G>,
 }
 
 impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoint<Graph> {
-    pub fn new(_n: NumNodes) -> Self {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
         Self {
+            highs_cache: None,
+            _graph: Default::default(),
+        }
+    }
+
+    pub fn new_with_cache(cache: Arc<HighsCache>) -> Self {
+        Self {
+            highs_cache: Some(cache),
             _graph: Default::default(),
         }
     }
@@ -63,6 +73,9 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> ReductionRule<Graph
         }
 
         let mut solver = HighsDominatingSetSolver::new(graph.number_of_nodes());
+        if let Some(cache) = &self.highs_cache {
+            solver.register_cache(cache.clone());
+        }
 
         debug_assert!(domset.iter().all(|u| covered.get_bit(u)));
 

@@ -1,4 +1,5 @@
 use dss::{
+    exact::highs_advanced::HighsCache,
     graph::*,
     heuristic::{iterative_greedy::IterativeGreedy, reverse_greedy_search::GreedyReverseSearch},
     io::PaceWriter as _,
@@ -7,11 +8,14 @@ use dss::{
     reduction::*,
     utils::{DominatingSet, signal_handling},
 };
+use itertools::Itertools;
 use log::info;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64Mcg;
 use std::{
+    collections::HashSet,
     path::PathBuf,
+    sync::Arc,
     time::{Duration, Instant},
 };
 use structopt::StructOpt;
@@ -157,12 +161,14 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
     let mut reducer = Reducer::new();
     let mut never_select = BitSet::new(graph.number_of_nodes());
 
+    let high_cache = Arc::new(HighsCache::default());
+
     let mut rule_vertex_cover = RuleVertexCover::new(graph.number_of_nodes());
     let mut rule_one = RuleOneReduction::new(graph.number_of_nodes());
     let mut rule_long_path = LongPathReduction;
     let mut rule_isolated = RuleIsolatedReduction;
     let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
-    let mut rule_articulation = RuleArticulationPoint::new(graph.number_of_nodes());
+    let mut rule_articulation = RuleArticulationPoint::new_with_cache(high_cache.clone());
     let mut rule_subset = RuleSubsetReduction::new(graph.number_of_nodes());
 
     loop {
@@ -239,7 +245,21 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
         break;
     }
 
-    let mut rule_small_exact = RuleSmallExactReduction;
+    {
+        let mut red_twin: HashSet<Edge> =
+            HashSet::with_capacity(never_select.cardinality() as usize);
+        for u in never_select.iter_set_bits() {
+            if let Some((a, b)) = graph.neighbors_of(u).collect_tuple() {
+                let norm = Edge(a, b).normalized();
+                if !red_twin.insert(norm) {
+                    covered.set_bit(u);
+                }
+            }
+        }
+        reducer.remove_unnecessary_edges(&mut graph, &mut domset, &mut covered, &mut never_select);
+    }
+
+    let mut rule_small_exact = RuleSmallExactReduction::new_with_cache(high_cache.clone());
 
     if graph.number_of_edges() > 0 {
         reducer.apply_rule(
