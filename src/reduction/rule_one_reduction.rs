@@ -61,7 +61,9 @@ impl RuleOneReduction {
 
 const NOT_SET: Node = Node::MAX;
 
-impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph> for RuleOneReduction {
+impl<Graph: AdjacencyList + GraphEdgeEditing + std::fmt::Debug + 'static> ReductionRule<Graph>
+    for RuleOneReduction
+{
     const NAME: &str = "RuleOne";
 
     fn apply_rule(
@@ -69,7 +71,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph> for
         graph: &mut Graph,
         domset: &mut DominatingSet,
         covered: &mut BitSet,
-        redundant: &mut BitSet,
+        never_select: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
         let n = graph.len();
         assert!(NOT_SET as usize >= n);
@@ -80,6 +82,8 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph> for
         self.type2_nodes.clear_all();
         self.processed.clear_all();
         self.selected.clear();
+
+        let prev_never_select = never_select.cardinality();
 
         // Compute permanently covered nodes and degrees
         for u in 0..graph.number_of_nodes() {
@@ -100,9 +104,10 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph> for
 
             let max_neighbor = graph
                 .closed_neighbors_of(u)
-                .map(|u| (self.non_perm_degree[u as usize], u))
+                .filter(|&v| !never_select.get_bit(v))
+                .map(|v| (self.non_perm_degree[v as usize], v))
                 .max()
-                .map(|(_, u)| u)
+                .map(|(_, v)| v)
                 .unwrap();
 
             if max_neighbor != u {
@@ -117,6 +122,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph> for
 
             // Check whether N[v] is a subset of N[u]
             for v in self.inv_mappings[u as usize].drain(..) {
+                debug_assert!(!never_select.get_bit(u));
                 if graph
                     .closed_neighbors_of(v)
                     .all(|x| self.marked.is_marked_with(x, u) || covered.get_bit(x))
@@ -150,7 +156,6 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph> for
                             .then(|| (self.non_perm_degree[pt as usize], pt))
                     })
                     .min()
-                    && !redundant.get_bit(min_node)
                 {
                     // We drained inv_mappings earlier completely, so we can now reuse it
                     self.inv_mappings[min_node as usize].push(v);
@@ -175,6 +180,13 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph> for
                     .all(|x| self.marked.is_marked_with(x, u) || covered.get_bit(x))
                 {
                     self.parent.mark_with(v, u);
+
+                    // v is subset-dominated by u
+                    //
+                    // it is safe to mark v here f(v) = u was assigned in step (2).
+                    // if v were to have a type3-neighbor (and was to be fixed),
+                    // step (2) would not have assigned f(v) = u
+                    never_select.set_bit(v);
                 }
             }
 
@@ -186,7 +198,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph> for
                     .closed_neighbors_of(v)
                     .all(|x| self.parent.is_marked_with(x, u) || x == u)
                 {
-                    assert!(!redundant.get_bit(u));
+                    assert!(!never_select.get_bit(u));
                     domset.fix_node(u);
                     self.selected.push(u);
                     covered.set_bits(graph.closed_neighbors_of(u));
@@ -196,7 +208,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph> for
         }
 
         (
-            !self.selected.is_empty(),
+            !self.selected.is_empty() || prev_never_select != never_select.cardinality(),
             None::<Box<dyn Postprocessor<Graph>>>,
         )
     }

@@ -31,11 +31,11 @@ impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph> for Ru
     fn apply_rule(
         &mut self,
         graph: &mut Graph,
-        solution: &mut DominatingSet,
+        domset: &mut DominatingSet,
         covered: &mut BitSet,
-        redundant: &mut BitSet,
+        never_select: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
-        if redundant.cardinality() < 3 {
+        if never_select.cardinality() < 3 {
             return (false, None::<Box<dyn Postprocessor<Graph>>>);
         }
 
@@ -43,7 +43,7 @@ impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph> for Ru
 
         // most graphs do not contain the gadgets, so let's first collect all edges
         // (i.e. usually an empty vec!)
-        redundant
+        never_select
             .iter_set_bits()
             .filter_map(|u| {
                 if graph.degree_of(u) != 2 || covered.get_bit(u) {
@@ -53,7 +53,7 @@ impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph> for Ru
                 let (a, b) = graph.neighbors_of(u).collect_tuple()?;
 
                 // there should not be any red-red edges!
-                assert!(!redundant.get_bit(a) || !redundant.get_bit(b));
+                assert!(!never_select.get_bit(a) || !never_select.get_bit(b));
 
                 Some(Edge(a, b).normalized())
             })
@@ -132,7 +132,7 @@ impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph> for Ru
                 }
 
                 // case 3: it's redundant ... then at least one other neighbor needs to be in the clique (other than u)
-                if redundant.get_bit(ov)
+                if never_select.get_bit(ov)
                     && graph.neighbors_of(ov).any(|w| {
                         w != ou
                             && self.old_to_new.is_marked(w)
@@ -150,7 +150,7 @@ impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph> for Ru
             }
 
             if vc_graph.neighbors_of(u).any(|v| {
-                solution.is_in_domset(v)
+                domset.is_in_domset(v)
                     || vc_graph
                         .neighbors_of(v)
                         .filter(|&w| self.marker.is_marked_with(w, u))
@@ -166,7 +166,7 @@ impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph> for Ru
 
             for v in vc_graph.neighbors_of(u) {
                 let v = self.new_to_old[v as usize];
-                solution.add_node(v);
+                domset.add_node(v);
                 covered.set_bits(graph.closed_neighbors_of(v));
             }
 

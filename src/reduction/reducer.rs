@@ -41,24 +41,24 @@ impl<G: GraphEdgeOrder + AdjacencyList + GraphEdgeEditing + UnsafeGraphEditing> 
         graph: &mut G,
         domset: &mut DominatingSet,
         covered: &mut BitSet,
-        redundant: &mut BitSet,
+        never_select: &mut BitSet,
     ) -> bool {
         let before_nodes = graph.vertices_with_neighbors().count();
         let before_edges = graph.number_of_edges();
         let before_in_domset = domset.len();
         let before_covered = covered.cardinality();
-        let before_redundant = redundant.cardinality() as i32;
+        let before_redundant = never_select.cardinality() as i32;
 
         debug_assert!(domset.iter().all(|u| graph.degree_of(u) == 0));
 
         let start_rule = Instant::now();
-        let (mut changed, post) = rule.apply_rule(graph, domset, covered, redundant);
+        let (mut changed, post) = rule.apply_rule(graph, domset, covered, never_select);
         assert!(changed || post.is_none());
 
         let start_clean = Instant::now();
         let duration_rule = start_clean.duration_since(start_rule);
         let unneccesary_edges = if changed || R::REMOVAL {
-            let removed_edges = self.remove_unnecessary_edges(graph, domset, covered, redundant);
+            let removed_edges = self.remove_unnecessary_edges(graph, domset, covered, never_select);
             changed |= removed_edges > 0;
             removed_edges
         } else {
@@ -72,7 +72,7 @@ impl<G: GraphEdgeOrder + AdjacencyList + GraphEdgeEditing + UnsafeGraphEditing> 
         let delta_edges = before_edges - graph.number_of_edges();
         let delta_in_domset = domset.len() - before_in_domset;
         let delta_covered = covered.cardinality() - before_covered;
-        let delta_redundant = redundant.cardinality() as i32 - before_redundant;
+        let delta_redundant = never_select.cardinality() as i32 - before_redundant;
 
         if changed {
             info!(
@@ -108,11 +108,11 @@ impl<G: GraphEdgeOrder + AdjacencyList + GraphEdgeEditing + UnsafeGraphEditing> 
         graph: &mut G,
         domset: &mut DominatingSet,
         covered: &mut BitSet,
-        redundant: &mut BitSet,
+        never_select: &mut BitSet,
     ) -> NumNodes {
         let mut iters = 1;
 
-        while self.apply_rule(rule, graph, domset, covered, redundant) {
+        while self.apply_rule(rule, graph, domset, covered, never_select) {
             iters += 1;
         }
 
@@ -124,10 +124,10 @@ impl<G: GraphEdgeOrder + AdjacencyList + GraphEdgeEditing + UnsafeGraphEditing> 
         graph: &mut G,
         domset: &mut DominatingSet,
         covered: &mut BitSet,
-        redundant: &mut BitSet,
+        never_select: &mut BitSet,
     ) -> NumEdges {
         let mut delete_node = covered.clone();
-        delete_node &= redundant;
+        delete_node &= never_select;
 
         let mut half_edges_removed = 0;
 
@@ -137,7 +137,7 @@ impl<G: GraphEdgeOrder + AdjacencyList + GraphEdgeEditing + UnsafeGraphEditing> 
                 continue;
             }
 
-            half_edges_removed += match (covered.get_bit(u), redundant.get_bit(u)) {
+            half_edges_removed += match (covered.get_bit(u), never_select.get_bit(u)) {
                 (true, false) => unsafe {
                     graph.remove_half_edges_at_if(u, |v| {
                         covered.get_bit(v) || delete_node.get_bit(v)
@@ -145,7 +145,7 @@ impl<G: GraphEdgeOrder + AdjacencyList + GraphEdgeEditing + UnsafeGraphEditing> 
                 },
                 (false, true) => unsafe {
                     graph.remove_half_edges_at_if(u, |v| {
-                        redundant.get_bit(v) || delete_node.get_bit(v)
+                        never_select.get_bit(v) || delete_node.get_bit(v)
                     })
                 },
                 (false, false) => unsafe {
@@ -187,10 +187,6 @@ impl<G: GraphEdgeOrder + AdjacencyList + GraphEdgeEditing + UnsafeGraphEditing> 
                 //
                 // It would be equally optimal to put v into the dominating set instead, but at
                 // this point, it does not matter.
-                //
-                // We nonetheless mark u was not-redundant anymore to prevent further checks from
-                // flagging this as unintended behavior
-                redundant.clear_bit(u);
                 domset.fix_node(u);
             }
             is_singleton
@@ -219,10 +215,10 @@ impl<G: GraphEdgeOrder + AdjacencyList + GraphEdgeEditing + UnsafeGraphEditing> 
         graph: &mut G,
         solution: &mut DominatingSet,
         covered: &mut BitSet,
-        redundant: &mut BitSet,
+        never_select: &mut BitSet,
     ) {
         while let Some(mut p) = self.post_processors.pop() {
-            p.post_process(graph, solution, covered, redundant);
+            p.post_process(graph, solution, covered, never_select);
         }
     }
 }

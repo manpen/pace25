@@ -1,16 +1,10 @@
 use dss::{
-    graph::{
-        AdjArray, AdjacencyList, BitSet, CsrGraph, CuthillMcKee, Edge, EdgeOps, ExtractCsrRepr,
-        Getter, GraphEdgeOrder, GraphFromReader, GraphNodeOrder, Node, NodeMapper, NumNodes,
-    },
+    graph::*,
     heuristic::{iterative_greedy::IterativeGreedy, reverse_greedy_search::GreedyReverseSearch},
     io::set_reader::SetPaceReader,
     log::build_pace_logger_for_level,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
-    reduction::{
-        LongPathReduction, Reducer, RuleIsolatedReduction, RuleOneReduction, RuleRedundantCover,
-        RuleSmallExactReduction, RuleSubsetReduction, RuleVertexCover,
-    },
+    reduction::*,
     utils::{DominatingSet, signal_handling},
 };
 use itertools::Itertools;
@@ -69,7 +63,7 @@ struct State<G: Clone> {
     graph: G,
     domset: DominatingSet,
     covered: BitSet,
-    redundant: BitSet,
+    never_select: BitSet,
 }
 
 fn apply_reduction_rules(
@@ -84,13 +78,15 @@ fn apply_reduction_rules(
     domset.fix_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
 
     let mut reducer = Reducer::new();
-    let mut redundant = BitSet::new(graph.number_of_nodes());
+    let mut never_select = BitSet::new(graph.number_of_nodes());
 
     let mut rule_vertex_cover = RuleVertexCover::new(graph.number_of_nodes());
     let mut rule_one = RuleOneReduction::new(graph.number_of_nodes());
     let mut rule_long_path = LongPathReduction;
     let mut rule_isolated = RuleIsolatedReduction;
     let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
+    let mut rule_articulation = RuleArticulationPoint::new(graph.number_of_nodes());
+    let mut rule_subset = RuleSubsetReduction::new(graph.number_of_nodes());
 
     loop {
         let mut changed = false;
@@ -100,7 +96,7 @@ fn apply_reduction_rules(
             &mut graph,
             &mut domset,
             &mut covered,
-            &mut redundant,
+            &mut never_select,
         );
 
         changed |= reducer.apply_rule(
@@ -108,7 +104,7 @@ fn apply_reduction_rules(
             &mut graph,
             &mut domset,
             &mut covered,
-            &mut redundant,
+            &mut never_select,
         );
 
         changed |= reducer.apply_rule(
@@ -116,7 +112,7 @@ fn apply_reduction_rules(
             &mut graph,
             &mut domset,
             &mut covered,
-            &mut redundant,
+            &mut never_select,
         );
 
         changed |= reducer.apply_rule(
@@ -124,7 +120,7 @@ fn apply_reduction_rules(
             &mut graph,
             &mut domset,
             &mut covered,
-            &mut redundant,
+            &mut never_select,
         );
 
         changed |= reducer.apply_rule(
@@ -132,26 +128,35 @@ fn apply_reduction_rules(
             &mut graph,
             &mut domset,
             &mut covered,
-            &mut redundant,
+            &mut never_select,
         );
 
         if changed {
             continue;
         }
 
-        if true {
-            let csr_edges = graph.extract_csr_repr();
-            RuleSubsetReduction::apply_rule(csr_edges, &covered, &mut redundant);
-            assert!(!domset.iter().any(|u| redundant.get_bit(u)));
-            if reducer.remove_unnecessary_edges(
-                &mut graph,
-                &mut domset,
-                &mut covered,
-                &mut redundant,
-            ) > 0
-            {
-                continue;
-            }
+        changed |= reducer.apply_rule(
+            &mut rule_articulation,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut never_select,
+        );
+
+        if changed {
+            continue;
+        }
+
+        changed |= reducer.apply_rule(
+            &mut rule_subset,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut never_select,
+        );
+
+        if changed {
+            continue;
         }
 
         break;
@@ -165,7 +170,7 @@ fn apply_reduction_rules(
             &mut graph,
             &mut domset,
             &mut covered,
-            &mut redundant,
+            &mut never_select,
         );
     }
 
@@ -176,7 +181,7 @@ fn apply_reduction_rules(
             graph,
             domset,
             covered,
-            redundant,
+            never_select,
         },
         reducer,
     )
@@ -213,9 +218,9 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
         mapping.get_filtered_new_ids(org_state.covered.iter_set_bits()),
     );
 
-    let redundant = BitSet::new_with_bits_set(
+    let never_select = BitSet::new_with_bits_set(
         graph.number_of_nodes(),
-        mapping.get_filtered_new_ids(org_state.redundant.iter_set_bits()),
+        mapping.get_filtered_new_ids(org_state.never_select.iter_set_bits()),
     );
 
     let domset = DominatingSet::new(graph.number_of_nodes());
@@ -225,15 +230,15 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
         graph.number_of_nodes(),
         graph.number_of_edges(),
         covered.cardinality(),
-        redundant.cardinality(),
-        graph.number_of_nodes() - redundant.cardinality(),
+        never_select.cardinality(),
+        graph.number_of_nodes() - never_select.cardinality(),
     );
 
     State {
         graph,
         domset,
         covered,
-        redundant,
+        never_select,
     }
 }
 
@@ -249,7 +254,7 @@ fn build_heuristic(
         graph,
         mut domset,
         covered,
-        redundant,
+        never_select,
     } = mapped;
 
     // Greedy
@@ -257,7 +262,7 @@ fn build_heuristic(
         assert!(domset.is_empty());
         info!("Start Greedy");
 
-        let mut algo = IterativeGreedy::new(rng, &graph, &covered, &redundant);
+        let mut algo = IterativeGreedy::new(rng, &graph, &covered, &never_select);
 
         if id % 2 == 1 {
             algo.set_strategy(dss::heuristic::iterative_greedy::GreedyStrategy::DegreeValue);
@@ -274,7 +279,7 @@ fn build_heuristic(
     }
 
     info!("Start GreedyReverseSearch");
-    let mut search = MainHeuristic::new(graph, domset, covered, redundant, rng);
+    let mut search = MainHeuristic::new(graph, domset, covered, never_select, rng);
 
     if opts.verbose {
         search.enable_verbose_logging();
@@ -378,7 +383,7 @@ fn main() -> anyhow::Result<()> {
         &mut input_graph.clone(),
         &mut state.domset,
         &mut covered,
-        &mut state.redundant,
+        &mut state.never_select,
     );
 
     let switches: Vec<(Node, Node)> = state
