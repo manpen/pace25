@@ -61,7 +61,9 @@ impl RuleOneReduction {
 
 const NOT_SET: Node = Node::MAX;
 
-impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph> for RuleOneReduction {
+impl<Graph: AdjacencyList + GraphEdgeEditing + std::fmt::Debug + 'static> ReductionRule<Graph>
+    for RuleOneReduction
+{
     const NAME: &str = "RuleOne";
 
     fn apply_rule(
@@ -80,6 +82,8 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph> for
         self.type2_nodes.clear_all();
         self.processed.clear_all();
         self.selected.clear();
+
+        let prev_never_select = never_select.cardinality();
 
         // Compute permanently covered nodes and degrees
         for u in 0..graph.number_of_nodes() {
@@ -204,7 +208,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph> for
         }
 
         (
-            !self.selected.is_empty(),
+            !self.selected.is_empty() || prev_never_select != never_select.cardinality(),
             None::<Box<dyn Postprocessor<Graph>>>,
         )
     }
