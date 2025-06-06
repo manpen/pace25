@@ -47,8 +47,9 @@ impl SubsetRuleTwoReduction {
 
 const NOT_SET: Node = Node::MAX;
 
-impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 'static>
-    ReductionRule<Graph> for SubsetRuleTwoReduction
+impl<
+    Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + ExtractCsrRepr + 'static,
+> ReductionRule<Graph> for SubsetRuleTwoReduction
 {
     const NAME: &str = "SubsetRuleTwoReduction";
 
@@ -69,8 +70,9 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + AdjacencyTest + NeighborsSlice + 
             self.type2[u].clear();
         }
 
-        // Reset redundant as the definition might have changed due to new covered nodes
-        redundant.clear_all();
+        // Reset redundant as the definition might have changed due to new covered nodes & run
+        // SubsetRule (TBD: replace later)
+        RuleSubsetReduction::apply_rule(graph, covered, redundant);
 
         'outer: for u in graph.vertices() {
             // Nodes need to have at least degree 2 to be an applicable candidate for Rule2
