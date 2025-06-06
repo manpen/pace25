@@ -2,9 +2,12 @@ use std::{marker::PhantomData, time::Duration};
 
 use itertools::Itertools;
 #[allow(unused_imports)]
-use log::info;
+use log::{debug, info};
 
-use crate::{graph::*, reduction::small_exact::small_subgraph_exact};
+use crate::{
+    exact::highs_advanced::{HighsDominatingSetSolver, SolverResult},
+    graph::*,
+};
 
 use super::*;
 
@@ -59,21 +62,19 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> ReductionRule<Graph
             }
         }
 
-        let mut solver_buffer = vec![Node::MAX; graph.len()];
+        let mut solver = HighsDominatingSetSolver::new(graph.number_of_nodes());
+
+        debug_assert!(solution.iter().all(|u| covered.get_bit(u)));
 
         let mut changed = false;
         for u in aps.iter_set_bits() {
             if redundant.get_bit(u) {
-                if covered.get_bit(u) {
-                    continue;
-                }
-
                 if Self::process_small_ccs_at_red_ap(
                     graph,
                     solution,
                     covered,
                     redundant,
-                    &mut solver_buffer,
+                    &mut solver,
                     u,
                 ) {
                     changed = true;
@@ -84,13 +85,15 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> ReductionRule<Graph
                 solution,
                 covered,
                 redundant,
-                &mut solver_buffer,
+                &mut solver,
                 u,
             ) {
                 changed = true;
                 continue;
             }
         }
+
+        debug_assert!(solution.iter().all(|u| covered.get_bit(u)));
 
         (changed, None::<Box<dyn Postprocessor<Graph>>>)
     }
@@ -103,55 +106,56 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoi
         solution: &mut DominatingSet,
         covered: &mut BitSet,
         redundant: &BitSet,
-        solver_buffer: &mut [Node],
-        u: u32,
+        solver: &mut HighsDominatingSetSolver,
+        art_point: u32,
     ) -> bool {
-        // rule is currently unsound
-        return false;
-        let mut restore_u_covered_to = covered.set_bit(u);
-
-        let precious = [u];
+        let mut restore_u_covered_to = covered.set_bit(art_point);
 
         let mut changed = false;
-        for v in graph.neighbors_of(u) {
+        for v in graph.neighbors_of(art_point) {
             let mut search = DFS::new(graph, v);
-            search.exclude_node(u);
+            search.exclude_node(art_point);
 
             let mut cc = search.take(1 + MAX_CC_SIZE as usize).collect_vec();
             if cc.len() > MAX_CC_SIZE as usize {
                 continue;
             }
 
-            cc.push(u);
+            cc.push(art_point);
 
-            let neighbors = graph
-                .neighbors_of(u)
-                .filter(|v| cc.contains(v))
-                .map(|v| (v, covered.get_bit(v)))
-                .collect_vec();
+            let eps = 0.3 / cc.len() as f64;
 
-            // mark neighbors with 1-eps, and ap with 1-2eps
+            let problem =
+                solver.build_problem_of_subgraph(graph, covered, redundant, cc.as_slice(), |w| {
+                    if w == art_point {
+                        1.0 - eps - eps
+                    } else if graph.has_edge(w, art_point) {
+                        1.0 - eps
+                    } else {
+                        1.0
+                    }
+                });
 
-            if let Some(solved) = small_subgraph_exact(
-                graph,
-                covered,
-                redundant,
-                &cc,
-                &precious,
-                solver_buffer,
-                SOLVER_TIMEOUT,
-            ) {
+            if let SolverResult::Optimal(solved) = problem.solve_exact(Some(SOLVER_TIMEOUT)) {
+                changed |= !solved.is_empty();
                 solution.add_nodes(solved.iter().cloned());
-                restore_u_covered_to |= solution.is_in_domset(u);
-
                 covered.set_bits(cc.into_iter());
-                changed = true;
+
+                if solution.is_in_domset(art_point) {
+                    covered.set_bits(graph.neighbors_of(art_point));
+                    restore_u_covered_to = true;
+                } else {
+                    restore_u_covered_to |= graph
+                        .neighbors_of(art_point)
+                        .any(|v: u32| solution.is_in_domset(v));
+                }
+
                 break;
             }
         }
 
         if !restore_u_covered_to {
-            covered.clear_bit(u);
+            covered.clear_bit(art_point);
         }
 
         changed
@@ -162,51 +166,61 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoi
         solution: &mut DominatingSet,
         covered: &mut BitSet,
         redundant: &BitSet,
-        solver_buffer: &mut [Node],
-        u: u32,
+        solver: &mut HighsDominatingSetSolver,
+        art_point: u32,
     ) -> bool {
-        if covered.get_bit(u) {
+        // we only support uncovered redundant (those nodes are dealt with by the reducer)
+        if covered.set_bit(art_point) {
             return false;
         }
 
+        let mut restore_u_covered_to = false;
         let mut changed = false;
-        for v in graph.neighbors_of(u) {
+        for v in graph.neighbors_of(art_point) {
             let mut search = DFS::new(graph, v);
-            search.exclude_node(u);
+            search.exclude_node(art_point);
 
             let mut cc = search.take(1 + MAX_CC_SIZE as usize).collect_vec();
             if cc.len() > MAX_CC_SIZE as usize {
                 continue;
             }
 
-            cc.push(u);
-            covered.set_bit(u);
+            cc.push(art_point);
 
-            let precious = cc
-                .iter()
-                .copied()
-                .filter(|&w| graph.has_edge(w, u))
-                .collect_vec();
+            let eps = 0.3 / graph.degree_of(art_point) as f64;
+            let problem =
+                solver.build_problem_of_subgraph(graph, covered, redundant, cc.as_slice(), |w| {
+                    if graph.has_edge(w, art_point) {
+                        1.0 - eps
+                    } else {
+                        1.0
+                    }
+                });
 
-            if let Some(solved) = small_subgraph_exact(
-                graph,
-                covered,
-                redundant,
-                &cc,
-                precious.as_slice(),
-                solver_buffer,
-                SOLVER_TIMEOUT,
-            ) {
-                solution.add_nodes(solved.iter().cloned());
-                covered.set_bits(cc.into_iter());
+            if let SolverResult::Optimal(solved) = problem.solve_exact(Some(SOLVER_TIMEOUT))
+                && !solved.is_empty()
+            {
+                debug!("Solved CC at {art_point} with nodes {cc:?}");
 
-                if !precious.into_iter().any(|w| solved.iter().contains(&w)) {
-                    covered.clear_bit(u);
-                }
                 changed = true;
+                solution.add_nodes(solved.iter().cloned());
+
+                for &w in &solved {
+                    covered.set_bits(graph.closed_neighbors_of(w));
+                }
+                debug_assert!(cc.iter().all(|&w| covered.get_bit(w)));
+                debug_assert!(!solution.is_in_domset(art_point));
+
+                restore_u_covered_to |= graph
+                    .neighbors_of(art_point)
+                    .any(|v: u32| solution.is_in_domset(v));
 
                 break;
             }
+        }
+
+        if !restore_u_covered_to {
+            covered.clear_bit(art_point);
         }
 
         changed

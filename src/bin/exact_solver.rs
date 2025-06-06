@@ -1,6 +1,6 @@
 use std::{fs::File, path::PathBuf};
 
-use dss::reduction::*;
+use dss::{exact::highs_advanced::*, reduction::*};
 
 #[allow(unused_imports)]
 use dss::{
@@ -243,10 +243,11 @@ fn main() -> anyhow::Result<()> {
             }
             Commands::HighsSolverEnum(_) => {
                 info!("Start Highs Solver");
-                let local_sol =
-                    dss::exact::highs::highs_solver(&graph, &covered, &redundant, None, None)
-                        .unwrap();
-                domset.add_nodes(local_sol.iter());
+
+                let mut solver = HighsDominatingSetSolver::new(graph.number_of_nodes());
+                let problem = solver.build_problem(&graph, &covered, &redundant, unit_weight);
+                let local_sol = problem.solve_exact(None).take_solution().unwrap();
+                domset.add_nodes(local_sol.iter().cloned());
                 domset
             }
         }

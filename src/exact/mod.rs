@@ -4,6 +4,8 @@ pub mod sat_solver;
 pub mod highs;
 pub use highs::highs_solver as default_exact_solver;
 
+pub mod highs_advanced;
+
 pub const DEFAULT_SOLVER_IS_FAST: bool = true;
 
 use thiserror::Error;
