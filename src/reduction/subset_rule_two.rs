@@ -58,7 +58,7 @@ impl<
         graph: &mut Graph,
         domset: &mut DominatingSet,
         covered: &mut BitSet,
-        redundant: &mut BitSet,
+        never_select: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
         let n = graph.len();
         assert!(NOT_SET as usize >= n);
@@ -72,7 +72,7 @@ impl<
 
         'outer: for u in graph.vertices() {
             // Nodes need to have at least degree 2 to be an applicable candidate for Rule2
-            if graph.degree_of(u) < 2 || redundant.get_bit(u) {
+            if graph.degree_of(u) < 2 || never_select.get_bit(u) {
                 continue;
             }
 
@@ -112,11 +112,11 @@ impl<
                         // We do not need to push u to type2[v] here as it is guaranteed that we
                         // will reach this expression in the v-iteration of 'outer and u will be
                         // pushed to type2[v] then
-                        redundant.set_bit(u);
+                        never_select.set_bit(u);
                         continue 'outer;
                     }
 
-                    redundant.set_bit(v);
+                    never_select.set_bit(v);
                     self.type2[u as usize].push(v);
                     continue;
                 }
@@ -156,7 +156,7 @@ impl<
                 if !self.nbs.is_empty() {
                     // TBD: possibly check if non_perm_degree[u] == non_perm_degree[v] and we
                     // should break ties in favor of v instead?
-                    redundant.set_bit(v);
+                    never_select.set_bit(v);
                     self.type2[u as usize].push(v);
                 }
 
@@ -218,7 +218,7 @@ impl<
         let mut modified = false;
         for ((ref_u, ref_v), mut cand) in self.possible_reductions.drain(..) {
             // Nodes marked as redundant can not act as witnesses here
-            if redundant.get_bit(ref_u) || redundant.get_bit(ref_v) {
+            if never_select.get_bit(ref_u) || never_select.get_bit(ref_v) {
                 continue;
             }
 
@@ -338,7 +338,7 @@ impl<
             }
 
             // Mark all type(2,3)-nodes as redundant
-            redundant.set_bits(
+            never_select.set_bits(
                 prev_cand
                     .into_iter()
                     .filter(|&u| self.pair_marker2.is_marked_with(u, marker)),
