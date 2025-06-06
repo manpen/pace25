@@ -169,25 +169,6 @@ fn main() -> anyhow::Result<()> {
             &mut never_select,
         );
 
-        changed |= reducer.apply_rule(
-            &mut rule_subset_two,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        if reducer.remove_unnecessary_edges(&mut graph, &mut domset, &mut covered, &mut never_select)
-            == 0
-            && !changed
-        {
-            break;
-        }
-
-        // */
-
-        /*
-
         if changed {
             continue;
         }
@@ -205,7 +186,7 @@ fn main() -> anyhow::Result<()> {
         }
 
         changed |= reducer.apply_rule(
-            &mut rule_subset,
+            &mut rule_subset_two,
             &mut graph,
             &mut domset,
             &mut covered,
@@ -217,7 +198,6 @@ fn main() -> anyhow::Result<()> {
         }
 
         break;
-        */
     }
 
     let mut rule_small_exact = RuleSmallExactReduction;
