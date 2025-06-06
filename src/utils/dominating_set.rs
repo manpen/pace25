@@ -246,7 +246,15 @@ impl DominatingSet {
     /// Returns true if the dominating set is valid, ie. it covers all nodes.
     pub fn is_valid(&self, graph: &impl AdjacencyList) -> bool {
         let covered = self.compute_covered(graph);
-        covered.are_all_set()
+        if covered.are_all_set() {
+            return true;
+        }
+
+        debug!(
+            "Missing nodes: {:?}",
+            covered.iter_cleared_bits().collect_vec()
+        );
+        false
     }
 
     /// Returns true if the dominating set is valid, ie. it covers all nodes.
@@ -257,7 +265,15 @@ impl DominatingSet {
     ) -> bool {
         let mut covered = self.compute_covered(graph);
         covered |= previous_cover;
-        covered.are_all_set()
+        if covered.are_all_set() {
+            return true;
+        }
+
+        debug!(
+            "Missing nodes: {:?}",
+            covered.iter_cleared_bits().collect_vec()
+        );
+        false
     }
 
     /// Writes the dominating set to a writer using 1-based indexing,

@@ -1,16 +1,36 @@
 use core::panic;
+use std::fmt::Debug;
 use std::time::Duration;
 
 use highs::{HighsModelStatus, Model, RowProblem};
 use itertools::Itertools;
 
-use log::debug;
+use crate::prelude::*;
+use stream_bitset::prelude::{BitmaskStreamConsumer, ToBitmaskStream};
 
 use crate::{exact::ExactError, graph::*, utils::DominatingSet};
 const NOT_SET: Node = Node::MAX;
 
-pub fn highs_solver<G: Clone + AdjacencyTest + AdjacencyList>(
+pub fn highs_solver<G: Clone + AdjacencyTest + AdjacencyList + Debug>(
     graph: &G,
+    is_perm_covered: &BitSet,
+    never_select: &BitSet,
+    upper_bound_incl: Option<NumNodes>,
+    timeout: Option<Duration>,
+) -> super::Result<DominatingSet> {
+    highs_solver_with_precious(
+        graph,
+        &[],
+        is_perm_covered,
+        never_select,
+        upper_bound_incl,
+        timeout,
+    )
+}
+
+pub fn highs_solver_with_precious<G: Clone + AdjacencyTest + AdjacencyList + Debug>(
+    graph: &G,
+    precious: &[Node],
     is_perm_covered: &BitSet,
     never_select: &BitSet,
     upper_bound_incl: Option<NumNodes>,
@@ -22,7 +42,7 @@ pub fn highs_solver<G: Clone + AdjacencyTest + AdjacencyList>(
     let mut skip_constraints_of = graph.vertex_bitset_unset();
     let mut skip_terms = 0;
 
-    for u in never_select.iter_set_bits() {
+    for u in (never_select.bitmask_stream() - is_perm_covered).iter_set_bits() {
         if let Some((a, b)) = graph
             .neighbors_of(u)
             .filter(|&v| v != u && !never_select.get_bit(v))
@@ -44,16 +64,25 @@ pub fn highs_solver<G: Clone + AdjacencyTest + AdjacencyList>(
         skip_constraints_of.cardinality()
     );
 
-    let vars = (0..(graph.number_of_nodes() - never_select.cardinality()))
-        .map(|_| pb.add_integer_column(1.0, 0..1))
-        .collect_vec();
+    let mut vars =
+        Vec::with_capacity((graph.number_of_nodes() - never_select.cardinality()) as usize);
 
     let mut old_to_new = vec![NOT_SET; graph.len()];
     let mut new_to_old = Vec::with_capacity(vars.len());
 
+    let precious_weight = 1.0 - 1.0 / (1 + precious.len()) as f64;
+
     for old in never_select.iter_cleared_bits() {
         old_to_new[old as usize] = new_to_old.len() as Node;
         new_to_old.push(old);
+        vars.push(pb.add_integer_column(
+            if precious.contains(&old) {
+                precious_weight
+            } else {
+                1.0
+            },
+            0..=1,
+        ))
     }
 
     let mut num_terms = 0;

@@ -1,6 +1,7 @@
 use std::{fs::File, path::PathBuf};
 
-use dss::reduction::{RuleIsolatedReduction, RuleRedundantCover, RuleVertexCover};
+use dss::{exact::highs_advanced::*, reduction::*};
+
 #[allow(unused_imports)]
 use dss::{
     exact::{naive::naive_solver, sat_solver::SolverBackend},
@@ -55,11 +56,7 @@ pub enum Commands {
 
 impl Default for Commands {
     fn default() -> Self {
-        #[cfg(feature = "highs")]
-        return Commands::HighsSolverEnum(Default::default());
-
-        #[cfg(not(feature = "highs"))]
-        return Commands::NaiveSolverEnum(Default::default());
+        Commands::HighsSolverEnum(Default::default())
     }
 }
 
@@ -124,6 +121,7 @@ fn main() -> anyhow::Result<()> {
     let mut rule_long_path = LongPathReduction;
     let mut rule_isolated = RuleIsolatedReduction;
     let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
+    let mut rule_articulation = RuleArticulationPoint::new(graph.number_of_nodes());
 
     loop {
         let mut changed = false;
@@ -162,6 +160,18 @@ fn main() -> anyhow::Result<()> {
 
         changed |= reducer.apply_rule(
             &mut rule_redundant,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+
+        if changed {
+            continue;
+        }
+
+        changed |= reducer.apply_rule(
+            &mut rule_articulation,
             &mut graph,
             &mut domset,
             &mut covered,
@@ -233,16 +243,12 @@ fn main() -> anyhow::Result<()> {
             }
             Commands::HighsSolverEnum(_) => {
                 info!("Start Highs Solver");
-                #[cfg(feature = "highs")]
-                {
-                    let local_sol =
-                        dss::exact::highs::highs_solver(&graph, &covered, &redundant, None, None)
-                            .unwrap();
-                    domset.add_nodes(local_sol.iter());
-                    domset
-                }
-                #[cfg(not(feature = "highs"))]
-                panic!("Compiled without highs feature");
+
+                let mut solver = HighsDominatingSetSolver::new(graph.number_of_nodes());
+                let problem = solver.build_problem(&graph, &covered, &redundant, unit_weight);
+                let local_sol = problem.solve_exact(None).take_solution().unwrap();
+                domset.add_nodes(local_sol.iter().cloned());
+                domset
             }
         }
     } else {

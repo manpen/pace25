@@ -2,6 +2,8 @@ pub mod long_path;
 pub use long_path::LongPathReduction;
 pub mod rule_one_reduction;
 pub use rule_one_reduction::RuleOneReduction;
+pub mod two_hop_rule_two_reduction;
+pub use two_hop_rule_two_reduction::TwoHopRuleTwoReduction;
 pub mod small_exact;
 pub use small_exact::RuleSmallExactReduction;
 pub mod reducer;
@@ -14,6 +16,8 @@ pub mod vertex_cover;
 pub use vertex_cover::RuleVertexCover;
 pub mod red_cover;
 pub use red_cover::RuleRedundantCover;
+pub mod articulation;
+pub use articulation::RuleArticulationPoint;
 
 use crate::{graph::BitSet, utils::DominatingSet};
 

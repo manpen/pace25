@@ -312,6 +312,11 @@ pub trait ColoredAdjacencyList: AdjacencyList {
 pub trait AdjacencyTest {
     /// Returns *true* exactly if the graph contains the directed edge (u, v)
     fn has_edge(&self, u: Node, v: Node) -> bool;
+
+    /// Allows multiple edge-queries for a single node
+    fn has_neighbors<const N: usize>(&self, u: Node, neighbors: [Node; N]) -> [bool; N] {
+        neighbors.map(|v| self.has_edge(u, v))
+    }
 }
 
 pub trait ColoredAdjacencyTest: AdjacencyTest {

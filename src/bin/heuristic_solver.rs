@@ -8,10 +8,7 @@ use dss::{
     io::PaceWriter as _,
     log::build_pace_logger_for_level,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
-    reduction::{
-        LongPathReduction, Reducer, RuleIsolatedReduction, RuleOneReduction, RuleRedundantCover,
-        RuleSmallExactReduction, RuleSubsetReduction, RuleVertexCover,
-    },
+    reduction::*,
     utils::{DominatingSet, signal_handling},
 };
 use log::info;
@@ -169,6 +166,7 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
     let mut rule_long_path = LongPathReduction;
     let mut rule_isolated = RuleIsolatedReduction;
     let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
+    let mut rule_articulation = RuleArticulationPoint::new(graph.number_of_nodes());
 
     loop {
         let mut changed = false;
@@ -207,6 +205,18 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
 
         changed |= reducer.apply_rule(
             &mut rule_redundant,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut redundant,
+        );
+
+        if changed {
+            continue;
+        }
+
+        changed |= reducer.apply_rule(
+            &mut rule_articulation,
             &mut graph,
             &mut domset,
             &mut covered,
