@@ -179,9 +179,6 @@ mod test {
 
         let mut remaining_graphs = 300;
 
-        let mut duration_naive = 0.0;
-        let mut duration_highs = 0.0;
-
         loop {
             let graph = AdjArray::random_gnp(&mut rng, NODES, 3. / NODES as f64);
 
@@ -204,14 +201,9 @@ mod test {
                 }
             }
 
-            let start_naive = Instant::now();
             let naive = naive_solver(&graph, &covered, &redundant, None, None).unwrap();
 
-            let start_highs = Instant::now();
             let highs = highs_solver(&graph, &covered, &redundant, None, None).unwrap();
-
-            duration_highs += start_highs.elapsed().as_secs_f64();
-            duration_naive += start_highs.duration_since(start_naive).as_secs_f64();
 
             assert!(highs.is_valid_given_previous_cover(&graph, &covered));
             assert_eq!(naive.len(), highs.len());
