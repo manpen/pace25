@@ -315,7 +315,7 @@ impl RuleSmallExactReduction {
 
             if let SolverResult::Optimal(solved) = problem.solve_exact(Some(Duration::from_secs(1)))
             {
-                domset.add_nodes(solved.into_iter());
+                domset.fix_nodes(solved.into_iter());
                 covered.set_bits(nodes.into_iter());
                 num_solved += 1;
             } else {
