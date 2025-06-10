@@ -170,16 +170,11 @@ impl<G: GraphEdgeOrder + AdjacencyList + GraphEdgeEditing + UnsafeGraphEditing +
             if domset.is_in_domset(u) || !covered.get_bit(u) {
                 continue;
             }
-
-            let mut nbs = graph.neighbors_of(u).filter(|x| !covered.get_bit(*x));
-
-            let nb1 = nbs.next();
-            let nb2 = nbs.next();
-
-            // Iterator no longer needed; potentially save time by not consuming fully
-            std::mem::drop(nbs);
-
-            if let (Some(v), None) = (nb1, nb2) {
+            if let Some((v,)) = graph
+                .neighbors_of(u)
+                .filter(|x| !covered.get_bit(*x))
+                .collect_tuple()
+            {
                 graph.remove_edge(u, v);
                 half_edges_removed += 2;
 
