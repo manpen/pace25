@@ -161,8 +161,6 @@ pub fn highs_solver_with_precious<G: Clone + AdjacencyTest + AdjacencyList + Deb
 
 #[cfg(test)]
 mod test {
-    use std::time::Instant;
-
     use super::*;
     use rand::{Rng, SeedableRng};
     use rand_pcg::Pcg64Mcg;
