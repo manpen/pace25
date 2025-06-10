@@ -79,7 +79,7 @@ impl<Graph: AdjacencyList + NeighborsSlice> ReductionRule<Graph> for RuleRedunda
             {
                 for v in graph
                     .neighbors_of(node)
-                    .filter(|&v| never_select.get_bit(v) && v != u)
+                    .filter(|&v| never_select.get_bit(v) && v != u && !covered.get_bit(v))
                 {
                     self.candidates.push(v);
                     self.offsets.push(0);
