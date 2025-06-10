@@ -28,7 +28,9 @@ impl<G> Default for Reducer<G> {
     }
 }
 
-impl<G: GraphEdgeOrder + AdjacencyList + GraphEdgeEditing + UnsafeGraphEditing> Reducer<G> {
+impl<G: GraphEdgeOrder + AdjacencyList + GraphEdgeEditing + UnsafeGraphEditing + std::fmt::Debug>
+    Reducer<G>
+{
     pub fn new() -> Self {
         Default::default()
     }
@@ -161,32 +163,34 @@ impl<G: GraphEdgeOrder + AdjacencyList + GraphEdgeEditing + UnsafeGraphEditing> 
         }
 
         // Delete edges between nodes (u,v) where u is covered and v is the *only* uncovered neighbor of u
+        // u is guaranteed to not be redundant
         //
         // Rest of deletions are done in post-processing
-        for u in covered.iter_set_bits().filter(|&u| !domset.is_in_domset(u)) {
-            let mut nbs = graph.neighbors_of(u).filter(|x| !covered.get_bit(*x));
-
-            let nb1 = nbs.next();
-            let nb2 = nbs.next();
-
-            // Iterator no longer needed; potentially save time by not consuming fully
-            std::mem::drop(nbs);
-
-            if let (Some(v), None) = (nb1, nb2) {
+        for u in graph.vertices_range() {
+            if domset.is_in_domset(u) || !covered.get_bit(u) {
+                continue;
+            }
+            if let Some((v,)) = graph
+                .neighbors_of(u)
+                .filter(|x| !covered.get_bit(*x))
+                .collect_tuple()
+            {
                 graph.remove_edge(u, v);
                 half_edges_removed += 2;
+
+                // If the only uncovered neighbor is now a singleton, it is optimal to put u into
+                // the dominating set (instead of v) as u is not redundant
+                if graph.degree_of(v) == 0 {
+                    domset.fix_node(u);
+                    covered.set_bit(v);
+                }
             }
         }
 
+        // Fix remaining singletons
         covered.update_cleared_bits(|u| {
             let is_singleton = graph.degree_of(u) == 0;
             if is_singleton {
-                // If redundant[u] = 1, then u was dominated by another node v that was removed in
-                // this iteration along with every other neighbor of u because u was the only
-                // uncovered neighbor of those nodes.
-                //
-                // It would be equally optimal to put v into the dominating set instead, but at
-                // this point, it does not matter.
                 domset.fix_node(u);
             }
             is_singleton

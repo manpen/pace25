@@ -119,7 +119,7 @@ impl<G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'_, G> {
     fn add_to_solution(&mut self, u: Node) {
         assert!(!self.never_select.get_bit(u));
         self.covered.set_bits(self.graph.closed_neighbors_of(u));
-        self.domset.add_node(u);
+        self.domset.fix_node(u);
     }
 
     fn greedy_cover_into<T: Borrow<Node>>(
@@ -311,7 +311,7 @@ impl<G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'_, G> {
             }
 
             let add = path[(i + 1).min(path.len() - 1)];
-            self.domset.add_node(add);
+            self.domset.fix_node(add);
             self.covered.set_bit(add);
             if i + 2 < path.len() {
                 self.covered.set_bit(path[i + 2]);

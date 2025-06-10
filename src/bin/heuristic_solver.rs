@@ -238,25 +238,31 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
             &mut never_select,
         );
 
+        {
+            // TBD: replace due to performance
+            let mut red_twin: HashSet<Edge> =
+                HashSet::with_capacity(never_select.cardinality() as usize);
+            for u in never_select.iter_set_bits() {
+                if let Some((a, b)) = graph.neighbors_of(u).collect_tuple() {
+                    let norm = Edge(a, b).normalized();
+                    if !red_twin.insert(norm) {
+                        covered.set_bit(u);
+                    }
+                }
+            }
+            reducer.remove_unnecessary_edges(
+                &mut graph,
+                &mut domset,
+                &mut covered,
+                &mut never_select,
+            );
+        }
+
         if changed {
             continue;
         }
 
         break;
-    }
-
-    {
-        let mut red_twin: HashSet<Edge> =
-            HashSet::with_capacity(never_select.cardinality() as usize);
-        for u in never_select.iter_set_bits() {
-            if let Some((a, b)) = graph.neighbors_of(u).collect_tuple() {
-                let norm = Edge(a, b).normalized();
-                if !red_twin.insert(norm) {
-                    covered.set_bit(u);
-                }
-            }
-        }
-        reducer.remove_unnecessary_edges(&mut graph, &mut domset, &mut covered, &mut never_select);
     }
 
     let mut rule_small_exact = RuleSmallExactReduction::new_with_cache(high_cache.clone());

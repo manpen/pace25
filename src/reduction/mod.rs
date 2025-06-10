@@ -8,6 +8,8 @@ pub mod reducer;
 pub use reducer::Reducer;
 pub mod subset;
 pub use subset::RuleSubsetReduction;
+pub mod redundant_subset;
+pub use redundant_subset::RuleRedundantSubsetReduction;
 pub mod isolated;
 pub use isolated::RuleIsolatedReduction;
 pub mod vertex_cover;
