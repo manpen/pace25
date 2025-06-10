@@ -205,7 +205,12 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
             }
-            reducer.remove_unnecessary_edges(&mut graph, &mut domset, &mut covered, &mut never_select);
+            reducer.remove_unnecessary_edges(
+                &mut graph,
+                &mut domset,
+                &mut covered,
+                &mut never_select,
+            );
         }
 
         if changed {
