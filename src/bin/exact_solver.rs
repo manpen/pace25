@@ -1,4 +1,4 @@
-use std::{fs::File, path::PathBuf, sync::Arc};
+use std::{collections::HashSet, fs::File, path::PathBuf, sync::Arc};
 
 use dss::{exact::highs_advanced::*, reduction::*};
 
@@ -11,6 +11,7 @@ use dss::{
         LongPathReduction, Reducer, RuleOneReduction, RuleSmallExactReduction, RuleSubsetReduction,
     },
 };
+use itertools::Itertools;
 use log::info;
 use structopt::StructOpt;
 
@@ -124,7 +125,6 @@ fn main() -> anyhow::Result<()> {
     let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
     let mut rule_articulation = RuleArticulationPoint::new_with_cache(high_cache.clone());
     let mut rule_subset = RuleSubsetReduction::new(graph.number_of_nodes());
-    let mut rule_redundant_subset = RuleRedundantSubsetReduction::new(graph.number_of_nodes());
 
     loop {
         let mut changed = false;
@@ -193,17 +193,25 @@ fn main() -> anyhow::Result<()> {
             &mut never_select,
         );
 
-        if changed {
-            continue;
+        {
+            // TBD: replace due to performance
+            let mut red_twin: HashSet<Edge> =
+                HashSet::with_capacity(never_select.cardinality() as usize);
+            for u in never_select.iter_set_bits() {
+                if let Some((a, b)) = graph.neighbors_of(u).collect_tuple() {
+                    let norm = Edge(a, b).normalized();
+                    if !red_twin.insert(norm) {
+                        covered.set_bit(u);
+                    }
+                }
+            }
+            reducer.remove_unnecessary_edges(
+                &mut graph,
+                &mut domset,
+                &mut covered,
+                &mut never_select,
+            );
         }
-
-        changed |= reducer.apply_rule(
-            &mut rule_redundant_subset,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
 
         if changed {
             continue;

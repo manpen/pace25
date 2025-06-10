@@ -1,7 +1,3 @@
-use std::collections::HashSet;
-
-use itertools::Itertools;
-
 use crate::{
     exact::DominatingSet,
     graph::*,
@@ -48,20 +44,6 @@ impl<Graph: AdjacencyList + NeighborsSlice> ReductionRule<Graph> for RuleRedunda
             }
         }
 
-        {
-            let mut red_twin: HashSet<Edge> =
-                HashSet::with_capacity(never_select.cardinality() as usize);
-            for u in never_select.iter_set_bits() {
-                if let Some((a, b)) = graph.neighbors_of(u).collect_tuple() {
-                    let norm = Edge(a, b).normalized();
-                    if !red_twin.insert(norm) {
-                        covered.set_bit(u);
-                    }
-                }
-            }
-        }
-
-
         // Sort adjacency lists to allow binary searching later on
         for u in graph.vertices_range() {
             graph.as_neighbors_slice_mut(u).sort_unstable();
@@ -79,7 +61,7 @@ impl<Graph: AdjacencyList + NeighborsSlice> ReductionRule<Graph> for RuleRedunda
             {
                 for v in graph
                     .neighbors_of(node)
-                    .filter(|&v| never_select.get_bit(v) && v != u && !covered.get_bit(v))
+                    .filter(|&v| never_select.get_bit(v) && v != u)
                 {
                     self.candidates.push(v);
                     self.offsets.push(0);
