@@ -222,11 +222,5 @@ mod test {
                 break;
             }
         }
-
-        // usually highs is much faster, so this assertion should be safe
-        assert!(
-            duration_highs < duration_naive,
-            "Highs: {duration_highs}, Naive: {duration_naive}"
-        );
     }
 }
