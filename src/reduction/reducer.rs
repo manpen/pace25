@@ -226,3 +226,35 @@ impl<G: GraphEdgeOrder + AdjacencyList + GraphEdgeEditing + UnsafeGraphEditing +
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::graph::NumNodes;
+    use rand::SeedableRng;
+    use rand_pcg::Pcg64Mcg;
+
+    // This Rule only claims to have done something;
+    // thus if an error occurs, we now that remove_unnecessary_edges is broken.
+    struct NopRule;
+    impl<G> ReductionRule<G> for NopRule {
+        const NAME: &str = "NopRule";
+
+        fn apply_rule(
+            &mut self,
+            _graph: &mut G,
+            _domset: &mut DominatingSet,
+            _covered: &mut BitSet,
+            _never_select: &mut BitSet,
+        ) -> (bool, Option<Box<dyn Postprocessor<G>>>) {
+            (true, None::<Box<dyn Postprocessor<G>>>)
+        }
+    }
+
+    #[test]
+    fn generic_before_and_after() {
+        let mut rng = Pcg64Mcg::seed_from_u64(0x1235342);
+        const NODES: NumNodes = 20;
+        crate::testing::test_before_and_after_rule(&mut rng, |_| NopRule, false, NODES, 400);
+    }
+}

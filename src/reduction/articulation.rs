@@ -12,7 +12,7 @@ use crate::{
 use super::*;
 
 const SOLVER_TIMEOUT: Duration = Duration::from_secs(1);
-const MAX_CC_SIZE: Node = 200;
+const MAX_CC_SIZE: Node = 100;
 
 pub struct RuleArticulationPoint<G> {
     highs_cache: Option<Arc<HighsCache>>,
@@ -79,6 +79,7 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> ReductionRule<Graph
 
         debug_assert!(domset.iter().all(|u| covered.get_bit(u)));
 
+        let mut touched = graph.vertex_bitset_unset();
         let mut changed = false;
         for u in aps.iter_set_bits() {
             if never_select.get_bit(u) {
@@ -89,6 +90,7 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> ReductionRule<Graph
                     never_select,
                     &mut solver,
                     u,
+                    &mut touched,
                 ) {
                     changed = true;
                     continue;
@@ -100,6 +102,7 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> ReductionRule<Graph
                 never_select,
                 &mut solver,
                 u,
+                &mut touched,
             ) {
                 changed = true;
                 continue;
@@ -121,6 +124,7 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoi
         never_select: &BitSet,
         solver: &mut HighsDominatingSetSolver,
         art_point: u32,
+        touched: &mut BitSet,
     ) -> bool {
         let mut restore_u_covered_to = covered.set_bit(art_point);
 
@@ -133,9 +137,14 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoi
             if cc.len() > MAX_CC_SIZE as usize {
                 continue;
             }
+
+            if cc.iter().any(|&u| touched.set_bit(u)) {
+                continue;
+            }
+
             cc.push(art_point);
 
-            let eps = 0.3 / cc.len() as f64;
+            let eps = (2.0 / (1 + cc.len()) as f64).min(0.1);
             let eps_n = eps / (1 + graph.degree_of(art_point)) as f64;
 
             let problem = solver.build_problem_of_subgraph(
@@ -186,6 +195,7 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoi
         never_select: &BitSet,
         solver: &mut HighsDominatingSetSolver,
         art_point: u32,
+        touched: &mut BitSet,
     ) -> bool {
         // we only support uncovered redundant (those nodes are dealt with by the reducer)
         if covered.set_bit(art_point) {
@@ -200,6 +210,9 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoi
 
             let mut cc = search.take(1 + MAX_CC_SIZE as usize).collect_vec();
             if cc.len() > MAX_CC_SIZE as usize {
+                continue;
+            }
+            if cc.iter().any(|&u| touched.set_bit(u)) {
                 continue;
             }
 
