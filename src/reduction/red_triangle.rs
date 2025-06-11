@@ -1,3 +1,5 @@
+// THIS RULE IS SUPERSEEDED BY RedundantCover
+
 use itertools::Itertools;
 
 use crate::graph::*;
