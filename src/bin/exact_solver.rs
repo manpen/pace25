@@ -1,17 +1,14 @@
-use std::{collections::HashSet, fs::File, path::PathBuf, sync::Arc};
+use std::{fs::File, path::PathBuf, sync::Arc};
 
-use dss::{exact::highs_advanced::*, reduction::*};
+use dss::exact::highs_advanced::*;
 
 #[allow(unused_imports)]
 use dss::{
     exact::{naive::naive_solver, sat_solver::SolverBackend},
     log::build_pace_logger_for_level,
     prelude::*,
-    reduction::{
-        LongPathReduction, Reducer, RuleOneReduction, RuleSmallExactReduction, RuleSubsetReduction,
-    },
+    reduction::*,
 };
-use itertools::Itertools;
 use log::info;
 use structopt::StructOpt;
 
@@ -70,6 +67,9 @@ struct Opts {
 
     #[structopt(subcommand)]
     cmd: Option<Commands>,
+
+    #[structopt(short = "q")]
+    no_output: bool,
 }
 
 fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<AdjArray> {
@@ -111,107 +111,46 @@ fn main() -> anyhow::Result<()> {
     let mut domset = DominatingSet::new(graph.number_of_nodes());
 
     // singleton nodes need to be fixed
-    domset.fix_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
+    domset.add_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
 
     let mut reducer = Reducer::new();
     let mut never_select = BitSet::new(graph.number_of_nodes());
+
+    macro_rules! apply {
+        ($rule:expr) => {
+            reducer.apply_rule(
+                &mut $rule,
+                &mut graph,
+                &mut domset,
+                &mut covered,
+                &mut never_select,
+            )
+        };
+    }
 
     let high_cache = Arc::new(HighsCache::default());
 
     let mut rule_vertex_cover = RuleVertexCover::new(graph.number_of_nodes());
     let mut rule_one = RuleOneReduction::new(graph.number_of_nodes());
-    let mut rule_long_path = LongPathReduction;
+    let mut rule_long_path = LongPathReduction::new(graph.number_of_nodes());
     let mut rule_isolated = RuleIsolatedReduction;
-    let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
+    let mut rule_red_cover = RuleRedundantCover::new(graph.number_of_nodes());
     let mut rule_articulation = RuleArticulationPoint::new_with_cache(high_cache.clone());
     let mut rule_subset = RuleSubsetReduction::new(graph.number_of_nodes());
+    let mut rule_red_twin = RuleRedTwin::new(graph.number_of_nodes());
 
     loop {
         let mut changed = false;
 
-        changed |= reducer.apply_rule(
-            &mut rule_vertex_cover,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        changed |= reducer.apply_rule(
-            &mut rule_one,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        changed |= reducer.apply_rule(
-            &mut rule_long_path,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        changed |= reducer.apply_rule(
-            &mut rule_isolated,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        changed |= reducer.apply_rule(
-            &mut rule_redundant,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        if changed {
-            continue;
-        }
-
-        changed |= reducer.apply_rule(
-            &mut rule_articulation,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        if changed {
-            continue;
-        }
-
-        changed |= reducer.apply_rule(
-            &mut rule_subset,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        {
-            // TBD: replace due to performance
-            let mut red_twin: HashSet<Edge> =
-                HashSet::with_capacity(never_select.cardinality() as usize);
-            for u in never_select.iter_set_bits() {
-                if let Some((a, b)) = graph.neighbors_of(u).collect_tuple() {
-                    let norm = Edge(a, b).normalized();
-                    if !red_twin.insert(norm) {
-                        covered.set_bit(u);
-                    }
-                }
-            }
-            reducer.remove_unnecessary_edges(
-                &mut graph,
-                &mut domset,
-                &mut covered,
-                &mut never_select,
-            );
-        }
+        changed |= apply!(rule_one);
+        changed |= apply!(rule_red_twin);
+        changed |= apply!(rule_vertex_cover);
+        changed |= apply!(rule_long_path);
+        changed |= apply!(rule_isolated);
+        changed |= apply!(rule_subset);
+        changed |= apply!(rule_red_twin);
+        changed |= apply!(rule_red_cover);
+        changed |= apply!(rule_articulation);
 
         if changed {
             continue;
@@ -220,16 +159,9 @@ fn main() -> anyhow::Result<()> {
         break;
     }
 
-    let mut rule_small_exact = RuleSmallExactReduction::new_with_cache(high_cache.clone());
-
     if graph.number_of_edges() > 0 {
-        reducer.apply_rule(
-            &mut rule_small_exact,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
+        let mut rule_small_exact = RuleSmallExactReduction::new_with_cache(high_cache.clone());
+        apply!(rule_small_exact);
     }
 
     let mut domset = if graph.number_of_edges() > 0 {
@@ -268,7 +200,11 @@ fn main() -> anyhow::Result<()> {
     reducer.post_process(&mut graph, &mut domset, &mut covered, &mut never_select);
 
     assert!(domset.is_valid(&org_graph), "Produced DS is not valid");
-    write_solution(&domset, &opts.output)?;
+    if opts.no_output {
+        info!("Final solution size: {}", domset.len());
+    } else {
+        write_solution(&domset, &opts.output)?;
+    }
 
     Ok(())
 }

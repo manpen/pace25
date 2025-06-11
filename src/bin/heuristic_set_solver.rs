@@ -77,7 +77,7 @@ fn apply_reduction_rules(
     let mut covered = BitSet::new_with_bits_set(graph.number_of_nodes(), 0..orig_number_nodes);
     let mut domset = DominatingSet::new(graph.number_of_nodes());
 
-    domset.fix_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
+    domset.add_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
 
     let mut reducer = Reducer::new();
     let mut never_select = BitSet::new(graph.number_of_nodes());
@@ -86,7 +86,7 @@ fn apply_reduction_rules(
 
     let mut rule_vertex_cover = RuleVertexCover::new(graph.number_of_nodes());
     let mut rule_one = RuleOneReduction::new(graph.number_of_nodes());
-    let mut rule_long_path = LongPathReduction;
+    let mut rule_long_path = LongPathReduction::new(graph.number_of_nodes());
     let mut rule_isolated = RuleIsolatedReduction;
     let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
     let mut rule_articulation = RuleArticulationPoint::new_with_cache(high_cache.clone());
