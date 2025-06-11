@@ -20,8 +20,8 @@ impl<Graph: AdjacencyList + 'static> ReductionRule<Graph> for RuleIsolatedReduct
 
         let mut changed = false;
 
-        for u in graph.vertices() {
-            if domset.is_in_domset(u) || never_select.get_bit(u) || covered.get_bit(u) {
+        for u in never_select.iter_cleared_bits() {
+            if covered.get_bit(u) || domset.is_in_domset(u) {
                 continue;
             }
 
