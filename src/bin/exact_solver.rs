@@ -2,6 +2,9 @@ use std::{fs::File, path::PathBuf, sync::Arc};
 
 use dss::exact::highs_advanced::*;
 
+use dss::reduction::{
+    RuleIsolatedReduction, RuleRedundantCover, RuleVertexCover, SubsetRuleTwoReduction,
+};
 #[allow(unused_imports)]
 use dss::{
     exact::{naive::naive_solver, sat_solver::SolverBackend},
@@ -138,6 +141,7 @@ fn main() -> anyhow::Result<()> {
     let mut rule_articulation = RuleArticulationPoint::new_with_cache(high_cache.clone());
     let mut rule_subset = RuleSubsetReduction::new(graph.number_of_nodes());
     let mut rule_red_twin = RuleRedTwin::new(graph.number_of_nodes());
+    let mut rule_subset_two = SubsetRuleTwoReduction::new(graph.number_of_nodes());
 
     loop {
         let mut changed = false;
@@ -151,6 +155,12 @@ fn main() -> anyhow::Result<()> {
         changed |= apply!(rule_red_twin);
         changed |= apply!(rule_red_cover);
         changed |= apply!(rule_articulation);
+
+        if changed {
+            continue;
+        }
+
+        changed |= apply!(rule_subset_two);
 
         if changed {
             continue;
