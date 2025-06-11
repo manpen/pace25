@@ -60,8 +60,6 @@ impl<
         covered: &mut BitSet,
         never_select: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
-        let mut modified = false;
-
         let n = graph.len();
         assert!(NOT_SET as usize >= n);
 
@@ -71,6 +69,8 @@ impl<
         for u in 0..n {
             self.type2[u].clear();
         }
+
+        let prev_never_select = never_select.cardinality();
 
         'outer: for u in graph.vertices() {
             // Nodes need to have at least degree 2 to be an applicable candidate for Rule2
@@ -105,12 +105,12 @@ impl<
                 // See if N is empty, ie. every neighbor of v is marked by u
                 let first_neighbor = nbs.next();
                 if first_neighbor.is_none() {
-                    modified = true;
                     // u and v are twins: break ties by index and covered-state (this rule prefers
                     // uncovered neighbors (with smaller index) as fixed nodes)
                     if graph.degree_of(u) == graph.degree_of(v)
                         && v > u
                         && (!covered.get_bit(v) || covered.get_bit(u))
+                        && !never_select.get_bit(v)
                     {
                         // We do not need to push u to type2[v] here as it is guaranteed that we
                         // will reach this expression in the v-iteration of 'outer and u will be
@@ -159,7 +159,6 @@ impl<
                 if !self.nbs.is_empty() {
                     // TBD: possibly check if non_perm_degree[u] == non_perm_degree[v] and we
                     // should break ties in favor of v instead?
-                    modified = true;
                     never_select.set_bit(v);
                     self.type2[u as usize].push(v);
                 }
@@ -172,6 +171,8 @@ impl<
                 }
             }
         }
+
+        let mut modified = prev_never_select != never_select.cardinality();
 
         // Early return if no candidates were found (redundant-markers still could have been applied)
         if self.candidates.is_empty() {
