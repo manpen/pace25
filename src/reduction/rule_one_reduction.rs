@@ -344,6 +344,7 @@ mod tests {
         crate::testing::test_before_and_after_rule(
             &mut rng,
             |_| RuleOneReduction::new(NODES),
+            false,
             NODES,
             400,
         );

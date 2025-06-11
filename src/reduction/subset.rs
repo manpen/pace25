@@ -153,6 +153,20 @@ mod test {
         crate::testing::test_before_and_after_rule(
             &mut rng,
             |_| RuleSubsetReduction::new(NODES),
+            false,
+            NODES,
+            400,
+        );
+    }
+
+    #[test]
+    fn generic_before_and_after_exhaust() {
+        let mut rng = Pcg64Mcg::seed_from_u64(0x34567334);
+        const NODES: NumNodes = 20;
+        crate::testing::test_before_and_after_rule(
+            &mut rng,
+            |_| RuleSubsetReduction::new(NODES),
+            true,
             NODES,
             400,
         );

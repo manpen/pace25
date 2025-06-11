@@ -46,6 +46,7 @@ pub fn generate_random_graph_stream(
 pub fn test_before_and_after_rule<C: FnMut(&AdjArray) -> R, R: ReductionRule<AdjArray>>(
     rng: &mut impl Rng,
     mut rule_cons: C,
+    exhaustively: bool,
     nodes: NumNodes,
     attempts: u32,
 ) {
@@ -69,13 +70,23 @@ pub fn test_before_and_after_rule<C: FnMut(&AdjArray) -> R, R: ReductionRule<Adj
         );
         let mut rule = rule_cons(&graph);
 
-        let changed = reducer.apply_rule(
-            &mut rule,
-            &mut graph,
-            &mut domset_after_rule,
-            &mut covered,
-            &mut never_select,
-        );
+        let changed = if exhaustively {
+            reducer.apply_rule_exhaustively(
+                &mut rule,
+                &mut graph,
+                &mut domset_after_rule,
+                &mut covered,
+                &mut never_select,
+            ) > 0
+        } else {
+            reducer.apply_rule(
+                &mut rule,
+                &mut graph,
+                &mut domset_after_rule,
+                &mut covered,
+                &mut never_select,
+            )
+        };
         let domset_directly_after_rule = domset_after_rule.clone();
         num_applicable += changed as u32;
 

@@ -255,6 +255,6 @@ mod test {
     fn generic_before_and_after() {
         let mut rng = Pcg64Mcg::seed_from_u64(0x1235342);
         const NODES: NumNodes = 20;
-        crate::testing::test_before_and_after_rule(&mut rng, |_| NopRule, NODES, 400);
+        crate::testing::test_before_and_after_rule(&mut rng, |_| NopRule, false, NODES, 400);
     }
 }

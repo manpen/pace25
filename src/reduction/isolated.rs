@@ -47,6 +47,25 @@ mod test {
     fn generic_before_and_after() {
         let mut rng = Pcg64Mcg::seed_from_u64(0x1235342);
         const NODES: NumNodes = 20;
-        crate::testing::test_before_and_after_rule(&mut rng, |_| RuleIsolatedReduction, NODES, 400);
+        crate::testing::test_before_and_after_rule(
+            &mut rng,
+            |_| RuleIsolatedReduction,
+            false,
+            NODES,
+            400,
+        );
+    }
+
+    #[test]
+    fn generic_before_and_after_exhaust() {
+        let mut rng = Pcg64Mcg::seed_from_u64(0x12353742);
+        const NODES: NumNodes = 20;
+        crate::testing::test_before_and_after_rule(
+            &mut rng,
+            |_| RuleIsolatedReduction,
+            true,
+            NODES,
+            400,
+        );
     }
 }

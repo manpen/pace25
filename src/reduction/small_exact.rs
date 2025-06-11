@@ -126,7 +126,7 @@ impl<Graph: Clone + AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> 
         let mut small_ccs = Vec::with_capacity(128);
         let mut walker = ConnectedComponentWalker::new(graph.number_of_nodes(), Some(MAX_CC_SIZE));
 
-        let mut uncovered = Vec::with_capacity(1 + MAX_UNCOVERED_SIZE as usize);
+        let mut uncovered: Vec<Node> = Vec::with_capacity(1 + MAX_UNCOVERED_SIZE as usize);
 
         let ds_size_before = domset.len();
 
@@ -366,6 +366,22 @@ mod test {
         crate::testing::test_before_and_after_rule(
             &mut rng,
             |_| RuleSmallExactReduction::new(),
+            false,
+            NODES,
+            400,
+        );
+    }
+
+    #[test]
+    fn generic_before_and_after_exhaust() {
+        // this test does not make a terrible lot of sense (as cc are either completely removed or remain untouched).
+        // but let's be sure that we did not miss anything
+        let mut rng = Pcg64Mcg::seed_from_u64(0x43538092);
+        const NODES: NumNodes = 20;
+        crate::testing::test_before_and_after_rule(
+            &mut rng,
+            |_| RuleSmallExactReduction::new(),
+            true,
             NODES,
             400,
         );
