@@ -20,6 +20,8 @@ pub mod articulation;
 pub use articulation::RuleArticulationPoint;
 pub mod red_triangle;
 pub use red_triangle::RuleRedTriangle;
+pub mod red_twin;
+pub use red_twin::RuleRedTwin;
 
 use crate::{graph::BitSet, utils::DominatingSet};
 
