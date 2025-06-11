@@ -378,7 +378,10 @@ impl<
             }
         }
 
-        (modified, None::<Box<dyn Postprocessor<Graph>>>)
+        (
+            modified || prev_never_select != never_select.cardinality(),
+            None::<Box<dyn Postprocessor<Graph>>>,
+        )
     }
 }
 
@@ -423,7 +426,7 @@ mod test {
                 let (modified, _) =
                     rule.apply_rule(&mut graph, &mut domset, &mut covered, &mut redundant);
 
-                assert!(!modified);
+                assert!(modified);
                 assert_eq!(domset.len(), 0);
                 assert_eq!(covered.cardinality(), 0);
                 assert_eq!(redundant.cardinality(), n);
@@ -460,7 +463,7 @@ mod test {
                 let (modified, _) =
                     rule.apply_rule(&mut graph, &mut domset, &mut covered, &mut redundant);
 
-                assert!(!modified);
+                assert!(modified);
                 assert_eq!(domset.len(), 0);
                 assert_eq!(covered.cardinality(), 0);
                 assert_eq!(redundant.cardinality(), n);
@@ -605,7 +608,7 @@ mod test {
                 let (modified, _) =
                     rule.apply_rule(&mut graph, &mut domset, &mut covered, &mut redundant);
 
-                assert!(!modified);
+                assert!(modified);
                 assert_eq!(domset.len(), 0);
                 assert_eq!(covered.cardinality(), 0);
                 assert_eq!(redundant.cardinality(), n - 1);
