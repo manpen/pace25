@@ -764,6 +764,7 @@ mod tests {
                     algo.step()
                 }
 
+                assert!(algo.is_correct().is_ok());
                 algo.best_known_solution().unwrap()
             };
 
@@ -812,6 +813,7 @@ mod tests {
                     algo.step()
                 }
 
+                assert!(algo.is_correct().is_ok());
                 algo.best_known_solution().unwrap()
             };
 
@@ -855,6 +857,7 @@ mod tests {
                     algo.step()
                 }
 
+                assert!(algo.is_correct().is_ok());
                 algo.best_known_solution().unwrap()
             };
 
