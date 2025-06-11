@@ -41,8 +41,6 @@ pub struct RuleOneReduction {
     processed: BitSet,
     /// Number of uncovered nodes in closed neighborhood
     non_perm_degree: Vec<NumNodes>,
-    /// List of nodes with at least one Type3-Neighbor
-    selected: Vec<Node>,
 }
 
 impl RuleOneReduction {
@@ -54,7 +52,6 @@ impl RuleOneReduction {
             type2_nodes: BitSet::new(n),
             processed: BitSet::new(n),
             non_perm_degree: vec![NOT_SET; n as usize],
-            selected: Vec::with_capacity(n as usize),
         }
     }
 }
@@ -79,7 +76,6 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph> for
         self.parent.reset();
         self.type2_nodes.clear_all();
         self.processed.clear_all();
-        self.selected.clear();
 
         let prev_never_select = never_select.cardinality();
         let prev_dom_size = domset.len();
@@ -180,12 +176,13 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph> for
                 {
                     self.parent.mark_with(v, u);
 
-                    // v is subset-dominated by u
+                    // v is subset-dominated by u and hence can be marked as subset-dominated
                     //
-                    // it is safe to mark v here f(v) = u was assigned in step (2).
-                    // if v were to have a type3-neighbor (and was to be fixed),
-                    // step (2) would not have assigned f(v) = u
-                    never_select.set_bit(v);
+                    // it is possible that v was fixed in a previous iteration of *this loop* and
+                    // should thus not be considered subset-dominated to maintain the invariant
+                    if !domset.is_in_domset(v) {
+                        never_select.set_bit(v);
+                    }
                 }
             }
 
@@ -199,14 +196,10 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph> for
                 {
                     assert!(!never_select.get_bit(u));
                     domset.add_node(u);
-                    self.selected.push(u);
+                    covered.set_bits(graph.closed_neighbors_of(u));
                     break;
                 }
             }
-        }
-
-        for u in self.selected.drain(..) {
-            covered.set_bits(graph.closed_neighbors_of(u));
         }
 
         (
