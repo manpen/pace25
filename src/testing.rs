@@ -59,48 +59,52 @@ pub fn test_before_and_after_rule<C: FnMut(&AdjArray) -> R, R: ReductionRule<Adj
         let org_never_select = never_select.clone();
         let naive = naive_solver(&graph, &covered, &never_select, None, None).unwrap();
 
-        let after_rule = {
-            let mut domset = DominatingSet::new(graph.number_of_nodes());
-            let mut reducer = Reducer::new();
-            reducer.remove_unnecessary_edges(
-                &mut graph,
-                &mut domset,
-                &mut covered,
-                &mut never_select,
-            );
-            let mut rule = rule_cons(&graph);
+        let mut domset_after_rule = DominatingSet::new(graph.number_of_nodes());
+        let mut reducer = Reducer::new();
+        reducer.remove_unnecessary_edges(
+            &mut graph,
+            &mut domset_after_rule,
+            &mut covered,
+            &mut never_select,
+        );
+        let mut rule = rule_cons(&graph);
 
-            let changed = reducer.apply_rule(
-                &mut rule,
-                &mut graph,
-                &mut domset,
-                &mut covered,
-                &mut never_select,
-            );
-            num_applicable += changed as u32;
+        let changed = reducer.apply_rule(
+            &mut rule,
+            &mut graph,
+            &mut domset_after_rule,
+            &mut covered,
+            &mut never_select,
+        );
+        let domset_directly_after_rule = domset_after_rule.clone();
+        num_applicable += changed as u32;
 
-            let tmp = naive_solver(&graph, &covered, &never_select, None, None).unwrap();
-            domset.add_nodes(tmp.iter());
-            domset
-        };
+        let tmp = naive_solver(&graph, &covered, &never_select, None, None).unwrap();
+        domset_after_rule.add_nodes(tmp.iter());
 
-        assert!(after_rule.is_valid_given_previous_cover(&graph, &covered));
+        assert!(domset_after_rule.is_valid_given_previous_cover(&graph, &covered));
         assert_eq!(
             naive.len(),
-            after_rule.len(),
-            "naive: {:?}, after_rule: {:?}, org: {org_graph:?}, cov: {:?}, red: {:?}",
+            domset_after_rule.len(),
+            "naive: {:?}, naive after_rule: {:?}, directly after_rule: {:?} \n org:   {org_graph:?}, cov: {:?}, red: {:?} \n after: {graph:?}, cov: {:?}, red: {:?}",
             naive.iter().collect_vec(),
-            after_rule.iter().collect_vec(),
+            domset_after_rule.iter().collect_vec(),
+            domset_directly_after_rule.iter().collect_vec(),
             org_covered.iter_set_bits().collect_vec(),
-            org_never_select.iter_set_bits().collect_vec()
+            org_never_select.iter_set_bits().collect_vec(),
+            covered.iter_set_bits().collect_vec(),
+            never_select.iter_set_bits().collect_vec()
         );
         assert!(
-            after_rule.iter().all(|u| !never_select.get_bit(u)),
-            "naive: {:?}, after_rule: {:?}, org: {org_graph:?}, cov: {:?}, red: {:?}",
+            domset_after_rule.iter().all(|u| !never_select.get_bit(u)),
+            "selected redundant node \n naive: {:?}, naive after_rule: {:?}, directly after_rule: {:?} \n org:   {org_graph:?}, cov: {:?}, red: {:?} \n after: {graph:?}, cov: {:?}, red: {:?}",
             naive.iter().collect_vec(),
-            after_rule.iter().collect_vec(),
+            domset_after_rule.iter().collect_vec(),
+            domset_directly_after_rule.iter().collect_vec(),
             org_covered.iter_set_bits().collect_vec(),
-            org_never_select.iter_set_bits().collect_vec()
+            org_never_select.iter_set_bits().collect_vec(),
+            covered.iter_set_bits().collect_vec(),
+            never_select.iter_set_bits().collect_vec()
         );
 
         if num_applicable > attempts {
