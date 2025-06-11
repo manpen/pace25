@@ -60,6 +60,8 @@ impl<
         covered: &mut BitSet,
         never_select: &mut BitSet,
     ) -> (bool, Option<Box<dyn Postprocessor<Graph>>>) {
+        let mut modified = false;
+
         let n = graph.len();
         assert!(NOT_SET as usize >= n);
 
@@ -103,6 +105,7 @@ impl<
                 // See if N is empty, ie. every neighbor of v is marked by u
                 let first_neighbor = nbs.next();
                 if first_neighbor.is_none() {
+                    modified = true;
                     // u and v are twins: break ties by index and covered-state (this rule prefers
                     // uncovered neighbors (with smaller index) as fixed nodes)
                     if graph.degree_of(u) == graph.degree_of(v)
@@ -156,6 +159,7 @@ impl<
                 if !self.nbs.is_empty() {
                     // TBD: possibly check if non_perm_degree[u] == non_perm_degree[v] and we
                     // should break ties in favor of v instead?
+                    modified = true;
                     never_select.set_bit(v);
                     self.type2[u as usize].push(v);
                 }
@@ -171,7 +175,7 @@ impl<
 
         // Early return if no candidates were found (redundant-markers still could have been applied)
         if self.candidates.is_empty() {
-            return (false, None::<Box<dyn Postprocessor<Graph>>>);
+            return (modified, None::<Box<dyn Postprocessor<Graph>>>);
         }
 
         // All candidates with the same reference-pair are now in succession
@@ -215,7 +219,6 @@ impl<
 
         self.nbs.clear();
 
-        let mut modified = false;
         for ((ref_u, ref_v), mut cand) in self.possible_reductions.drain(..) {
             // Nodes marked as redundant can not act as witnesses here
             if never_select.get_bit(ref_u) || never_select.get_bit(ref_v) {
