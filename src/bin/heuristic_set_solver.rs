@@ -86,7 +86,7 @@ fn apply_reduction_rules(
 
     let mut rule_vertex_cover = RuleVertexCover::new(graph.number_of_nodes());
     let mut rule_one = RuleOneReduction::new(graph.number_of_nodes());
-    let mut rule_long_path = LongPathReduction;
+    let mut rule_long_path = LongPathReduction::new(graph.number_of_nodes());
     let mut rule_isolated = RuleIsolatedReduction;
     let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
     let mut rule_articulation = RuleArticulationPoint::new_with_cache(high_cache.clone());
