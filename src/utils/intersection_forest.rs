@@ -259,8 +259,9 @@ impl IntersectionForest {
                     idem = item;
                 }
                 dest_data[ptrw] = idem;
-                ptrw += result.is_ok() as usize;
                 ptrr += result.unwrap_or_else(|x| x);
+                ptrw += result.is_ok() as usize;
+                ptrr += result.is_ok() as usize;
 
                 if ptrr == dest_len {
                     break;
@@ -274,8 +275,9 @@ impl IntersectionForest {
 
                 // Branchless update of value
                 dest_data[ptrw] = item;
-                ptrw += result.is_ok() as usize;
                 ptrr += result.unwrap_or_else(|x| x);
+                ptrw += result.is_ok() as usize;
+                ptrr += result.is_ok() as usize;
 
                 if ptrr == other_len {
                     break;
@@ -862,7 +864,6 @@ impl InvariantCheck<IntersectionForestError> for IntersectionForest {
                     }
                 }
 
-                assert_eq!(neighbors, self.data[v][..node!(self, v).data_len as usize]);
                 if neighbors != self.data[v][..node!(self, v).data_len as usize] {
                     return Err(IntersectionForestError::FaultyIntersection(u, v));
                 }
