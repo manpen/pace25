@@ -35,3 +35,18 @@ impl<Graph: AdjacencyList + 'static> ReductionRule<Graph> for RuleIsolatedReduct
         (changed, None::<Box<dyn Postprocessor<Graph>>>)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::graph::NumNodes;
+    use rand::SeedableRng;
+    use rand_pcg::Pcg64Mcg;
+
+    #[test]
+    fn generic_before_and_after() {
+        let mut rng = Pcg64Mcg::seed_from_u64(0x1235342);
+        const NODES: NumNodes = 20;
+        crate::testing::test_before_and_after_rule(&mut rng, |_| RuleIsolatedReduction, NODES, 400);
+    }
+}

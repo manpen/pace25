@@ -162,13 +162,18 @@ impl<Graph: Clone + AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> 
                     } else if uncovered.len() == 2 {
                         // if there are two, there are two options: either there's one node u that can cover both:
                         // then we add u; otherwise we've established a lower bound of 2, and can safely add both uncovered nodes
-                        if let Some(u) = nodes.iter().copied().find(|&u| {
-                            graph
-                                .closed_neighbors_of(u)
-                                .filter(|&v| v == uncovered[0] || v == uncovered[1])
-                                .count()
-                                == 2
-                        }) {
+                        if let Some(u) = nodes
+                            .iter()
+                            .copied()
+                            .filter(|&u| !never_select.get_bit(u))
+                            .find(|&u| {
+                                graph
+                                    .closed_neighbors_of(u)
+                                    .filter(|&v| v == uncovered[0] || v == uncovered[1])
+                                    .count()
+                                    == 2
+                            })
+                        {
                             domset.add_node(u);
                         } else {
                             domset.add_nodes(nodes.iter().copied());
@@ -220,15 +225,29 @@ impl RuleSmallExactReduction {
         graph: &Graph,
         domset: &mut DominatingSet,
         covered: &mut BitSet,
-        _never_select: &BitSet,
+        never_select: &BitSet,
         nodes: &[Node],
     ) {
         assert_eq!(nodes.len(), 3);
 
-        if !nodes.iter().all(|&u| covered.get_bit(u)) {
-            let deg2 = nodes.iter().find(|&&u| graph.degree_of(u) == 2).unwrap();
-            domset.add_node(*deg2);
+        if nodes.iter().all(|&u| covered.get_bit(u)) {
+            return;
+        }
+
+        if let Some(&deg2) = nodes
+            .iter()
+            .filter(|&&u| !never_select.get_bit(u))
+            .find(|&&u| graph.degree_of(u) == 2)
+        {
+            domset.add_node(deg2);
             covered.set_bits(nodes.iter().copied());
+        } else {
+            for &u in nodes {
+                if !covered.get_bit(u) {
+                    domset.add_node(u);
+                    covered.set_bits(graph.closed_neighbors_of(u));
+                }
+            }
         }
     }
 
@@ -329,6 +348,26 @@ impl RuleSmallExactReduction {
         info!(
             "{} Found {num_found:6} large small ccs. Solved {num_solved:6}. Timeout {num_timeout:6}. Unconsidered: {num_unconsidered:6}",
             Self::NAME,
+        );
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::graph::NumNodes;
+    use rand::SeedableRng;
+    use rand_pcg::Pcg64Mcg;
+
+    #[test]
+    fn generic_before_and_after() {
+        let mut rng = Pcg64Mcg::seed_from_u64(0x1235342);
+        const NODES: NumNodes = 20;
+        crate::testing::test_before_and_after_rule(
+            &mut rng,
+            |_| RuleSmallExactReduction::new(),
+            NODES,
+            400,
         );
     }
 }

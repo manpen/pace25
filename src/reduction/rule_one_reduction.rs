@@ -216,9 +216,10 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + std::fmt::Debug + 'static> Reduct
 
 #[cfg(test)]
 mod tests {
-    use rand::Rng;
-
     use super::*;
+    use crate::graph::NumNodes;
+    use rand::{Rng, SeedableRng};
+    use rand_pcg::Pcg64Mcg;
 
     // The standard Rule implementation with runtime O(n * D * D) where D is the maximum degree in the graph.
     fn naive_rule1_impl(
@@ -332,5 +333,17 @@ mod tests {
                 "Test: {sol1:?}\nRef:  {sol2:?}"
             );
         }
+    }
+
+    #[test]
+    fn generic_before_and_after() {
+        let mut rng = Pcg64Mcg::seed_from_u64(0x1235342);
+        const NODES: NumNodes = 20;
+        crate::testing::test_before_and_after_rule(
+            &mut rng,
+            |_| RuleOneReduction::new(NODES),
+            NODES,
+            400,
+        );
     }
 }
