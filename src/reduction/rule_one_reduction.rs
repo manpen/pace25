@@ -61,9 +61,7 @@ impl RuleOneReduction {
 
 const NOT_SET: Node = Node::MAX;
 
-impl<Graph: AdjacencyList + GraphEdgeEditing + std::fmt::Debug + 'static> ReductionRule<Graph>
-    for RuleOneReduction
-{
+impl<Graph: AdjacencyList + GraphEdgeEditing + 'static> ReductionRule<Graph> for RuleOneReduction {
     const NAME: &str = "RuleOne";
 
     fn apply_rule(
@@ -84,6 +82,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + std::fmt::Debug + 'static> Reduct
         self.selected.clear();
 
         let prev_never_select = never_select.cardinality();
+        let prev_dom_size = domset.len();
 
         // Compute permanently covered nodes and degrees
         for u in 0..graph.number_of_nodes() {
@@ -201,14 +200,17 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + std::fmt::Debug + 'static> Reduct
                     assert!(!never_select.get_bit(u));
                     domset.add_node(u);
                     self.selected.push(u);
-                    covered.set_bits(graph.closed_neighbors_of(u));
                     break;
                 }
             }
         }
 
+        for u in self.selected.drain(..) {
+            covered.set_bits(graph.closed_neighbors_of(u));
+        }
+
         (
-            !self.selected.is_empty() || prev_never_select != never_select.cardinality(),
+            prev_dom_size != domset.len() || prev_never_select != never_select.cardinality(),
             None::<Box<dyn Postprocessor<Graph>>>,
         )
     }
