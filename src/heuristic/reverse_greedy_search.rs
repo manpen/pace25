@@ -403,10 +403,33 @@ where
                             }
                         }
 
-                        let res: Vec<Node> = self.redundant_nodes[..added_nodes_len].to_vec();
-                        self.redundant_nodes.clear();
-                        for x in res.into_iter() {
-                            self.add_node_to_domset(x);
+                        if added_nodes_len > 0 {
+                            let res: Vec<Node> = self.redundant_nodes[..added_nodes_len].to_vec();
+                            self.redundant_nodes.clear();
+                            for x in res.into_iter() {
+                                self.add_node_to_domset(x);
+
+                                // Prefer nodes that have been unchanged for longer
+                                self.redundant_nodes.sort_by_key(|u| self.age[*u as usize]);
+
+                                // Remove redundant nodes from DomSet
+                                if !self.redundant_nodes.is_empty() {
+                                    self.remove_redundant_node::<true>(self.redundant_nodes[0], x);
+                                    for i in 1..self.redundant_nodes.len() {
+                                        self.remove_redundant_node::<false>(self.redundant_nodes[i], x);
+                                    }
+                                    self.redundant_nodes.clear();
+                                }
+
+                                debug_assert!(self.uniquely_covered[x as usize] > 0);
+
+                                // Update IntersectionForest/Sampler for all remaining nodes_to_update
+                                self.update_forest_and_sampler();
+
+                                // Update the best known solution if needed
+                                self.update_best_solution();
+                            }
+
                         }
                     }
                 },
