@@ -102,7 +102,7 @@ pub fn greedy_approximation(
 
 #[cfg(test)]
 mod tests {
-    use rand::{Rng, SeedableRng};
+    use rand::SeedableRng;
     use rand_pcg::Pcg64Mcg;
 
     use super::*;
@@ -121,35 +121,6 @@ mod tests {
                 &graph.vertex_bitset_unset(),
             );
             assert!(domset.is_valid(&graph));
-        }
-    }
-
-    #[test]
-    /// Randomly generate G(n,p) graphs and check that the algorithm produces a feasible solution
-    fn graph_with_partial_solution() {
-        let mut rng = Pcg64Mcg::seed_from_u64(123456);
-        for i in 0..1000 {
-            let org_graph = AdjArray::random_gnp(&mut rng, 100, 0.03);
-            let graph = org_graph.clone(); // TODO: this should be mut
-            let mut domset = DominatingSet::new(graph.number_of_nodes());
-
-            for _ in 0..i % 10 {
-                let fixed_node = rng.gen_range(graph.vertices_range());
-                if domset.is_fixed_node(fixed_node) {
-                    continue;
-                }
-
-                domset.fix_node(fixed_node);
-                // TODO: We want to delete the node from the graph, but currently the interface does not allow it
-            }
-
-            super::greedy_approximation(
-                &graph,
-                &mut domset,
-                &graph.vertex_bitset_unset(),
-                &graph.vertex_bitset_unset(),
-            );
-            assert!(domset.is_valid(&org_graph));
         }
     }
 }

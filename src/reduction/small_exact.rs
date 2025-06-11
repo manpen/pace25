@@ -157,7 +157,7 @@ impl<Graph: Clone + AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> 
 
                     if uncovered.len() == 1 {
                         // if there's only one uncovered node in a cc, it can be safely add to the solution
-                        domset.fix_node(uncovered[0]);
+                        domset.add_node(uncovered[0]);
                         covered.set_bits(nodes.iter().copied());
                     } else if uncovered.len() == 2 {
                         // if there are two, there are two options: either there's one node u that can cover both:
@@ -169,9 +169,9 @@ impl<Graph: Clone + AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> 
                                 .count()
                                 == 2
                         }) {
-                            domset.fix_node(u);
+                            domset.add_node(u);
                         } else {
-                            domset.fix_nodes(nodes.iter().copied());
+                            domset.add_nodes(nodes.iter().copied());
                         }
                         covered.set_bits(uncovered.iter().copied());
                     } else {
@@ -227,7 +227,7 @@ impl RuleSmallExactReduction {
 
         if !nodes.iter().all(|&u| covered.get_bit(u)) {
             let deg2 = nodes.iter().find(|&&u| graph.degree_of(u) == 2).unwrap();
-            domset.fix_node(*deg2);
+            domset.add_node(*deg2);
             covered.set_bits(nodes.iter().copied());
         }
     }
@@ -244,9 +244,9 @@ impl RuleSmallExactReduction {
         let num_uncovered = nodes.iter().filter(|&&u| !covered.get_bit(u)).count();
         if num_uncovered > 0 {
             if let Some(u) = nodes.iter().find(|&&u| graph.degree_of(u) == 3) {
-                domset.fix_node(*u);
+                domset.add_node(*u);
             } else if num_uncovered == 1 {
-                domset.fix_node(
+                domset.add_node(
                     nodes
                         .iter()
                         .copied()
@@ -260,7 +260,7 @@ impl RuleSmallExactReduction {
                     .count()
                     == num_uncovered
             }) {
-                domset.fix_node(*u);
+                domset.add_node(*u);
             } else {
                 let (a, b) = nodes
                     .iter()
@@ -270,8 +270,8 @@ impl RuleSmallExactReduction {
                     .collect_tuple()
                     .unwrap();
 
-                domset.fix_node(a);
-                domset.fix_node(b);
+                domset.add_node(a);
+                domset.add_node(b);
             }
 
             covered.set_bits(nodes.iter().copied());
@@ -315,7 +315,7 @@ impl RuleSmallExactReduction {
 
             if let SolverResult::Optimal(solved) = problem.solve_exact(Some(Duration::from_secs(1)))
             {
-                domset.fix_nodes(solved.into_iter());
+                domset.add_nodes(solved.into_iter());
                 covered.set_bits(nodes.into_iter());
                 num_solved += 1;
             } else {

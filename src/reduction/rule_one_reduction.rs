@@ -199,7 +199,7 @@ impl<Graph: AdjacencyList + GraphEdgeEditing + std::fmt::Debug + 'static> Reduct
                     .all(|x| self.parent.is_marked_with(x, u) || x == u)
                 {
                     assert!(!never_select.get_bit(u));
-                    domset.fix_node(u);
+                    domset.add_node(u);
                     self.selected.push(u);
                     covered.set_bits(graph.closed_neighbors_of(u));
                     break;
@@ -231,7 +231,7 @@ mod tests {
         let mut redundant = BitSet::new(graph.number_of_nodes());
         for u in graph.vertices() {
             if graph.degree_of(u) == 1 {
-                sol.fix_node(u);
+                sol.add_node(u);
                 continue;
             }
 
@@ -268,7 +268,7 @@ mod tests {
             }
 
             if type3 {
-                sol.fix_node(u);
+                sol.add_node(u);
                 redundant.set_bits(type2_nodes.iter_set_bits());
             }
         }
@@ -316,7 +316,7 @@ mod tests {
                 // Rule One does not fix singleton nodes anymore
                 for u in adj_graph.vertices() {
                     if adj_graph.degree_of(u) == 0 {
-                        sol1.fix_node(u);
+                        sol1.add_node(u);
                         covered.set_bit(u);
                     }
                 }

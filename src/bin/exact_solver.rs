@@ -111,7 +111,7 @@ fn main() -> anyhow::Result<()> {
     let mut domset = DominatingSet::new(graph.number_of_nodes());
 
     // singleton nodes need to be fixed
-    domset.fix_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
+    domset.add_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
 
     let mut reducer = Reducer::new();
     let mut never_select = BitSet::new(graph.number_of_nodes());

@@ -156,7 +156,7 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoi
 
             if let SolverResult::Optimal(solved) = problem.solve_exact(Some(SOLVER_TIMEOUT)) {
                 changed |= !solved.is_empty();
-                domset.fix_nodes(solved.iter().cloned());
+                domset.add_nodes(solved.iter().cloned());
                 covered.set_bits(cc.into_iter());
 
                 if domset.is_in_domset(art_point) {
@@ -226,7 +226,7 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoi
                 debug!("Solved CC at {art_point} with nodes {cc:?}");
 
                 changed = true;
-                domset.fix_nodes(solved.iter().cloned());
+                domset.add_nodes(solved.iter().cloned());
 
                 for &w in &solved {
                     covered.set_bits(graph.closed_neighbors_of(w));

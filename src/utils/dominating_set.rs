@@ -1,18 +1,24 @@
 use itertools::Itertools;
 
 use crate::prelude::*;
-use std::io::Write;
+use std::{fmt::Debug, io::Write};
 
 /// A DominatingSet that allows differentiation between fixed and non-fixed nodes in the
 /// set. Supports constant time queries of membership in set.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DominatingSet {
     /// List of all nodes in the set, partitioned by fixed/non-fixed
     solution: Vec<Node>,
     /// Position for each possible node in the set (= NumNodes::MAX if not)
     positions: Vec<NumNodes>,
-    /// Numver of fixed nodes, ie solution[..num_fixed] are fixed nodes, rest not
-    num_fixed: NumNodes,
+}
+
+impl Debug for DominatingSet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("DominatingSet")
+            .field(&self.solution)
+            .finish()
+    }
 }
 
 impl DominatingSet {
@@ -21,7 +27,6 @@ impl DominatingSet {
         Self {
             solution: Vec::new(),
             positions: vec![NumNodes::MAX; n as usize],
-            num_fixed: 0,
         }
     }
 
@@ -85,10 +90,6 @@ impl DominatingSet {
     pub fn remove_node(&mut self, u: Node) {
         let pos = self.positions[u as usize] as usize;
         debug_assert!(pos < self.len());
-        if pos < self.num_fixed as usize {
-            self.unfix_node(u);
-            return;
-        }
 
         self.solution.swap_remove(pos);
         if pos < self.len() {
@@ -102,60 +103,6 @@ impl DominatingSet {
     pub fn remove_nodes(&mut self, nodes: impl IntoIterator<Item = Node>) {
         for u in nodes {
             self.remove_node(u);
-        }
-    }
-
-    /// Add a fixed node to the set
-    pub fn fix_node(&mut self, u: Node) {
-        debug_assert!(!self.is_in_domset(u));
-        if self.solution.len() > self.num_fixed as usize {
-            let current_head = self.solution[self.num_fixed as usize];
-
-            self.positions[current_head as usize] = self.len() as NumNodes;
-            self.solution.push(current_head);
-
-            self.solution[self.num_fixed as usize] = u;
-            self.positions[u as usize] = self.num_fixed;
-        } else {
-            self.positions[u as usize] = self.len() as NumNodes;
-            self.solution.push(u);
-        }
-        self.num_fixed += 1;
-    }
-
-    /// Fixes multiple nodes in the dominating set.
-    pub fn fix_nodes(&mut self, nodes: impl IntoIterator<Item = Node>) {
-        for u in nodes {
-            self.fix_node(u);
-        }
-    }
-
-    /// Remove a fixed node from the set
-    pub fn unfix_node(&mut self, u: Node) {
-        debug_assert!(self.is_fixed_node(u));
-        self.num_fixed -= 1;
-
-        let pos = self.positions[u as usize];
-        if pos != self.num_fixed {
-            let last_fixed = self.solution[self.num_fixed as usize];
-
-            self.solution.swap(pos as usize, self.num_fixed as usize);
-            self.positions[last_fixed as usize] = pos;
-        }
-
-        let pos = self.num_fixed as usize;
-        self.solution.swap_remove(pos);
-        if pos < self.len() {
-            self.positions[self.solution[pos] as usize] = pos as NumNodes;
-        }
-
-        self.positions[u as usize] = NumNodes::MAX;
-    }
-
-    /// Removes multiple fixed nodes in the dominating set.
-    pub fn unfix_nodes(&mut self, nodes: impl IntoIterator<Item = Node>) {
-        for u in nodes {
-            self.unfix_node(u);
         }
     }
 
@@ -173,32 +120,6 @@ impl DominatingSet {
         self.positions[u as usize] != NumNodes::MAX
     }
 
-    /// Returns *true* if u is a fixed node of the dominating set.
-    pub fn is_fixed_node(&self, u: Node) -> bool {
-        self.positions[u as usize] < self.num_fixed
-    }
-
-    /// Returns *true* if u is a fixed node of the dominating set.
-    #[inline(always)]
-    pub fn is_non_fixed_node(&self, u: Node) -> bool {
-        self.is_in_domset(u) && !self.is_fixed_node(u)
-    }
-
-    /// Returns the number of fixed nodes in the dominating set.
-    pub fn num_of_fixed_nodes(&self) -> usize {
-        self.num_fixed as usize
-    }
-
-    /// Returns the number of non-fixed nodes in the dominating set.
-    pub fn num_of_non_fixed_nodes(&self) -> usize {
-        self.len() - self.num_of_fixed_nodes()
-    }
-
-    /// Returns *true* if all nodes in the dominating set are fixed.
-    pub fn all_fixed(&self) -> bool {
-        self.num_fixed as usize == self.len()
-    }
-
     /// Returns an iterator over the nodes in the dominating set.
     ///
     /// # Example
@@ -214,16 +135,6 @@ impl DominatingSet {
     /// ```
     pub fn iter(&self) -> impl Iterator<Item = Node> + '_ {
         self.solution.iter().copied()
-    }
-
-    /// Returns an iterator over all the fixed nodes in the dominating set.
-    pub fn iter_fixed(&self) -> impl Iterator<Item = Node> + '_ {
-        self.solution[..self.num_fixed as usize].iter().copied()
-    }
-
-    /// Returns an iterator over all the non-fixed nodes in the dominating set.
-    pub fn iter_non_fixed(&self) -> impl Iterator<Item = Node> + '_ {
-        self.solution[(self.num_fixed as usize)..].iter().copied()
     }
 
     /// Returns the ith node in the dominating set.
@@ -250,10 +161,6 @@ impl DominatingSet {
             return true;
         }
 
-        debug!(
-            "Missing nodes: {:?}",
-            covered.iter_cleared_bits().collect_vec()
-        );
         false
     }
 
@@ -269,10 +176,6 @@ impl DominatingSet {
             return true;
         }
 
-        debug!(
-            "Missing nodes: {:?}",
-            covered.iter_cleared_bits().collect_vec()
-        );
         false
     }
 
@@ -300,33 +203,23 @@ impl DominatingSet {
 
     /// Returns *true* if Self and another DomSet are identical to each other.
     pub fn equals(&self, other: &Self) -> bool {
-        if self.len() != other.len() || self.num_of_fixed_nodes() != other.num_of_fixed_nodes() {
+        if self.len() != other.len() {
             return false;
         }
 
         let mut sol1 = self.solution.clone();
         let mut sol2 = other.solution.clone();
 
-        let num_fixed = self.num_fixed as usize;
+        sol1.sort_unstable();
+        sol2.sort_unstable();
 
-        sol1[..num_fixed].sort_unstable();
-        sol2[..num_fixed].sort_unstable();
-
-        if sol1[..num_fixed] != sol2[..num_fixed] {
-            return false;
-        }
-
-        sol1[num_fixed..].sort_unstable();
-        sol2[num_fixed..].sort_unstable();
-
-        sol1[num_fixed..] == sol2[num_fixed..]
+        sol1 == sol2
     }
 
     pub fn complete_set(n: NumNodes) -> Self {
         Self {
             solution: (0..n).collect_vec(),
             positions: (0..n).collect_vec(),
-            num_fixed: 0,
         }
     }
 }
