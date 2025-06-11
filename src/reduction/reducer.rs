@@ -181,7 +181,7 @@ impl<G: GraphEdgeOrder + AdjacencyList + GraphEdgeEditing + UnsafeGraphEditing +
                 // If the only uncovered neighbor is now a singleton, it is optimal to put u into
                 // the dominating set (instead of v) as u is not redundant
                 if graph.degree_of(v) == 0 {
-                    domset.fix_node(u);
+                    domset.add_node(u);
                     covered.set_bit(v);
                 }
             }
@@ -191,7 +191,7 @@ impl<G: GraphEdgeOrder + AdjacencyList + GraphEdgeEditing + UnsafeGraphEditing +
         covered.update_cleared_bits(|u| {
             let is_singleton = graph.degree_of(u) == 0;
             if is_singleton {
-                domset.fix_node(u);
+                domset.add_node(u);
             }
             is_singleton
         });

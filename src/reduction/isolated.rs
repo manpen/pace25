@@ -26,7 +26,7 @@ impl<Graph: AdjacencyList + 'static> ReductionRule<Graph> for RuleIsolatedReduct
             }
 
             if graph.neighbors_of(u).all(|v| never_select.get_bit(v)) {
-                domset.fix_node(u);
+                domset.add_node(u);
                 covered.set_bits(graph.closed_neighbors_of(u));
                 changed = true;
             }
