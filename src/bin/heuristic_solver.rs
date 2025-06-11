@@ -195,11 +195,6 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
         changed |= apply!(rule_red_twin);
         changed |= apply!(rule_red_cover);
         changed |= apply!(rule_articulation);
-
-        if changed {
-            continue;
-        }
-
         changed |= apply!(rule_subset_two);
 
         if changed {

@@ -155,11 +155,6 @@ fn main() -> anyhow::Result<()> {
         changed |= apply!(rule_red_twin);
         changed |= apply!(rule_red_cover);
         changed |= apply!(rule_articulation);
-
-        if changed {
-            continue;
-        }
-
         changed |= apply!(rule_subset_two);
 
         if changed {

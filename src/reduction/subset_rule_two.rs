@@ -361,14 +361,14 @@ impl<
 
             // Fix ref_u if possible
             if ref_u_fixable {
-                domset.fix_node(ref_u);
+                domset.add_node(ref_u);
                 covered.set_bits(graph.closed_neighbors_of(ref_u));
                 modified = true;
             }
 
             // Fix ref_v if possible
             if ref_v_fixable {
-                domset.fix_node(ref_v);
+                domset.add_node(ref_v);
                 covered.set_bits(graph.closed_neighbors_of(ref_v));
                 modified = true;
             }
