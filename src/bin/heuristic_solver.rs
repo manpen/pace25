@@ -57,6 +57,9 @@ struct Opts {
 
     #[structopt(short = "C")]
     dump_ccs_upper_size: Option<NumNodes>,
+
+    #[structopt(short = "l", long="local-minima-rule")]
+    local_minima_rule: dss::heuristic::reverse_greedy_search::ForcedRemovalRuleType
 }
 
 impl Default for Opts {
@@ -74,6 +77,7 @@ impl Default for Opts {
             ls_presolve_timeout: 13.0,
             ls_presolve_max_gap: 2.0,
             preprocess_only: false,
+            local_minima_rule: dss::heuristic::reverse_greedy_search::ForcedRemovalRuleType::FRDR
         }
     }
 }
@@ -382,7 +386,7 @@ fn build_heuristic(
     }
 
     info!("Start GreedyReverseSearch");
-    let mut search = MainHeuristic::new(graph, domset, covered, never_select, rng, dss::heuristic::ForcedRemovalRuleType::FRDR);
+    let mut search = MainHeuristic::new(graph, domset, covered, never_select, rng, opts.local_minima_rule);
 
     if opts.verbose {
         search.enable_verbose_logging();

@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::VecDeque, fmt::Debug,time::Instant};
+use std::{cmp::Ordering, collections::VecDeque, fmt::Debug, string::ParseError, time::Instant};
 
 use log::info;
 use rand::{Rng, SeedableRng};
@@ -1431,6 +1431,25 @@ pub enum ForcedRemovalRuleType {
     BFSP4 = 6,
     FRDR = 7,
     None = 8,
+}
+
+impl std::str::FromStr for ForcedRemovalRuleType {
+    type Err = ParseError;
+    fn from_str(rule: &str) -> Result<Self, ParseError> {
+        match rule {
+            "0" => Ok(ForcedRemovalRuleType::DMS),
+            "1" => Ok(ForcedRemovalRuleType::BFS2),
+            "2" => Ok(ForcedRemovalRuleType::BFS3),
+            "3" => Ok(ForcedRemovalRuleType::BFS4),
+            "4" => Ok(ForcedRemovalRuleType::BFSP2),
+            "5" => Ok(ForcedRemovalRuleType::BFSP3),
+            "6" => Ok(ForcedRemovalRuleType::BFSP4),
+            "7" => Ok(ForcedRemovalRuleType::FRDR),
+            "8" => Ok(ForcedRemovalRuleType::None),
+            //TODO: Fix this
+            _ => panic!("No such rule!"),
+        }
+    }
 }
 
 #[cfg(test)]

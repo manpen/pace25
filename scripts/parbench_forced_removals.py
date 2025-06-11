@@ -83,7 +83,7 @@ def run_binary_with_files(
         # Replace terminated processes with new ones (if possible)
         while len(processes) < num_threads and file_stack:
             (rule_id, file_path) = file_stack.pop()
-            cmd = [binary_path, "--path", file_path, "--forced", str(rule_id)]
+            cmd = [binary_path, "-i", file_path, "-l", str(rule_id)]
             process_start_time = time.time()
             process = subprocess.Popen(
                 cmd,
