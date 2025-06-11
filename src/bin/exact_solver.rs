@@ -1,15 +1,13 @@
 use std::{collections::HashSet, fs::File, path::PathBuf, sync::Arc};
 
-use dss::{exact::highs_advanced::*, reduction::*};
+use dss::exact::highs_advanced::*;
 
 #[allow(unused_imports)]
 use dss::{
     exact::{naive::naive_solver, sat_solver::SolverBackend},
     log::build_pace_logger_for_level,
     prelude::*,
-    reduction::{
-        LongPathReduction, Reducer, RuleOneReduction, RuleSmallExactReduction, RuleSubsetReduction,
-    },
+    reduction::*,
 };
 use itertools::Itertools;
 use log::info;
@@ -128,6 +126,7 @@ fn main() -> anyhow::Result<()> {
     let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
     let mut rule_articulation = RuleArticulationPoint::new_with_cache(high_cache.clone());
     let mut rule_subset = RuleSubsetReduction::new(graph.number_of_nodes());
+    let mut rule_red_triangle = RuleRedTriangle::new(graph.number_of_nodes());
 
     loop {
         let mut changed = false;
@@ -141,7 +140,7 @@ fn main() -> anyhow::Result<()> {
         );
 
         changed |= reducer.apply_rule(
-            &mut rule_one,
+            &mut rule_red_triangle,
             &mut graph,
             &mut domset,
             &mut covered,

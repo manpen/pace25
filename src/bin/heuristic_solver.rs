@@ -165,6 +165,7 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
 
     let mut rule_vertex_cover = RuleVertexCover::new(graph.number_of_nodes());
     let mut rule_one = RuleOneReduction::new(graph.number_of_nodes());
+    let mut rule_red_triangle = RuleRedTriangle::new(graph.number_of_nodes());
     let mut rule_long_path = LongPathReduction;
     let mut rule_isolated = RuleIsolatedReduction;
     let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
@@ -176,6 +177,14 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
 
         changed |= reducer.apply_rule(
             &mut rule_vertex_cover,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut never_select,
+        );
+
+        changed |= reducer.apply_rule(
+            &mut rule_red_triangle,
             &mut graph,
             &mut domset,
             &mut covered,
