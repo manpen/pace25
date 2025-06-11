@@ -166,7 +166,7 @@ impl<Graph: AdjacencyList + AdjacencyTest + 'static> ReductionRule<Graph> for Ru
 
             for v in vc_graph.neighbors_of(u) {
                 let v = self.new_to_old[v as usize];
-                domset.fix_node(v);
+                domset.add_node(v);
                 covered.set_bits(graph.closed_neighbors_of(v));
             }
 

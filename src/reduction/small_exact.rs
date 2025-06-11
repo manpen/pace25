@@ -126,7 +126,7 @@ impl<Graph: Clone + AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> 
         let mut small_ccs = Vec::with_capacity(128);
         let mut walker = ConnectedComponentWalker::new(graph.number_of_nodes(), Some(MAX_CC_SIZE));
 
-        let mut uncovered = Vec::with_capacity(1 + MAX_UNCOVERED_SIZE as usize);
+        let mut uncovered: Vec<Node> = Vec::with_capacity(1 + MAX_UNCOVERED_SIZE as usize);
 
         let ds_size_before = domset.len();
 
@@ -157,21 +157,26 @@ impl<Graph: Clone + AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> 
 
                     if uncovered.len() == 1 {
                         // if there's only one uncovered node in a cc, it can be safely add to the solution
-                        domset.fix_node(uncovered[0]);
+                        domset.add_node(uncovered[0]);
                         covered.set_bits(nodes.iter().copied());
                     } else if uncovered.len() == 2 {
                         // if there are two, there are two options: either there's one node u that can cover both:
                         // then we add u; otherwise we've established a lower bound of 2, and can safely add both uncovered nodes
-                        if let Some(u) = nodes.iter().copied().find(|&u| {
-                            graph
-                                .closed_neighbors_of(u)
-                                .filter(|&v| v == uncovered[0] || v == uncovered[1])
-                                .count()
-                                == 2
-                        }) {
-                            domset.fix_node(u);
+                        if let Some(u) = nodes
+                            .iter()
+                            .copied()
+                            .filter(|&u| !never_select.get_bit(u))
+                            .find(|&u| {
+                                graph
+                                    .closed_neighbors_of(u)
+                                    .filter(|&v| v == uncovered[0] || v == uncovered[1])
+                                    .count()
+                                    == 2
+                            })
+                        {
+                            domset.add_node(u);
                         } else {
-                            domset.fix_nodes(nodes.iter().copied());
+                            domset.add_nodes(nodes.iter().copied());
                         }
                         covered.set_bits(uncovered.iter().copied());
                     } else {
@@ -220,15 +225,29 @@ impl RuleSmallExactReduction {
         graph: &Graph,
         domset: &mut DominatingSet,
         covered: &mut BitSet,
-        _never_select: &BitSet,
+        never_select: &BitSet,
         nodes: &[Node],
     ) {
         assert_eq!(nodes.len(), 3);
 
-        if !nodes.iter().all(|&u| covered.get_bit(u)) {
-            let deg2 = nodes.iter().find(|&&u| graph.degree_of(u) == 2).unwrap();
-            domset.fix_node(*deg2);
+        if nodes.iter().all(|&u| covered.get_bit(u)) {
+            return;
+        }
+
+        if let Some(&deg2) = nodes
+            .iter()
+            .filter(|&&u| !never_select.get_bit(u))
+            .find(|&&u| graph.degree_of(u) == 2)
+        {
+            domset.add_node(deg2);
             covered.set_bits(nodes.iter().copied());
+        } else {
+            for &u in nodes {
+                if !covered.get_bit(u) {
+                    domset.add_node(u);
+                    covered.set_bits(graph.closed_neighbors_of(u));
+                }
+            }
         }
     }
 
@@ -244,9 +263,9 @@ impl RuleSmallExactReduction {
         let num_uncovered = nodes.iter().filter(|&&u| !covered.get_bit(u)).count();
         if num_uncovered > 0 {
             if let Some(u) = nodes.iter().find(|&&u| graph.degree_of(u) == 3) {
-                domset.fix_node(*u);
+                domset.add_node(*u);
             } else if num_uncovered == 1 {
-                domset.fix_node(
+                domset.add_node(
                     nodes
                         .iter()
                         .copied()
@@ -260,7 +279,7 @@ impl RuleSmallExactReduction {
                     .count()
                     == num_uncovered
             }) {
-                domset.fix_node(*u);
+                domset.add_node(*u);
             } else {
                 let (a, b) = nodes
                     .iter()
@@ -270,8 +289,8 @@ impl RuleSmallExactReduction {
                     .collect_tuple()
                     .unwrap();
 
-                domset.fix_node(a);
-                domset.fix_node(b);
+                domset.add_node(a);
+                domset.add_node(b);
             }
 
             covered.set_bits(nodes.iter().copied());
@@ -315,7 +334,7 @@ impl RuleSmallExactReduction {
 
             if let SolverResult::Optimal(solved) = problem.solve_exact(Some(Duration::from_secs(1)))
             {
-                domset.fix_nodes(solved.into_iter());
+                domset.add_nodes(solved.into_iter());
                 covered.set_bits(nodes.into_iter());
                 num_solved += 1;
             } else {
@@ -329,6 +348,42 @@ impl RuleSmallExactReduction {
         info!(
             "{} Found {num_found:6} large small ccs. Solved {num_solved:6}. Timeout {num_timeout:6}. Unconsidered: {num_unconsidered:6}",
             Self::NAME,
+        );
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::graph::NumNodes;
+    use rand::SeedableRng;
+    use rand_pcg::Pcg64Mcg;
+
+    #[test]
+    fn generic_before_and_after() {
+        let mut rng = Pcg64Mcg::seed_from_u64(0x1235342);
+        const NODES: NumNodes = 20;
+        crate::testing::test_before_and_after_rule(
+            &mut rng,
+            |_| RuleSmallExactReduction::new(),
+            false,
+            NODES,
+            400,
+        );
+    }
+
+    #[test]
+    fn generic_before_and_after_exhaust() {
+        // this test does not make a terrible lot of sense (as cc are either completely removed or remain untouched).
+        // but let's be sure that we did not miss anything
+        let mut rng = Pcg64Mcg::seed_from_u64(0x43538092);
+        const NODES: NumNodes = 20;
+        crate::testing::test_before_and_after_rule(
+            &mut rng,
+            |_| RuleSmallExactReduction::new(),
+            true,
+            NODES,
+            400,
         );
     }
 }

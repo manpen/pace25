@@ -9,12 +9,22 @@ use log::{debug, info};
 
 type SmallNodeBuffer = SmallVec<[Node; 8]>;
 
-pub struct LongPathReduction;
+pub struct LongPathReduction {
+    in_post: BitSet,
+}
 
 #[must_use] // this rule has a post-processing step and may cause invalid results if not applied
 pub struct LongPathPostProcessor<G> {
     removed_paths: Vec<Vec<Node>>,
     _graph: PhantomData<G>,
+}
+
+impl LongPathReduction {
+    pub fn new(n: NumNodes) -> Self {
+        Self {
+            in_post: BitSet::new(n),
+        }
+    }
 }
 
 /// This reduction rule shortens paths of lengths at least 5 by removing groups of three nodes
@@ -81,7 +91,7 @@ impl<G: AdjacencyList + AdjacencyTest + GraphEdgeEditing + 'static> ReductionRul
                 continue;
             }
 
-            if rule_impl.process_path_with_postprocess(&mut path) {
+            if rule_impl.process_path_with_postprocess(&mut path, &mut self.in_post) {
                 num_path_with_pp += 1;
                 post_process_paths.push(path);
             }
@@ -119,7 +129,7 @@ impl<G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'_, G> {
     fn add_to_solution(&mut self, u: Node) {
         assert!(!self.never_select.get_bit(u));
         self.covered.set_bits(self.graph.closed_neighbors_of(u));
-        self.domset.fix_node(u);
+        self.domset.add_node(u);
     }
 
     fn greedy_cover_into<T: Borrow<Node>>(
@@ -280,8 +290,11 @@ impl<G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'_, G> {
     }
 
     #[allow(unreachable_code, unused_variables)]
-    fn process_path_with_postprocess(&mut self, path: &mut [Node]) -> bool {
-        return false;
+    fn process_path_with_postprocess(&mut self, path: &mut [Node], in_post: &mut BitSet) -> bool {
+        if path.iter().any(|&u| in_post.get_bit(u)) {
+            return false;
+        }
+
         // we can remove groups of three as long as at least four nodes remain
         let nodes_to_remove = ((path.len() - 4) / 3) * 3;
         if nodes_to_remove == 0 {
@@ -299,6 +312,8 @@ impl<G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'_, G> {
             self.covered.set_bit(u);
         }
 
+        in_post.set_bits(path[1..2 + nodes_to_remove].iter().copied());
+
         self.graph.add_edge(path[1], path[2 + nodes_to_remove]);
 
         true
@@ -311,7 +326,7 @@ impl<G: AdjacencyList + GraphEdgeEditing + AdjacencyTest> RuleImpl<'_, G> {
             }
 
             let add = path[(i + 1).min(path.len() - 1)];
-            self.domset.fix_node(add);
+            self.domset.add_node(add);
             self.covered.set_bit(add);
             if i + 2 < path.len() {
                 self.covered.set_bit(path[i + 2]);
@@ -627,6 +642,7 @@ mod test {
                 let clean_solution =
                     naive_solver(&graph, &covered, &redundant, None, None).unwrap();
 
+                let mut in_post = graph.vertex_bitset_unset();
                 let modified = {
                     let mut rule_impl = RuleImpl {
                         graph: &mut graph,
@@ -635,7 +651,7 @@ mod test {
                         never_select: &redundant,
                     };
 
-                    rule_impl.process_path_with_postprocess(&mut path)
+                    rule_impl.process_path_with_postprocess(&mut path, &mut in_post)
                 };
                 assert!(solution.is_empty()); // rule does only add nodes in post
 

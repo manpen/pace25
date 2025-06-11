@@ -165,7 +165,6 @@ where
     ) -> Self {
         assert!(initial_solution.is_valid_given_previous_cover(&graph, &is_perm_covered));
         assert!(graph.len() > 0);
-        assert!(initial_solution.num_of_fixed_nodes() == 0);
 
         let n = graph.len();
 
@@ -230,7 +229,8 @@ where
         let mut intersection_forest =
             IntersectionForest::new_unsorted(graph.extract_csr_repr(), non_optimal_nodes.clone());
 
-        for u in initial_solution.iter_non_fixed() {
+        // Insert uniquely covered neighbors of dominating nodes into IntersectionTrees & Sampler
+        for u in initial_solution.iter() {
             for v in graph.neighbors_of(u) {
                 debug_assert!(num_covered[v as usize] > 0);
                 if num_covered[v as usize] == 1 {
@@ -633,9 +633,6 @@ where
             }
 
             let dominating_node = self.graph.ith_neighbor(candidate, 0);
-            if self.current_solution.is_fixed_node(dominating_node) {
-                continue;
-            }
             // Remove entries of IntersectionTree[dominating_node] from sampler
             for &node in self.intersection_forest.get_root_nodes(dominating_node) {
                 if node != dominating_node && self.scores[node as usize] != 0 {
@@ -707,7 +704,7 @@ where
     #[inline(always)]
     fn minimum_loss_node(&self) -> Node {
         self.current_solution
-            .iter_non_fixed()
+            .iter()
             .map(|u| (self.uniquely_covered[u as usize], self.age[u as usize], u))
             .min()
             .unwrap()
@@ -746,9 +743,7 @@ where
                     if !self.helper_bitset.set_bit(dom_node) {
                         bfs_queue.push_back(dom_node);
 
-                        if self.current_solution.is_non_fixed_node(dom_node) {
-                            dom_nodes.push(dom_node);
-                        }
+                        dom_nodes.push(dom_node);
                     }
                 }
 
@@ -772,8 +767,6 @@ where
     ///
     /// Runs a BFS on non-dominating nodes and a DFS on dominating ones.
     fn bfs_non_fixed_nodes<const DEPTH: usize>(&mut self, start_node: Node) -> Vec<Node> {
-        debug_assert!(self.current_solution.is_non_fixed_node(start_node));
-
         self.helper_bitset.clear_all();
         let mut dom_nodes = Vec::new();
 
@@ -836,8 +829,6 @@ where
     ///    loss from the current solution.
     #[allow(unused)]
     fn force_removal_dms(&mut self) {
-        debug_assert!(self.current_solution.num_of_non_fixed_nodes() > 1);
-
         if self.rng.gen_bool(0.5) {
             self.forced_removal_procedure([
                 ForcedRemovalNodeType::MinLoss,
@@ -907,15 +898,9 @@ where
 
         // Step (1)
         for node_type in nodes_to_remove.into_iter() {
-            // Only remove non-fixed nodes
-            if self.current_solution.num_of_non_fixed_nodes() == 0 {
-                break;
-            }
 
             let node = self.forced_removal_node_type_to_node::<50>(node_type);
-            if self.current_solution.is_non_fixed_node(node) {
-                uncovered_nodes += self.force_remove_node_from_domset(node);
-            }
+            uncovered_nodes += self.force_remove_node_from_domset(node);
         }
 
         // Step (2)
@@ -942,9 +927,6 @@ where
 
             // fixed nodes do not own trees
             let dominating_node = self.graph.ith_neighbor(candidate, 0);
-            if self.current_solution.is_fixed_node(dominating_node) {
-                continue;
-            }
 
             // Remove entries of IntersectionTree[dominating_node] from sampler
             for &node in self.intersection_forest.get_root_nodes(dominating_node) {
@@ -1276,8 +1258,6 @@ pub enum RevGreedyError {
     FaultyScore(Node, NumNodes, NumNodes),
     #[error("{0} is in sampler bucket {2} but should be in bucket {1}")]
     FaultyBucket(Node, NumNodes, NumNodes),
-    #[error("the current solution has {0} fixed nodes whereas the best solution has {1}")]
-    FixedNodesDifference(NumNodes, NumNodes),
     #[error("the current solution with size {0} is better than the best solution with size {1}")]
     WorseBestSolution(NumNodes, NumNodes),
     #[error("VariableError: {0}")]
@@ -1302,13 +1282,6 @@ where
         self.intersection_forest
             .is_correct()
             .map_err(RevGreedyError::IntersectionForestError)?;
-
-        if self.current_solution.num_of_fixed_nodes() != self.best_solution.num_of_fixed_nodes() {
-            return Err(RevGreedyError::FixedNodesDifference(
-                self.current_solution.num_of_fixed_nodes() as NumNodes,
-                self.best_solution.num_of_fixed_nodes() as NumNodes,
-            ));
-        }
 
         if self.current_solution.len() < self.best_solution.len() {
             return Err(RevGreedyError::WorseBestSolution(
@@ -1395,14 +1368,12 @@ where
             if self.num_covered[u as usize] == 1 && !self.is_perm_covered.get_bit(u) {
                 let dom = self.graph.ith_neighbor(u, 0);
                 unique[dom as usize] += 1;
-                if !self.current_solution.is_fixed_node(dom)
-                    && !self.intersection_forest.is_in_tree(dom, u)
-                {
+                if !self.intersection_forest.is_in_tree(dom, u) {
                     return Err(RevGreedyError::TreeInsertion(u, dom));
                 }
             }
 
-            if self.current_solution.is_non_fixed_node(u) {
+            if self.current_solution.is_in_domset(u) {
                 for &v in self.intersection_forest.get_root_nodes(u) {
                     if v != u {
                         scores[v as usize] += 1;
@@ -1434,7 +1405,7 @@ where
                 return Err(RevGreedyError::FaultyBucket(u, real_bucket, bucket));
             }
 
-            if self.current_solution.is_non_fixed_node(u) && unique[u as usize] == 0 {
+            if self.current_solution.is_in_domset(u) && unique[u as usize] == 0 {
                 return Err(RevGreedyError::RedundantDomNode(u));
             }
         }
@@ -1522,6 +1493,7 @@ mod tests {
                     algo.step()
                 }
 
+                assert!(algo.is_correct().is_ok());
                 algo.best_known_solution().unwrap()
             };
 
@@ -1570,6 +1542,7 @@ mod tests {
                     algo.step()
                 }
 
+                assert!(algo.is_correct().is_ok());
                 algo.best_known_solution().unwrap()
             };
 
@@ -1613,6 +1586,7 @@ mod tests {
                     algo.step()
                 }
 
+                assert!(algo.is_correct().is_ok());
                 algo.best_known_solution().unwrap()
             };
 
