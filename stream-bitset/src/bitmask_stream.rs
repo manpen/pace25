@@ -80,7 +80,8 @@ impl<'a> IntoBitmaskStream for BitmaskSliceStream<'a> {
 }
 
 impl<'a> ToBitmaskStream for BitmaskSliceStream<'a> {
-    type ToStream<'b> = Self
+    type ToStream<'b>
+        = Self
     where
         Self: 'b;
 
@@ -152,7 +153,8 @@ where
     R: BitmaskStream,
     Op: BitmaskBinop,
 {
-    type ToStream<'a> = BitmaskStreamBinop<L::ToStream<'a>, R::ToStream<'a>, Op>
+    type ToStream<'a>
+        = BitmaskStreamBinop<L::ToStream<'a>, R::ToStream<'a>, Op>
     where
         Self: 'a;
 

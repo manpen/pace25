@@ -1,6 +1,8 @@
-use std::{cmp::Ordering, collections::VecDeque, fmt::Debug};
+use std::{cmp::Ordering, collections::VecDeque, fmt::Debug,time::Instant};
 
-use rand::Rng;
+use log::info;
+use rand::{Rng, SeedableRng};
+use rand_pcg::Pcg64Mcg;
 use thiserror::Error;
 
 use itertools::Itertools;
@@ -8,12 +10,11 @@ use itertools::Itertools;
 use crate::{
     errors::InvariantCheck,
     graph::*,
-    kernelization::{KernelizationRule, SubsetRule},
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
     utils::{
+        DominatingSet,
         intersection_forest::{IntersectionForest, IntersectionForestError},
         sampler::{SamplerError, WeightedPow2Sampler},
-        DominatingSet,
     },
 };
 
@@ -48,17 +49,14 @@ use crate::{
 /// which they must be at the beginning/end of each *round*. See BaseStateError down below for a
 /// description of these states.
 pub struct GreedyReverseSearch<
-    'a,
-    R,
     G,
     const NUM_SAMPLER_BUCKETS: usize = 8,
     const NUM_SAMPLES: usize = 10,
 > where
-    R: Rng,
     G: StaticGraph + SelfLoop,
 {
     /// A reference to the graph: mutable access is needed as we need to re-order adjacency lists
-    graph: &'a mut G,
+    graph: G,
 
     /// The current solution we operate on
     current_solution: DominatingSet,
@@ -74,7 +72,7 @@ pub struct GreedyReverseSearch<
     sampler: WeightedPow2Sampler<NUM_SAMPLER_BUCKETS>,
 
     /// RNG used for sampling
-    rng: &'a mut R,
+    rng: Pcg64Mcg,
 
     /// List of all nodes that are either currently inserted into an IntersectionTree and need to
     /// be removed to maintain (I2) or need to be added to an IntersectionTree to maintain (I2)
@@ -139,65 +137,42 @@ pub struct GreedyReverseSearch<
     /// Which forced removal procedure to apply
     forced_rule: ForcedRemovalRuleType,
 
-    ///
+    /// BitSet indicating whether a node is permanently covered by a (removed) fixed node
+    is_perm_covered: BitSet,
+
+    verbose_logging: bool,
+    previous_improvement: u64,
+    start_time: Instant,
+
+
     hitting_score: Vec<NumNodes>
 }
 
-impl<'a, R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
-    GreedyReverseSearch<'a, R, G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
+impl<G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
+    GreedyReverseSearch<G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
 where
-    R: Rng,
     G: StaticGraph + SelfLoop,
 {
     /// Creates a new instance of the algorithm for a given graph and a starting DomSet which must be valid.
     /// Runs Subset-Reduction beforehand to further reduce the DomSet and removes redundant nodes afterwards.
     pub fn new(
-        graph: &'a mut G,
+        mut graph: G,
         mut initial_solution: DominatingSet,
-        rng: &'a mut R,
-        rule: ForcedRemovalRuleType,
+        is_perm_covered: BitSet,
+        non_optimal_nodes: BitSet,
+        seeding_rng: &mut impl Rng,
+        rule: ForcedRemovalRuleType
     ) -> Self {
-        assert!(initial_solution.is_valid(graph));
+        assert!(initial_solution.is_valid_given_previous_cover(&graph, &is_perm_covered));
+        assert!(graph.len() > 0);
+        assert!(initial_solution.num_of_fixed_nodes() == 0);
 
-        let n = graph.number_of_nodes() as usize;
-        // If only fixed nodes cover the graph, this is optimal.
-        // For API-purposes, we create an *empty* instance that holds the optimal solution
-        //
-        // TODO: also return early if all but one (non-redundant) node is fixed
-        if initial_solution.all_fixed() {
-            return Self {
-                graph,
-                current_solution: initial_solution.clone(),
-                best_solution: initial_solution,
-                is_locally_optimal: true,
-                sampler: WeightedPow2Sampler::new(0),
-                rng,
-                nodes_to_update: Vec::new(),
-                in_nodes_to_update: BitSet::new(1),
-                num_covered: Vec::new(),
-                uniquely_covered: Vec::new(),
-                redundant_nodes: Vec::new(),
-                scores: Vec::new(),
-                age: Vec::new(),
-                intersection_forest: IntersectionForest::default(),
-                round: 1,
-                domset_modifications: Vec::new(),
-                non_optimal_nodes: BitSet::new(1),
-                non_covered_nodes: Vec::new(),
-                in_non_covered_nodes: BitSet::new(1),
-                num_uncovered_neighbors: Vec::new(),
-                helper_bitset: BitSet::new(1),
-                forced_rule: rule,
-                hitting_score: vec![0;n],
-            };
-        }
+        let n = graph.len();
 
-
-        // Run Subset-Reduction and create reduced edge set
-        let mut csr_repr = graph.extract_csr_repr();
-        let non_optimal_nodes = SubsetRule::apply_rule(&mut csr_repr, &mut initial_solution);
-
-        let mut num_covered = vec![0; n];
+        // Initialize NumCovered with 2 for permanently covered nodes to prevent unique-checks
+        let mut num_covered: Vec<NumNodes> = (0..graph.number_of_nodes())
+            .map(|i| is_perm_covered.get_bit(i) as NumNodes * 2)
+            .collect();
         let mut age = vec![0; n];
 
         // (I1) Reorder adjacency lists such that dominating nodes appear first
@@ -205,7 +180,11 @@ where
             age[u as usize] = 1;
             for i in 0..graph.degree_of(u) {
                 let v = graph.ith_neighbor(u, i);
-                graph.swap_neighbors(v, graph.ith_cross_position(u, i), num_covered[v as usize]);
+                graph.swap_neighbors(
+                    v,
+                    graph.ith_cross_position(u, i),
+                    num_covered[v as usize] - (is_perm_covered.get_bit(v) as NumNodes * 2),
+                );
                 num_covered[v as usize] += 1;
             }
         }
@@ -232,7 +211,11 @@ where
             for j in (0..graph.degree_of(u)).rev() {
                 let v = graph.ith_neighbor(u, j);
                 num_covered[v as usize] -= 1;
-                graph.swap_neighbors(v, graph.ith_cross_position(u, j), num_covered[v as usize]);
+                graph.swap_neighbors(
+                    v,
+                    graph.ith_cross_position(u, j),
+                    num_covered[v as usize] - (is_perm_covered.get_bit(v) as NumNodes * 2),
+                );
 
                 if num_covered[v as usize] == 1 {
                     uniquely_covered[graph.ith_neighbor(v, 0) as usize] += 1;
@@ -244,13 +227,8 @@ where
         let mut sampler = WeightedPow2Sampler::new(n);
         let mut scores = vec![0; n];
 
-        // Fixed nodes will never appear in the IntersectionForest as they are fixed in the DomSet,
-        // ie. no Tree-Owners, and will thus be never uniquely covered by another DomSet node nor
-        // will they be a neighbor to a uniquely covered node (of another DomSet node) by definition.
-        let fixed_nodes =
-            BitSet::new_with_bits_set(graph.number_of_nodes(), initial_solution.iter_fixed());
         let mut intersection_forest =
-            IntersectionForest::new_unsorted(csr_repr, &fixed_nodes, &non_optimal_nodes);
+            IntersectionForest::new_unsorted(graph.extract_csr_repr(), non_optimal_nodes.clone());
 
         for u in initial_solution.iter_non_fixed() {
             for v in graph.neighbors_of(u) {
@@ -271,6 +249,7 @@ where
         let current_solution = initial_solution.clone();
         let best_solution = initial_solution;
 
+        let rng = Pcg64Mcg::seed_from_u64(seeding_rng.r#gen());
         Self {
             graph,
             current_solution,
@@ -295,7 +274,15 @@ where
             num_uncovered_neighbors: vec![0; n],
             forced_rule: rule,
             hitting_score: vec![0;n],
+            is_perm_covered,
+            verbose_logging: false,
+            previous_improvement: 0,
+            start_time: Instant::now(),
         }
+    }
+
+    pub fn enable_verbose_logging(&mut self) {
+        self.verbose_logging = true;
     }
 
     /// Run one iteration of the algorithm:
@@ -357,7 +344,7 @@ where
                     );
                 }
                 ForcedRemovalRuleType::FRDR => {
-                    if let Some(non_removable_node) = (0..40).map(|_| self.current_solution.sample_non_fixed(self.rng)).find_or_first(|x| {
+                    if let Some(non_removable_node) = (0..40).map(|_| self.current_solution.sample_non_fixed(&mut self.rng)).find_or_first(|x| {
                         self.intersection_forest.get_root_nodes(*x).len() == 1
                     }) {
                         for nb in self.graph.neighbors_of(non_removable_node) {
@@ -522,10 +509,12 @@ where
             self.graph.swap_neighbors(
                 neighbor,
                 self.graph.ith_cross_position(u, i),
-                self.num_covered[neighbor as usize],
+                self.num_covered[neighbor as usize]
+                    - (self.is_perm_covered.get_bit(neighbor) as NumNodes * 2),
             );
             self.num_covered[neighbor as usize] += 1;
 
+            // If self.is_perm_covered is true, NumCovered must now be at least 3
             if self.num_covered[neighbor as usize] == 2 {
                 // (I1) the first neighbor must be a dominating node
                 let former_unique_covering_node = self.graph.ith_neighbor(neighbor, 0);
@@ -565,9 +554,11 @@ where
             self.graph.swap_neighbors(
                 neighbor,
                 self.graph.ith_cross_position(old_node, i),
-                self.num_covered[neighbor as usize],
+                self.num_covered[neighbor as usize]
+                    - (self.is_perm_covered.get_bit(neighbor) as NumNodes * 2),
             );
 
+            // If self.is_perm_covered is true, NumCovered is at least 2
             if self.num_covered[neighbor as usize] == 1 {
                 let dominating_node = self.graph.ith_neighbor(neighbor, 0);
                 self.uniquely_covered[dominating_node as usize] += 1;
@@ -667,6 +658,25 @@ where
                 }
             }
         }
+
+        if self.verbose_logging {
+            info!(
+                " Better solution: size={:6}, round={:9}, gap={:9}, time={:7}ms",
+                self.best_solution.len(),
+                self.round,
+                self.round - self.previous_improvement,
+                self.start_time.elapsed().as_millis()
+            );
+            self.previous_improvement = self.round;
+        }
+    }
+
+    pub fn current_round(&self) -> u64 {
+        self.round
+    }
+
+    pub fn current_score(&self) -> NumNodes {
+        self.best_solution.len() as NumNodes
     }
 
     /// Returns the non-fixed node in self.current_solution with minimum UniqueCov tiebreaked by
@@ -686,7 +696,7 @@ where
     #[inline(always)]
     fn random_minimum_loss_node<const SAMPLE_TIMES: usize>(&mut self) -> Node {
         self.current_solution
-            .sample_many_non_fixed::<_, SAMPLE_TIMES>(self.rng)
+            .sample_many_non_fixed::<_, SAMPLE_TIMES>(&mut self.rng)
             .map(|u| (self.uniquely_covered[u as usize], self.age[u as usize], u))
             .min()
             .unwrap()
@@ -852,7 +862,7 @@ where
     ) -> Node {
         match node_type {
             ForcedRemovalNodeType::MinLoss => self.minimum_loss_node(),
-            ForcedRemovalNodeType::Random => self.current_solution.sample_non_fixed(self.rng),
+            ForcedRemovalNodeType::Random => self.current_solution.sample_non_fixed(&mut self.rng),
             ForcedRemovalNodeType::RandomMinLoss => {
                 self.random_minimum_loss_node::<NUM_RML_SAMPLES>()
             }
@@ -1171,11 +1181,9 @@ enum ForcedRemovalNodeType {
     Fixed(Node),
 }
 
-impl<R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
-    IterativeAlgorithm<DominatingSet>
-    for GreedyReverseSearch<'_, R, G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
+impl<G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
+    IterativeAlgorithm<DominatingSet> for GreedyReverseSearch<G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
 where
-    R: Rng,
     G: StaticGraph + SelfLoop,
 {
     fn execute_step(&mut self) {
@@ -1191,11 +1199,10 @@ where
     }
 }
 
-impl<R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
+impl<G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
     TerminatingIterativeAlgorithm<DominatingSet>
-    for GreedyReverseSearch<'_, R, G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
+    for GreedyReverseSearch<G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
 where
-    R: Rng,
     G: StaticGraph + SelfLoop,
 {
 }
@@ -1260,11 +1267,9 @@ impl Debug for RevGreedyError {
     }
 }
 
-impl<R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
-    InvariantCheck<RevGreedyError>
-    for GreedyReverseSearch<'_, R, G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
+impl<G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize> InvariantCheck<RevGreedyError>
+    for GreedyReverseSearch<G, NUM_SAMPLER_BUCKETS, NUM_SAMPLES>
 where
-    R: Rng,
     G: StaticGraph + SelfLoop,
 {
     fn is_correct(&self) -> Result<(), RevGreedyError> {
@@ -1341,7 +1346,9 @@ where
                 return Err(RevGreedyError::NotCovered(u));
             }
 
-            for i in 0..self.num_covered[u as usize] {
+            for i in 0..(self.num_covered[u as usize]
+                - (self.is_perm_covered.get_bit(u) as NumNodes * 2))
+            {
                 if !self
                     .current_solution
                     .is_in_domset(self.graph.ith_neighbor(u, i))
@@ -1350,7 +1357,10 @@ where
                 }
             }
 
-            for i in self.num_covered[u as usize]..self.graph.degree_of(u) {
+            for i in (self.num_covered[u as usize]
+                - (self.is_perm_covered.get_bit(u) as NumNodes * 2))
+                ..self.graph.degree_of(u)
+            {
                 if self
                     .current_solution
                     .is_in_domset(self.graph.ith_neighbor(u, i))
@@ -1359,7 +1369,7 @@ where
                 }
             }
 
-            if self.num_covered[u as usize] == 1 {
+            if self.num_covered[u as usize] == 1 && !self.is_perm_covered.get_bit(u) {
                 let dom = self.graph.ith_neighbor(u, 0);
                 unique[dom as usize] += 1;
                 if !self.current_solution.is_fixed_node(dom)
@@ -1421,4 +1431,154 @@ pub enum ForcedRemovalRuleType {
     BFSP4 = 6,
     FRDR = 7,
     None = 8,
+}
+
+#[cfg(test)]
+mod tests {
+    use itertools::Itertools;
+    use rand::{Rng, SeedableRng, seq::SliceRandom};
+    use rand_pcg::Pcg64Mcg;
+
+    use super::*;
+
+    fn random_initial_solution(rng: &mut impl Rng, graph: &impl AdjacencyList) -> DominatingSet {
+        let mut covered = graph.vertex_bitset_unset();
+        let mut node_order = graph.vertices_range().collect_vec();
+        node_order.shuffle(rng);
+        let mut domset = DominatingSet::new(graph.number_of_nodes());
+        while let Some(u) = node_order.pop() {
+            if graph.closed_neighbors_of(u).any(|v| !covered.get_bit(v)) {
+                domset.add_node(u);
+                covered.set_bits(graph.closed_neighbors_of(u));
+                if covered.are_all_set() {
+                    break;
+                }
+            }
+        }
+        domset
+    }
+
+    #[test]
+    /// Randomly generate G(n,p) graphs and check that the algorithm produces a feasible solution
+    fn full_graph() {
+        let mut rng = Pcg64Mcg::seed_from_u64(123456);
+        for _ in 0..500 {
+            let graph = AdjArray::random_gnp(&mut rng, 100, 0.03);
+            let initial_domset = random_initial_solution(&mut rng, &graph);
+
+            let domset = {
+                let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
+                let mut algo = GreedyReverseSearch::<_, 10, 10>::new(
+                    csr_graph,
+                    initial_domset,
+                    graph.vertex_bitset_unset(),
+                    graph.vertex_bitset_unset(),
+                    &mut rng,
+                );
+
+                for _ in 0..50 {
+                    algo.step()
+                }
+
+                algo.best_known_solution().unwrap()
+            };
+
+            assert!(domset.is_valid(&graph));
+        }
+    }
+
+    #[test]
+    /// Randomly generate G(n,p) graphs and check that the algorithm produces a feasible solution,
+    /// even if we delete some nodes selected by the initial solution
+    fn with_deleted_nodes() {
+        let mut rng = Pcg64Mcg::seed_from_u64(123456);
+        for _ in 0..500 {
+            let org_graph = AdjArray::random_gnp(&mut rng, 100, 0.03);
+            let mut graph = org_graph.clone();
+            let initial_domset = random_initial_solution(&mut rng, &graph);
+
+            let mut perm_covered = graph.vertex_bitset_unset();
+            {
+                let mut in_sol = initial_domset.iter().collect_vec();
+                let (to_be_fixed, _) = in_sol.partial_shuffle(&mut rng, 5);
+                for u in to_be_fixed {
+                    perm_covered.set_bits(graph.closed_neighbors_of(*u));
+                    graph.remove_edges_at_node(*u);
+                }
+            }
+
+            // select first 10 nodes which are perm covered (since its a gnp graph that sufficiently random)
+            let mut non_opt_nodes = BitSet::new_with_bits_set(
+                graph.number_of_nodes(),
+                perm_covered.iter_set_bits().take(10),
+            );
+            non_opt_nodes -= &perm_covered;
+
+            let domset = {
+                let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
+                let mut algo = GreedyReverseSearch::<_, 10, 10>::new(
+                    csr_graph,
+                    initial_domset,
+                    perm_covered.clone(),
+                    non_opt_nodes.clone(),
+                    &mut rng,
+                );
+
+                for _ in 0..50 {
+                    algo.step()
+                }
+
+                algo.best_known_solution().unwrap()
+            };
+
+            assert!(domset.is_valid_given_previous_cover(&graph, &perm_covered));
+            for non_opt in non_opt_nodes.iter_set_bits() {
+                assert!(!domset.is_in_domset(non_opt));
+            }
+        }
+    }
+
+    #[test]
+    /// Randomly generate G(n,p) graphs and check that the algorithm produces a feasible solution,
+    /// without selecting `forbidden` (= non_optimal) nodes
+    fn non_opt_nodes() {
+        let mut rng = Pcg64Mcg::seed_from_u64(123456);
+        for _ in 0..500 {
+            let org_graph = AdjArray::random_gnp(&mut rng, 100, 0.03);
+            let graph = org_graph.clone();
+            let initial_domset = random_initial_solution(&mut rng, &graph);
+
+            let mut non_opt_nodes = graph.vertex_bitset_unset();
+            while non_opt_nodes.cardinality() < 5 {
+                let u = rng.gen_range(graph.vertices_range());
+                if initial_domset.is_in_domset(u) {
+                    continue;
+                }
+                non_opt_nodes.set_bit(u);
+            }
+
+            let domset = {
+                let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
+                let mut algo = GreedyReverseSearch::<_, 10, 10>::new(
+                    csr_graph,
+                    initial_domset,
+                    graph.vertex_bitset_unset(),
+                    non_opt_nodes.clone(),
+                    &mut rng,
+                );
+
+                for _ in 0..50 {
+                    algo.step()
+                }
+
+                algo.best_known_solution().unwrap()
+            };
+
+            assert!(domset.is_valid(&graph));
+
+            for non_opt in non_opt_nodes.iter_set_bits() {
+                assert!(!domset.is_in_domset(non_opt));
+            }
+        }
+    }
 }

@@ -207,12 +207,18 @@ impl<T: BitmaskStream> BitmaskStreamConsumer for T {
         count
     }
 
-    type IterSetBits<I> = BitmaskStreamToIndices<Self, I, true> where I: PrimIndex;
+    type IterSetBits<I>
+        = BitmaskStreamToIndices<Self, I, true>
+    where
+        I: PrimIndex;
     fn iter_set_bits<I: PrimIndex>(self) -> Self::IterSetBits<I> {
         BitmaskStreamToIndices::new(self)
     }
 
-    type IterClearedBits<I> = BitmaskStreamToIndices<Self, I, false> where I: PrimIndex;
+    type IterClearedBits<I>
+        = BitmaskStreamToIndices<Self, I, false>
+    where
+        I: PrimIndex;
     fn iter_cleared_bits<I: PrimIndex>(self) -> Self::IterClearedBits<I> {
         BitmaskStreamToIndices::new(self)
     }

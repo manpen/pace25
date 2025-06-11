@@ -225,9 +225,11 @@ mod test {
 
             assert!(edges.iter().all(|edge| !edge.is_loop()));
             let edges_hash: HashSet<_> = edges.iter().copied().collect();
-            assert!(edges
-                .iter()
-                .all(|edge| !edges_hash.contains(&edge.reverse())));
+            assert!(
+                edges
+                    .iter()
+                    .all(|edge| !edges_hash.contains(&edge.reverse()))
+            );
         }
     }
 }

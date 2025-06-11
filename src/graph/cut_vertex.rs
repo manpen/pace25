@@ -2,6 +2,7 @@ use super::*;
 
 pub trait ArticluationPoint {
     fn compute_articulation_points(&self) -> BitSet;
+    fn compute_articulation_points_with_visited(&self, visited: BitSet) -> BitSet;
 }
 
 impl<G> ArticluationPoint for G
@@ -10,6 +11,11 @@ where
 {
     fn compute_articulation_points(&self) -> BitSet {
         ArticulationPointSearch::new(self).compute()
+    }
+    fn compute_articulation_points_with_visited(&self, visited: BitSet) -> BitSet {
+        let mut ap = ArticulationPointSearch::new(self);
+        ap.visited = visited;
+        ap.compute()
     }
 }
 
@@ -39,7 +45,8 @@ impl<'a, T: AdjacencyList> ArticulationPointSearch<'a, T> {
     }
 
     pub fn compute(mut self) -> BitSet {
-        let _ = self.compute_recursive(0, 0);
+        let start = self.visited.iter_cleared_bits().next().unwrap();
+        let _ = self.compute_recursive(start, 0);
         self.articulation_points
     }
 

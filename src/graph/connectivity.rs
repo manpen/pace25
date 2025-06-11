@@ -2,13 +2,22 @@ use super::*;
 
 pub trait Connectivity {
     fn partition_into_connected_components(&self, skip_trivial: bool) -> Partition;
+    fn partition_into_connected_components_exclude_nodes(
+        &self,
+        skip_trivial: bool,
+        ignore: Vec<Node>,
+    ) -> Partition;
 }
 
 impl<G> Connectivity for G
 where
     G: AdjacencyList,
 {
-    fn partition_into_connected_components(&self, skip_trivial: bool) -> Partition {
+    fn partition_into_connected_components_exclude_nodes(
+        &self,
+        skip_trivial: bool,
+        ignore: Vec<Node>,
+    ) -> Partition {
         let mut partition = Partition::new(self.number_of_nodes());
 
         let start_node = if skip_trivial {
@@ -22,6 +31,9 @@ where
         };
 
         let mut bfs = self.bfs(start_node);
+        for u in ignore {
+            bfs.exclude_node(u);
+        }
 
         if skip_trivial {
             bfs.exclude_nodes(self.vertices().filter(|&u| self.degree_of(u) == 0));
@@ -41,6 +53,9 @@ where
 
         partition
     }
+    fn partition_into_connected_components(&self, skip_trivial: bool) -> Partition {
+        self.partition_into_connected_components_exclude_nodes(skip_trivial, vec![])
+    }
 }
 
 #[cfg(test)]
@@ -50,7 +65,7 @@ mod test {
     #[test]
     fn partition_into_connected_components() {
         let mut graph = AdjArray::new(7);
-        graph.add_edges([(1, 2), (2, 3), (4, 5)], EdgeColor::Black);
+        graph.add_edges([(1, 2), (2, 3), (4, 5)]);
 
         {
             let part = graph.partition_into_connected_components(true);

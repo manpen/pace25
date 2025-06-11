@@ -86,7 +86,8 @@ impl<I> ToBitmaskStream for BitSetShardImpl<I>
 where
     I: PrimIndex,
 {
-    type ToStream<'a> = BitmaskSliceStream<'a>
+    type ToStream<'a>
+        = BitmaskSliceStream<'a>
     where
         Self: 'a;
 
@@ -183,7 +184,8 @@ impl<Index: PrimIndex> IntoBitmaskStream for BitsetStreamShard<Index> {
 }
 
 impl<Index: PrimIndex> ToBitmaskStream for BitsetStreamShard<Index> {
-    type ToStream<'b> = BitmaskSliceStream<'b>
+    type ToStream<'b>
+        = BitmaskSliceStream<'b>
     where
         Self: 'b;
 

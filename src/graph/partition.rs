@@ -115,11 +115,7 @@ impl Partition {
     pub fn class_of_edge(&self, u: Node, v: Node) -> Option<PartitionClass> {
         let cu = self.class_of_node(u)?;
         let cv = self.class_of_node(v)?;
-        if cu == cv {
-            Some(cu)
-        } else {
-            None
-        }
+        if cu == cv { Some(cu) } else { None }
     }
 
     /// Returns the number of unassigned nodes
@@ -181,11 +177,7 @@ impl Partition {
         let class_id = class_id + 1;
         assert!(self.class_sizes.len() > class_id as usize);
         self.classes.iter().enumerate().filter_map(move |(i, &c)| {
-            if c == class_id {
-                Some(i as Node)
-            } else {
-                None
-            }
+            if c == class_id { Some(i as Node) } else { None }
         })
     }
 
@@ -193,7 +185,7 @@ impl Partition {
     /// one subgraph per partition class; the `result[i]` corresponds to partition class `i`.
     pub fn split_into_subgraphs_as<GI, GO, M>(&self, graph: &GI) -> Vec<(GO, M)>
     where
-        GI: ColoredAdjacencyList,
+        GI: AdjacencyList,
         GO: GraphNew + GraphEdgeEditing,
         M: node_mapper::Setter + node_mapper::Getter,
     {
@@ -224,19 +216,19 @@ impl Partition {
         }
 
         // Iterate over all edges incident to assigned nodes
-        for (u, &class_id) in self.classes.iter().enumerate().filter(|(_, &c)| c > 0) {
+        for (u, &class_id) in self.classes.iter().enumerate().filter(|&(_, &c)| c > 0) {
             let u = u as Node;
             let result_containg_u = &mut result[class_id as usize - 1];
 
             let mapped_u = result_containg_u.1.new_id_of(u).unwrap();
 
             // Iterate over all out-neighbors of u that are in the same partition class
-            for ColoredEdge(_, v, color) in graph
-                .colored_edges_of(u, true)
-                .filter(|ColoredEdge(_, v, _)| self.classes[*v as usize] == class_id)
+            for Edge(_, v) in graph
+                .edges_of(u, true)
+                .filter(|Edge(_, v)| self.classes[*v as usize] == class_id)
             {
                 let mapped_v = result_containg_u.1.new_id_of(v).unwrap();
-                result_containg_u.0.add_edge(mapped_u, mapped_v, color);
+                result_containg_u.0.add_edge(mapped_u, mapped_v);
             }
         }
 
@@ -246,7 +238,7 @@ impl Partition {
     /// Shorthand for [`Partition::split_into_subgraphs_as`]
     pub fn split_into_subgraphs<G>(&self, graph: &G) -> Vec<(G, NodeMapper)>
     where
-        G: ColoredAdjacencyList + GraphNew + GraphEdgeEditing,
+        G: AdjacencyList + GraphNew + GraphEdgeEditing,
     {
         self.split_into_subgraphs_as(graph)
     }

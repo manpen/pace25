@@ -1,0 +1,17 @@
+services:
+  ds-heuristic:
+    build:
+      context: .
+      dockerfile: pace-eval-ds-heuristic/Dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: "16GB"
+    environment:
+      MAX_TIME: 30  #in seconds
+      MERCY_TIME: 25 #in seconds
+      SOLVER_CMD: "/solver/heuristic"
+    volumes:
+      - "./output/ds/heuristic:/output"
+      - "./instances/ds/heuristic:/instances"

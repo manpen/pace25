@@ -1,5 +1,6 @@
 use rand::Rng;
 use rand_distr::{Distribution, Uniform};
+use itertools::Itertools;
 
 use crate::prelude::*;
 use std::io::Write;
@@ -234,10 +235,10 @@ impl DominatingSet {
 
     /// Computes the set of nodes covered by the dominating set.
     pub fn compute_covered(&self, graph: &impl AdjacencyList) -> BitSet {
-        let mut covered = BitSet::new(graph.number_of_nodes());
+        let mut covered = graph.vertex_bitset_unset();
 
         for &u in &self.solution {
-            covered.set_bits(graph.neighbors_of(u));
+            covered.set_bits(graph.closed_neighbors_of(u));
             covered.set_bit(u);
         }
 
@@ -247,7 +248,34 @@ impl DominatingSet {
     /// Returns true if the dominating set is valid, ie. it covers all nodes.
     pub fn is_valid(&self, graph: &impl AdjacencyList) -> bool {
         let covered = self.compute_covered(graph);
-        covered.are_all_set()
+        if covered.are_all_set() {
+            return true;
+        }
+
+        debug!(
+            "Missing nodes: {:?}",
+            covered.iter_cleared_bits().collect_vec()
+        );
+        false
+    }
+
+    /// Returns true if the dominating set is valid, ie. it covers all nodes.
+    pub fn is_valid_given_previous_cover(
+        &self,
+        graph: &impl AdjacencyList,
+        previous_cover: &BitSet,
+    ) -> bool {
+        let mut covered = self.compute_covered(graph);
+        covered |= previous_cover;
+        if covered.are_all_set() {
+            return true;
+        }
+
+        debug!(
+            "Missing nodes: {:?}",
+            covered.iter_cleared_bits().collect_vec()
+        );
+        false
     }
 
     /// Writes the dominating set to a writer using 1-based indexing,
@@ -312,5 +340,13 @@ impl DominatingSet {
             .sample_iter(rng)
             .take(NUM_SAMPLES)
             .map(move |idx| self.solution[idx])
+    }
+
+    pub fn complete_set(n: NumNodes) -> Self {
+        Self {
+            solution: (0..n).collect_vec(),
+            positions: (0..n).collect_vec(),
+            num_fixed: 0,
+        }
     }
 }

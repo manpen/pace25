@@ -5,8 +5,8 @@ use thiserror::Error;
 use crate::{
     errors::InvariantCheck,
     graph::{
-        sliced_buffer::{SlicedBuffer, SlicedBufferWithDefault},
         BitSet, CsrEdges, Node, NumEdges, NumNodes,
+        sliced_buffer::{SlicedBuffer, SlicedBufferWithDefault},
     },
 };
 
@@ -115,8 +115,8 @@ impl IntersectionForest {
     /// data structure (removable_nodes) and which nodes can be ignored in data-lists (ignorable_nodes).
     ///
     /// This assumes that the edges lists are sorted by source and target.
-    pub fn new(csr_repr: CsrEdges, removable_nodes: &BitSet, ignorable_nodes: &BitSet) -> Self {
-        Self::new_inner::<true>(csr_repr, removable_nodes, ignorable_nodes)
+    pub fn new(csr_repr: CsrEdges, ignorable_nodes: BitSet) -> Self {
+        Self::new_inner::<true>(csr_repr, ignorable_nodes)
     }
 
     /// Creates a new IntersectionForest from a CSR-Representation of the graph as well as two BitSets
@@ -124,19 +124,11 @@ impl IntersectionForest {
     /// data structure (removable_nodes) and which nodes can be ignored in data-lists (ignorable_nodes).
     ///
     /// This will sort the edge lists by source and target when initializing.
-    pub fn new_unsorted(
-        csr_repr: CsrEdges,
-        removable_nodes: &BitSet,
-        ignorable_nodes: &BitSet,
-    ) -> Self {
-        Self::new_inner::<false>(csr_repr, removable_nodes, ignorable_nodes)
+    pub fn new_unsorted(csr_repr: CsrEdges, ignorable_nodes: BitSet) -> Self {
+        Self::new_inner::<false>(csr_repr, ignorable_nodes)
     }
 
-    fn new_inner<const SORTED: bool>(
-        csr_repr: CsrEdges,
-        removable_nodes: &BitSet,
-        ignorable_nodes: &BitSet,
-    ) -> Self {
+    fn new_inner<const SORTED: bool>(csr_repr: CsrEdges, ignorable_nodes: BitSet) -> Self {
         let n = csr_repr.number_of_nodes() as usize;
         let (mut edges, offsets) = csr_repr.dissolve();
 
@@ -163,9 +155,8 @@ impl IntersectionForest {
                 let node = edges[read_ptr];
                 edges[write_ptr] = node;
 
-                let not_removable = !removable_nodes.get_bit(node);
-                write_ptr += (not_removable && !ignorable_nodes.get_bit(node)) as usize;
-                ignorable_offset += not_removable as NumEdges;
+                write_ptr += !ignorable_nodes.get_bit(node) as usize;
+                ignorable_offset += 1;
                 read_ptr += 1;
             }
 
@@ -766,9 +757,7 @@ pub enum IntersectionForestError {
     UnsortedData(Node),
     #[error("the parent node of {1} in the tree of {0} is a free node")]
     FreedParent(Node, Node),
-    #[error(
-        "data of {1} in the tree of {0} does not match the intersection of its childrens data"
-    )]
+    #[error("data of {1} in the tree of {0} does not match the intersection of its childrens data")]
     FaultyIntersection(Node, Node),
 }
 

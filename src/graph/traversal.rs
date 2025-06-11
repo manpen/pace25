@@ -54,11 +54,7 @@ impl SequencedItem for PredecessorOfNode {
         self.1
     }
     fn predecessor(&self) -> Option<Node> {
-        if self.0 == self.1 {
-            None
-        } else {
-            Some(self.0)
-        }
+        if self.0 == self.1 { None } else { Some(self.0) }
     }
 }
 
@@ -179,7 +175,7 @@ impl<G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> Iterator
 
 impl<'a, G: AdjacencyList, S: NodeSequencer<I>, I: SequencedItem> TraversalSearch<'a, G, S, I> {
     pub fn new(graph: &'a G, start: Node) -> Self {
-        let mut visited = BitSet::new(graph.number_of_nodes());
+        let mut visited = graph.vertex_bitset_unset();
         visited.set_bit(start);
         Self {
             graph,
@@ -366,24 +362,24 @@ impl<'a, G: AdjacencyList, S: NodeSequencer<PredecessorOfNode>> TraversalTree<'a
 /// Offers graph traversal algorithms as methods of the graph representation
 pub trait Traversal: AdjacencyList + Sized {
     /// Returns an iterator traversing nodes reachable from `start` in breadth-first-search order
-    fn bfs(&self, start: Node) -> BFS<Self> {
+    fn bfs(&self, start: Node) -> BFS<'_, Self> {
         BFS::new(self, start)
     }
 
     /// Returns an iterator traversing nodes reachable from `start` in depth-first-search order
-    fn dfs(&self, start: Node) -> DFS<Self> {
+    fn dfs(&self, start: Node) -> DFS<'_, Self> {
         DFS::new(self, start)
     }
 
     /// Returns an iterator traversing nodes reachable from `start` in breadth-first-search order
     /// The items returned are the edges taken
-    fn bfs_with_predecessor(&self, start: Node) -> BFSWithPredecessor<Self> {
+    fn bfs_with_predecessor(&self, start: Node) -> BFSWithPredecessor<'_, Self> {
         BFSWithPredecessor::new(self, start)
     }
 
     /// Returns an iterator traversing nodes reachable from `start` in depth-first-search order
     /// The items returned are the edges taken
-    fn dfs_with_predecessor(&self, start: Node) -> DFSWithPredecessor<Self> {
+    fn dfs_with_predecessor(&self, start: Node) -> DFSWithPredecessor<'_, Self> {
         DFSWithPredecessor::new(self, start)
     }
 }

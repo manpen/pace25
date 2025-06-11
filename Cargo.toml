@@ -1,37 +1,42 @@
 [package]
 name = "dss"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-signal-handling = ["ctrlc"]
+goodlp = ["good_lp"]
+par = ["rayon"]
+optil = ["log/max_level_off"]
+
 
 [dependencies]
 glob="0.3"
-itertools="0.10"
+itertools="0.14"
 rand="0.8"
 rand_pcg="0.3"
 rand_distr="0.4"
 paste = "1.0"
 fxhash="0.2"
-rayon="1.6"
-digest = "0.10.0"
-sha2 = "0.10.0"
+rayon={version= "1.6", optional=true}
 log = "0.4"
 env_logger = "0.9"
-ctrlc = { version = "3.1.9", optional = true, features = ["termination"] }
-fasthash = "0.4"
+ctrlc = { version = "3.1.9", features = ["termination"] }
 stream_bitset = { path="stream-bitset" }
 anyhow = "1.0.95"
-good_lp = "1.11.0"
+good_lp = { version = "1.11.0",  optional = true }
 num = "0.4.3"
 array-init = "2.1.0"
-regex = "1.11.1"
 structopt = "0.3.26"
 smallvec = "1.13.2"
 thiserror = "2.0.12"
+tempfile = "3.19.1"
+highs = {version = "1.8.0"}
+
+[dev-dependencies]
+regex = "1.11.1"
+rayon={version= "1.6"}
 
 [profile.release]
 lto="fat"
@@ -46,16 +51,26 @@ debug=false
 panic="abort"
 strip=true
 
+[profile.optildebug]
+inherits="release"
+lto="fat"
+codegen-units=1
+debug=true
+
+
 [[bin]]
 name = "heuristic"
 path = "src/bin/heuristic_solver.rs"
-required-features = ["signal-handling"]
 test = false
 
 [[bin]]
-name = "heuristic_bench"
-path = "src/bin/heuristic_solver_bench.rs"
-required-features = ["signal-handling"]
+name = "heuristic_set"
+path = "src/bin/heuristic_set_solver.rs"
+test = false
+
+[[bin]]
+name = "exact"
+path = "src/bin/exact_solver.rs"
 test = false
 
 [[bin]]

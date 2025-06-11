@@ -1,0 +1,8 @@
+target
+target_docker
+.git
+logs
+.stride
+stride-logs
+runner
+ogdf

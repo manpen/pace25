@@ -48,6 +48,15 @@ impl<T> SlicedBuffer<T> {
         unsafe { self.offsets.len().unchecked_sub(1) as NumNodes }
     }
 
+    pub fn vertex_bitset_unset(&self) -> BitSet {
+        BitSet::new(self.number_of_nodes())
+    }
+
+    /// Returns empty bitset with one entry per node
+    pub fn edge_bitset_unset(&self) -> BitSet {
+        BitSet::new(self.number_of_edges())
+    }
+
     #[inline(always)]
     pub fn number_of_edges(&self) -> NumEdges {
         self.buffer.len() as NumEdges
@@ -146,6 +155,18 @@ impl<T> IndexMut<Node> for SlicedBuffer<T> {
         //  (i) non-decreasing (i.e. produce a valid range) and
         //  (ii) are within bounds of `self.buffer`
         unsafe { self.buffer.get_unchecked_mut(start..end) }
+    }
+}
+
+impl NeighborsSlice for SlicedBuffer<Node> {
+    #[inline(always)]
+    fn as_neighbors_slice(&self, u: Node) -> &[Node] {
+        self.index(u)
+    }
+
+    #[inline(always)]
+    fn as_neighbors_slice_mut(&mut self, u: Node) -> &mut [Node] {
+        self.index_mut(u)
     }
 }
 
@@ -331,5 +352,17 @@ impl<T: Default + Clone> IndexMut<Node> for SlicedBufferWithDefault<T> {
         //  (i) non-decreasing (i.e. produce a valid range) and
         //  (ii) are within bounds of `self.buffer`
         unsafe { self.buffer.get_unchecked_mut(start..end) }
+    }
+}
+
+impl NeighborsSlice for SlicedBufferWithDefault<Node> {
+    #[inline(always)]
+    fn as_neighbors_slice(&self, u: Node) -> &[Node] {
+        self.index(u)
+    }
+
+    #[inline(always)]
+    fn as_neighbors_slice_mut(&mut self, u: Node) -> &mut [Node] {
+        self.index_mut(u)
     }
 }

@@ -140,7 +140,7 @@ pub fn find_modules_impl<G: AdjacencyList>(graph: &G, pivot: Node) -> Partition 
                         let neighbors = graph.neighbors_of_as_bitset(u);
 
                         loop {
-                            if o_entry.as_ptr() == c_entry.as_ptr() {
+                            if std::ptr::eq(o_entry.as_ptr(), c_entry.as_ptr()) {
                                 passed_other = true;
                             } else if o_entry.as_ref().borrow().is_center {
                                 passed_center = true;

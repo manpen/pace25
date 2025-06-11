@@ -133,7 +133,7 @@ pub trait Getter {
     /// ```
     fn relabelled_graph_as<GI, GO>(&self, input: &GI) -> GO
     where
-        GI: GraphNodeOrder + ColoredAdjacencyList,
+        GI: GraphNodeOrder + AdjacencyList,
         GO: GraphNew + GraphEdgeEditing,
     {
         let max_node = input
@@ -149,9 +149,9 @@ pub trait Getter {
         let mut output = GO::new(max_node as NumNodes);
         for old_u in input.vertices() {
             if let Some(new_u) = self.new_id_of(old_u) {
-                for ColoredEdge(_, old_v, color) in input.colored_edges_of(old_u, false) {
+                for Edge(_, old_v) in input.edges_of(old_u, true) {
                     if let Some(new_v) = self.new_id_of(old_v) {
-                        output.try_add_edge(new_u, new_v, color);
+                        output.try_add_edge(new_u, new_v);
                     }
                 }
             }
@@ -163,7 +163,7 @@ pub trait Getter {
     /// Short-hand for [`Getter::relabelled_graph_as`] where the output type matches the input type.
     fn relabelled_graph<G>(&self, input: &G) -> G
     where
-        G: ColoredAdjacencyList + GraphNew + GraphEdgeEditing,
+        G: AdjacencyList + GraphNew + GraphEdgeEditing,
     {
         self.relabelled_graph_as::<G, G>(input)
     }
@@ -226,8 +226,8 @@ impl Setter for NodeMapper {
 
     fn map_node_to(&mut self, old: Node, new: Node) {
         assert!(!self.is_identity);
-        let success =
-            self.old_to_new.insert(old, new).is_none() & self.new_to_old.insert(new, old).is_none();
+        let success = self.old_to_new.insert(old, new).is_none()
+            && self.new_to_old.insert(new, old).is_none();
         assert!(success);
     }
 }
@@ -298,6 +298,43 @@ impl fmt::Debug for NodeMapper {
         )?;
 
         Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct IndexMapper {
+    new_to_old: Vec<Node>,
+    old_to_new: Vec<Node>,
+}
+
+impl IndexMapper {
+    pub fn from_vecs(old_to_new: Vec<Node>, new_to_old: Vec<Node>) -> Self {
+        Self {
+            old_to_new,
+            new_to_old,
+        }
+    }
+}
+
+impl Getter for IndexMapper {
+    fn new_id_of(&self, old: Node) -> Option<Node> {
+        if (old as usize) < self.old_to_new.len() {
+            Some(self.old_to_new[old as usize])
+        } else {
+            None
+        }
+    }
+
+    fn old_id_of(&self, new: Node) -> Option<Node> {
+        if (new as usize) < self.new_to_old.len() {
+            Some(self.new_to_old[new as usize])
+        } else {
+            None
+        }
+    }
+
+    fn len(&self) -> Node {
+        self.new_to_old.len() as Node
     }
 }
 

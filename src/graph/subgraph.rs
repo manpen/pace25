@@ -44,9 +44,10 @@ impl<G: GraphNew + GraphEdgeEditing + ColoredAdjacencyList + Sized> InducedSubgr
 
         for u in self.vertices() {
             if let Some(new_u) = mapping.new_id_of(u) {
-                result.add_colored_edges(self.colored_edges_of(u, true).filter_map(
-                    |ColoredEdge(_, v, c)| Some(ColoredEdge(new_u, mapping.new_id_of(v)?, c)),
-                ));
+                result.add_edges(
+                    self.edges_of(u, true)
+                        .filter_map(|Edge(_, v)| Some(Edge(new_u, mapping.new_id_of(v)?))),
+                );
             }
         }
 
@@ -68,9 +69,9 @@ impl<G: ColoredAdjacencyList + GraphEdgeEditing + Clone + GraphNew> SubGraph for
     ) -> H {
         let mut sub_graph: H = H::new(self.number_of_nodes());
 
-        sub_graph.add_colored_edges(vertices.iter_set_bits().flat_map(|u| {
-            self.colored_edges_of(u, true)
-                .filter(|ColoredEdge(_, v, _)| vertices.get_bit(*v))
+        sub_graph.add_edges(vertices.iter_set_bits().flat_map(|u| {
+            self.edges_of(u, true)
+                .filter(|Edge(_, v)| vertices.get_bit(*v))
         }));
 
         sub_graph
