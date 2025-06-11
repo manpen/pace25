@@ -138,6 +138,9 @@ pub struct GreedyReverseSearch<
 
     /// Which forced removal procedure to apply
     forced_rule: ForcedRemovalRuleType,
+
+    ///
+    hitting_score: Vec<NumNodes>
 }
 
 impl<'a, R, G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
@@ -156,6 +159,7 @@ where
     ) -> Self {
         assert!(initial_solution.is_valid(graph));
 
+        let n = graph.number_of_nodes() as usize;
         // If only fixed nodes cover the graph, this is optimal.
         // For API-purposes, we create an *empty* instance that holds the optimal solution
         //
@@ -184,10 +188,10 @@ where
                 num_uncovered_neighbors: Vec::new(),
                 helper_bitset: BitSet::new(1),
                 forced_rule: rule,
+                hitting_score: vec![0;n],
             };
         }
 
-        let n = graph.number_of_nodes() as usize;
 
         // Run Subset-Reduction and create reduced edge set
         let mut csr_repr = graph.extract_csr_repr();
@@ -290,6 +294,7 @@ where
             helper_bitset: BitSet::new(n as NumNodes),
             num_uncovered_neighbors: vec![0; n],
             forced_rule: rule,
+            hitting_score: vec![0;n],
         }
     }
 
@@ -351,6 +356,73 @@ where
                         bfs.into_iter().map(ForcedRemovalNodeType::Fixed),
                     );
                 }
+                ForcedRemovalRuleType::FRDR => {
+                    if let Some(non_removable_node) = (0..40).map(|_| self.current_solution.sample_non_fixed(self.rng)).find_or_first(|x| {
+                        self.intersection_forest.get_root_nodes(*x).len() == 1
+                    }) {
+                        for nb in self.graph.neighbors_of(non_removable_node) {
+                            if self.num_covered[nb as usize] == 1 {
+                                self.in_nodes_to_update.set_bit(nb);
+
+                                for j in self.graph.neighbors_of(non_removable_node).filter(|x| !self.non_optimal_nodes.get_bit(*x))  {
+                                    self.hitting_score[j as usize] += 1;
+                                    if self.hitting_score[j as usize] == 1 {
+                                        self.redundant_nodes.push(j);
+                                    }
+                                }
+                            }
+                        }
+
+                        let mut added_nodes_len = 0;
+                        let mut uncovered_nodes = self.uniquely_covered[non_removable_node as usize];
+                        'outer: while uncovered_nodes > 0 {
+                            let mut max_score = 0;
+                            let mut max_pos = usize::MAX;
+                            let mut min_age = u64::MAX;
+
+                            for (idx,nd) in self.redundant_nodes[added_nodes_len..].iter().enumerate() {
+                                if *nd == non_removable_node {continue;}
+                                if self.hitting_score[*nd as usize] > max_score || (self.hitting_score[*nd as usize] == max_score && self.age[*nd as usize] < min_age) {
+                                    max_score = self.hitting_score[*nd as usize];
+                                    max_pos = idx;
+                                    min_age = self.age[*nd as usize];
+                                }
+                            }
+
+                            if max_pos > self.redundant_nodes.len() {
+                                self.redundant_nodes.iter().for_each(|x| self.hitting_score[*x as usize] = 0);
+                                for nb in self.graph.neighbors_of(non_removable_node) {
+                                    self.in_nodes_to_update.clear_bit(nb);
+                                }
+                                self.redundant_nodes.clear();
+                                break 'outer;
+                            }
+
+                            let nd = self.redundant_nodes[max_pos];
+                            self.redundant_nodes.swap(max_pos, added_nodes_len);
+                            added_nodes_len+=1;
+
+                            for nb in self.graph.neighbors_of(nd) {
+                                if self.in_nodes_to_update.get_bit(nd) {
+                                    uncovered_nodes -= 1;
+                                    self.in_nodes_to_update.clear_bit(nb);
+
+                                    for j in self.graph.neighbors_of(nb).filter(|x| !self.non_optimal_nodes.get_bit(*x))  {
+                                        if self.hitting_score[j as usize] > 0 {
+                                            self.hitting_score[j as usize] -= 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        let res: Vec<Node> = self.redundant_nodes[..added_nodes_len].to_vec();
+                        self.redundant_nodes.clear();
+                        for x in res.into_iter() {
+                            self.add_node_to_domset(x);
+                        }
+                    }
+                },
                 _ => {},
             };
 
@@ -1347,5 +1419,6 @@ pub enum ForcedRemovalRuleType {
     BFSP2 = 4,
     BFSP3 = 5,
     BFSP4 = 6,
-    None = 7,
+    FRDR = 7,
+    None = 8,
 }
