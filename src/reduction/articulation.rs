@@ -133,10 +133,11 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoi
             if cc.len() > MAX_CC_SIZE as usize {
                 continue;
             }
-
             cc.push(art_point);
 
+
             let eps = 0.3 / cc.len() as f64;
+            let eps_n = eps / (1+graph.degree_of(art_point)) as f64;
 
             let problem = solver.build_problem_of_subgraph(
                 graph,
@@ -145,9 +146,9 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoi
                 cc.as_slice(),
                 |w| {
                     if w == art_point {
-                        1.0 - eps - eps
+                        1.0 - eps 
                     } else if graph.has_edge(w, art_point) {
-                        1.0 - eps
+                        1.0 - eps_n
                     } else {
                         1.0
                     }
@@ -205,6 +206,7 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoi
 
             cc.push(art_point);
 
+
             let eps = 0.3 / graph.degree_of(art_point) as f64;
             let problem = solver.build_problem_of_subgraph(
                 graph,
@@ -247,5 +249,97 @@ impl<Graph: AdjacencyList + Clone + AdjacencyTest + 'static> RuleArticulationPoi
         }
 
         changed
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+    use rand::{Rng, SeedableRng, seq::IteratorRandom};
+    use rand_pcg::Pcg64Mcg;
+
+    use crate::{
+        exact::naive::naive_solver,
+        graph::{AdjArray, GnpGenerator, GraphNodeOrder},
+    };
+
+    fn generate_random_graphs(n: NumNodes) -> impl Iterator<Item = (AdjArray, BitSet, BitSet)> {
+        let mut rng = Pcg64Mcg::seed_from_u64(0x1234567);
+
+        (0..).filter_map(move |i| {
+            let mut graph = AdjArray::random_gnp(&mut rng, n, 4. / n as f64);
+            let n1 = rng.gen_range(3..n / 2);
+
+            let node_in_part0 = graph
+                .vertices_range()
+                .choose_multiple(&mut rng, n1 as usize);
+
+            let edges_to_remove = graph.edges(true).filter(|&Edge(u, v)| {
+                u != node_in_part0[0]
+                    && v != node_in_part0[1]
+                    && node_in_part0.contains(&u) != node_in_part0.contains(&v)
+            }).collect_vec();
+            graph.remove_edges(edges_to_remove.into_iter());
+
+            let aps = graph.compute_articulation_points();
+            if aps.cardinality() != 1 {
+                return None;
+            }
+
+            let mut covered = graph.vertex_bitset_unset();
+            for _ in 0..i % 7 {
+                covered.set_bit(rng.gen_range(graph.vertices_range()));
+            }
+            let mut redundant = graph.vertex_bitset_unset();
+            for _ in 0..i % 5 {
+                redundant.set_bit(rng.gen_range(graph.vertices_range()));
+            }
+            redundant -= &covered;
+
+            {
+                // reject if infeasible
+                let mut tmp = DominatingSet::new(graph.number_of_nodes());
+                tmp.add_nodes(redundant.iter_cleared_bits());
+                if !tmp.is_valid_given_previous_cover(&graph, &covered) {
+                    return None;
+                }
+            }
+
+            Some((graph, covered, redundant))
+        })
+    }
+
+    #[test]
+    fn random_gnps() {
+        const NODES : NumNodes = 16;
+
+        for (mut graph, mut covered, mut redundant) in generate_random_graphs(NODES).take(1000) {
+            let naive = naive_solver(&graph, &covered, &redundant, None, None).unwrap();
+
+            let after_rule = {
+                let mut domset = DominatingSet::new(graph.number_of_nodes());
+                let mut reducer = Reducer::new();
+                let mut rule_ap = RuleArticulationPoint::new();
+               
+                reducer.apply_rule(
+                    &mut rule_ap,
+                    &mut graph,
+                    &mut domset,
+                    &mut covered,
+                    &mut redundant,
+                );
+
+                let tmp = naive_solver(&graph, &covered, &redundant, None, None).unwrap();
+                domset.add_nodes(tmp.iter());
+                domset
+            };
+
+            assert!(after_rule.is_valid_given_previous_cover(&graph, &covered));
+            assert_eq!(naive.len(), after_rule.len(), "naive: {:?}, after_rule: {:?}",
+                naive.iter().collect_vec(), after_rule.iter().collect_vec()
+            );
+            assert!(after_rule.iter().all(|u| !redundant.get_bit(u)));
+        }
     }
 }
