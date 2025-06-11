@@ -70,6 +70,9 @@ struct Opts {
 
     #[structopt(subcommand)]
     cmd: Option<Commands>,
+
+    #[structopt(short = "q")]
+    no_output: bool,
 }
 
 fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<AdjArray> {
@@ -268,7 +271,11 @@ fn main() -> anyhow::Result<()> {
     reducer.post_process(&mut graph, &mut domset, &mut covered, &mut never_select);
 
     assert!(domset.is_valid(&org_graph), "Produced DS is not valid");
-    write_solution(&domset, &opts.output)?;
+    if opts.no_output {
+        info!("Final solution size: {}", domset.len());
+    } else {
+        write_solution(&domset, &opts.output)?;
+    }
 
     Ok(())
 }
