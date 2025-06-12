@@ -78,7 +78,7 @@ impl<G: GraphEdgeOrder + AdjacencyList + GraphEdgeEditing + UnsafeGraphEditing +
 
         if changed {
             info!(
-                "{:25} n -= {delta_nodes:6}, m -= {delta_edges:6}, |D| += {delta_in_domset:7}, |covered| += {delta_covered:7}, |redundant| += {delta_redundant:7}, |edges| -= {unneccesary_edges:6}, time: {:5}ms + {:3}ms",
+                "{:25} n -= {delta_nodes:7}, m -= {delta_edges:7}, |D| += {delta_in_domset:7}, |covered| += {delta_covered:7}, |redundant| += {delta_redundant:7}, |edges| -= {unneccesary_edges:6}, time: {:5}ms + {:3}ms",
                 R::NAME,
                 duration_rule.as_millis(),
                 duration_clean.as_millis()
