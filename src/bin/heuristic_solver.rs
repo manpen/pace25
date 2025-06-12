@@ -1,7 +1,7 @@
 use dss::{
     exact::highs_advanced::HighsCache,
     graph::*,
-    heuristic::{iterative_greedy::IterativeGreedy, reverse_greedy_search::GreedyReverseSearch},
+    heuristic::{iterative_greedy::IterativeGreedy, dmls::DMLS},
     io::PaceWriter as _,
     log::build_pace_logger_for_level,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
@@ -56,6 +56,7 @@ struct Opts {
     #[structopt(short = "C")]
     dump_ccs_upper_size: Option<NumNodes>,
 
+    #[allow(unused)]
     #[structopt(short = "l", long="local-minima-rule")]
     local_minima_rule: dss::heuristic::reverse_greedy_search::ForcedRemovalRuleType
 }
@@ -279,7 +280,7 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
     }
 }
 
-type MainHeuristic = GreedyReverseSearch<CsrGraph, 10, 10>;
+type MainHeuristic = DMLS<CsrGraph, 10>;
 
 fn build_heuristic(
     rng: &mut impl Rng,
@@ -316,7 +317,7 @@ fn build_heuristic(
     }
 
     info!("Start GreedyReverseSearch");
-    let mut search = MainHeuristic::new(graph, domset, covered, never_select, rng, opts.local_minima_rule);
+    let mut search = MainHeuristic::new(graph, domset, covered, never_select, rng);
 
     if opts.verbose {
         search.enable_verbose_logging();
