@@ -126,6 +126,8 @@ pub struct GreedyReverseSearch<
     /// TODO: combine with self.scores such that scores = scores + CONSTANT * num_uncovered_neighbors
     num_uncovered_neighbors: Vec<NumNodes>,
 
+    expunge_frequency: Vec<NumNodes>,
+
     /// A helper BitSet
     helper_bitset: BitSet,
 
@@ -268,6 +270,7 @@ where
             verbose_logging: false,
             previous_improvement: 0,
             start_time: Instant::now(),
+            expunge_frequency: vec![0;n]
         }
     }
 
@@ -294,9 +297,13 @@ where
                     else {
                         (0..NUM_SAMPLES).map(|_| self.current_solution.sample_non_fixed(&mut self.rng)).filter(|x| {
                             self.intersection_forest.get_root_nodes(*x).len() == 1
-                        }).min_by_key(|a| self.uniquely_covered[*a as usize])
+                        })
+                        .map(|a| (self.expunge_frequency[a as usize], self.uniquely_covered[a as usize], a))
+                        .min()
+                        .map(|(_,_,a)| a)
                     };
                     if let Some(non_removable_node) = removable {
+                        self.expunge_frequency[non_removable_node as usize] += 1;
                         debug_assert!(self.intersection_forest.get_root_nodes(non_removable_node).len() == 1);
                         debug_assert!(self.redundant_nodes.len() == 0);
                         for nb in self.graph.neighbors_of(non_removable_node) {
