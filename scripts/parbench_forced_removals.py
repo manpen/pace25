@@ -9,7 +9,7 @@ import argparse
 
 
 def run_binary_with_files(
-    input_dir, binary_path, output_dir, timeout, num_threads, kill_buffer, num_rules
+    input_dir, binary_path, output_dir, timeout, num_threads, kill_buffer, rule 
 ):
     # Initialize counters and process list
     total_files = 0
@@ -21,9 +21,8 @@ def run_binary_with_files(
     for filename in os.listdir(input_dir):
         file_path = os.path.join(input_dir, filename)
         if os.path.isfile(file_path):
-            for i in range(num_rules):
-                file_stack.append((i, file_path))
-                total_files += 1
+            file_stack.append((rule, file_path))
+            total_files += 1
     file_stack.sort(reverse=True)
     output_stack = []
 
@@ -31,11 +30,6 @@ def run_binary_with_files(
         [
             "name",
             "runtime",
-            "read_time_ms",
-            "greedy_time_ms",
-            "init_time_ms",
-            "num_iter",
-            "iter_time_ms",
             "domset_size",
         ]
     )
@@ -53,29 +47,36 @@ def run_binary_with_files(
             if process.poll() is not None:
                 end_time = time.time()
                 runtime = end_time - start_time
+                exited = False
                 for line in process.stdout:
-                    [rtms, gtms, itms, ni, iterms, ds] = (
-                        line.decode("utf-8").strip().split(",")
-                    )
+                    exited = True
+                    ds = line.decode("utf-8").strip()
                     output_stack.append(
                         (
                             rule_id,
                             [
                                 os.path.basename(graph_file_path),
                                 runtime,
-                                rtms,
-                                gtms,
-                                itms,
-                                ni,
-                                iterms,
                                 ds,
                             ],
                         )
                     )
                     print(
-                        f"Result {graph_file_path} -- {rule_id} -- {runtime} -- {rtms}ms -- {gtms}ms -- {itms}ms -- {ni} -- {iterms}ms -- {ds}"
+                        f"Result {graph_file_path} -- {rule_id} -- {runtime} -- {ds}"
                     )
                     break
+                if not exited:
+                    output_stack.append(
+                        (
+                            rule_id,
+                            [
+                                os.path.basename(graph_file_path),
+                                "-",
+                                "-",
+                            ],
+                        )
+                    )
+
                 processes.pop(i)
                 processed_files += 1
                 print(f"Process terminated with runtime: {runtime:.2f} seconds")
@@ -100,18 +101,13 @@ def run_binary_with_files(
             elapsed_time = time.time() - start_time
             if elapsed_time > timeout:
                 if sigterm_flag and elapsed_time > timeout + kill_buffer:
-                    print("Kill proc")
+                    print("Kill proc {os.path.basename(graph_file_path)}")
                     process.kill()
                     output_stack.append(
                         (
                             rule_id,
                             [
                                 os.path.basename(graph_file_path),
-                                "-",
-                                "-",
-                                "-",
-                                "-",
-                                "-",
                                 "-",
                                 "-",
                             ],
@@ -125,34 +121,19 @@ def run_binary_with_files(
         time.sleep(0.3)
     output_stack.sort(key=lambda x: x[1][0])
 
-    outfiles = []
-    for i in range(num_rules):
-        outfiles.append(open(f"{output_dir}/rule_{i}.csv", "w", newline=""))
+    outfile = open(f"{output_dir}/out_{rule}.csv", "w", newline="")
 
-    writers = []
-    for i in range(num_rules):
-        writer = csv.writer(outfiles[i])
-        writer.writerow(
-            [
-                "name",
-                "runtime",
-                "read_time_ms",
-                "greedy_time_ms",
-                "init_time_ms",
-                "num_iter",
-                "iter_time_ms",
-                "domset_size",
-            ]
-        )
+    writer = csv.writer(outfile)
+    writer.writerow(
+        [
+            "name",
+            "runtime",
+            "domset_size",
+        ]
+    )
 
-        writers.append(writer)
-
-    # Why do we need this?
-    seen = {}
     for i, x in output_stack:
-        if (i, x[0]) not in seen:
-            seen[(i, x[0])] = 1
-            writers[i].writerow(x)
+        writer.writerow(x)
 
     # Print overall process information
     print(f"All processes terminated.")
@@ -197,7 +178,7 @@ if __name__ == "__main__":
         "-k",
         "--kill_buffer",
         type=int,
-        default=5,
+        default=7,
         help="Kill buffer in seconds (default: 5)",
     )
     parser.add_argument(

@@ -299,7 +299,7 @@ where
         // Try to escape local minima every 1000 steps
         //
         // TODO: find better threshold
-        if (self.round-self.previous_improvement) % 10000 == 0 {
+        if (((self.round-self.previous_improvement) % 10_000 == 0) && (self.current_solution.len() - self.best_solution.len()) < 4) || (self.round < self.previous_improvement){
             match self.forced_rule {
                 ForcedRemovalRuleType::DMS => self.force_removal_dms(),
                 ForcedRemovalRuleType::BFS2 => {
@@ -346,17 +346,14 @@ where
                 }
                 ForcedRemovalRuleType::FRDR => {
                     let removable = if self.rng.next_u32() > u32::MAX>>1 {
-                        (0..40).map(|_| self.current_solution.sample_non_fixed(&mut self.rng)).find_or_first(|x| {
-                            self.intersection_forest.get_root_nodes(*x).len() == 1
-                        })
+                        Some(self.current_solution.sample_non_fixed(&mut self.rng))
                     }
                     else {
-                        (0..3).map(|_| self.current_solution.sample_non_fixed(&mut self.rng)).filter(|x| {
+                        (0..NUM_SAMPLES).map(|_| self.current_solution.sample_non_fixed(&mut self.rng)).filter(|x| {
                             self.intersection_forest.get_root_nodes(*x).len() == 1
                         }).min_by_key(|a| self.uniquely_covered[*a as usize])
                     };
                     if let Some(non_removable_node) = removable {
-                        self.is_correct().unwrap();
                         debug_assert!(self.intersection_forest.get_root_nodes(non_removable_node).len() == 1);
                         debug_assert!(self.redundant_nodes.len() == 0);
                         for nb in self.graph.neighbors_of(non_removable_node) {
@@ -388,7 +385,7 @@ where
                                 }
                             }
 
-                            if max_pos > self.redundant_nodes.len() {
+                            if max_pos >= self.redundant_nodes.len() {
                                 self.redundant_nodes.iter().for_each(|x| self.hitting_score[*x as usize] = 0);
                                 for nb in self.graph.neighbors_of(non_removable_node) {
                                     self.in_nodes_to_update.clear_bit(nb);
@@ -417,7 +414,8 @@ where
                         }
 
                         if added_nodes_len > 0 {
-                            let res: Vec<Node> = self.redundant_nodes[..added_nodes_len].to_vec();
+                            let mut res: Vec<Node> = self.redundant_nodes[..added_nodes_len].to_vec();
+                            res.sort_by_key(|u| self.age[*u as usize]);
                             self.redundant_nodes.clear();
                             for x in res.iter() {
                                 self.add_node_to_domset(*x);
@@ -437,12 +435,12 @@ where
                                 self.update_forest_and_sampler();
                             }
                             for x in res.into_iter() {
-                                if self.uniquely_covered[x as usize] == 0 {
+                                if self.current_solution.is_in_domset(x) {
                                     self.remove_redundant_node::<false>(x, u32::MAX);
-                                    self.update_forest_and_sampler();
-                                    self.update_best_solution();
                                 }
                             }
+                            self.update_forest_and_sampler();
+                            self.update_best_solution();
                         }
                     }
                 },
@@ -450,12 +448,6 @@ where
             };
 
             self.round += 1;
-            info!( " Better solution: size={:6}, current={:6}, round={:9}, gap={:9}, time={:7}ms", self.best_solution.len(),
-                self.current_solution.len(),
-                self.round,
-                self.round - self.previous_improvement,
-                self.start_time.elapsed().as_millis()
-            );
             return;
         }
 
@@ -463,7 +455,7 @@ where
         let proposed_node = if let Some(node) = self.draw_node() {
             node
         } else {
-            self.is_locally_optimal = true;
+            self.previous_improvement = self.round+1;
             return;
         };
 
