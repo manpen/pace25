@@ -5,6 +5,7 @@ pub mod highs;
 pub use highs::highs_solver as default_exact_solver;
 
 pub mod highs_advanced;
+pub mod highs_sub;
 
 pub const DEFAULT_SOLVER_IS_FAST: bool = true;
 

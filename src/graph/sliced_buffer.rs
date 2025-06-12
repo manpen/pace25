@@ -1,5 +1,7 @@
 use std::ops::{Index, IndexMut};
 
+use serde::{Deserialize, Serialize};
+
 use super::*;
 
 // Implements the core data structure of CSR (i.e. a data vector `buffer`
@@ -15,7 +17,7 @@ use super::*;
 // The implementation is its own module to prevent the CSR data structure
 // from manipulating the offsets vector, which may invalidate the aforementioned
 // invariants.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SlicedBuffer<T> {
     buffer: Vec<T>,
     offsets: Vec<NumEdges>,

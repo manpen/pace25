@@ -1,5 +1,5 @@
 use dss::{
-    exact::highs_advanced::HighsCache,
+    exact::{highs_advanced::HighsCache, highs_sub},
     graph::*,
     heuristic::{iterative_greedy::IterativeGreedy, reverse_greedy_search::GreedyReverseSearch},
     io::PaceWriter as _,
@@ -50,6 +50,27 @@ struct Opts {
     #[structopt(short = "m", default_value = "2")]
     ls_presolve_max_gap: f64,
 
+    #[structopt(
+        short = "e",
+        default_value = "0",
+        help = "Use exact solver for bootstrapping if Greedy is better than; 0=no exact solver in bootstrapping"
+    )]
+    exact_presolve_threshold: NumNodes,
+
+    #[structopt(
+        short = "E",
+        default_value = "60",
+        help = "Seconds to spend on exact bootstrapping"
+    )]
+    exact_presolve_time: u64,
+
+    #[structopt(
+        short = "b",
+        default_value = "120",
+        help = "Attempt to stop reductions & bootstrapping before that time; soft limit"
+    )]
+    bootstrap_time: u64,
+
     #[structopt(short = "c")]
     dump_ccs_lower_size: Option<NumNodes>,
 
@@ -71,6 +92,9 @@ impl Default for Opts {
             ls_attempts: 6,
             ls_presolve_timeout: 13.0,
             ls_presolve_max_gap: 2.0,
+            exact_presolve_threshold: 0,
+            exact_presolve_time: 60,
+            bootstrap_time: 120,
             preprocess_only: false,
         }
     }
@@ -282,53 +306,187 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
 
 type MainHeuristic = GreedyReverseSearch<CsrGraph, 10, 10>;
 
-fn build_heuristic(
+fn initial_solution_with_greedy(
     rng: &mut impl Rng,
-    mapped: State<CsrGraph>,
+    mapped: &State<CsrGraph>,
     opts: &Opts,
     id: u32,
-) -> MainHeuristic {
-    let State {
-        graph,
-        mut domset,
-        covered,
-        never_select,
-    } = mapped;
-
+) -> DominatingSet {
     // Greedy
-    {
-        assert!(domset.is_empty());
-        info!("Start Greedy");
+    assert!(mapped.domset.is_empty());
+    info!("Start Greedy");
 
-        let mut algo = IterativeGreedy::new(rng, &graph, &covered, &never_select);
+    let mut algo = IterativeGreedy::new(rng, &mapped.graph, &mapped.covered, &mapped.never_select);
 
-        if id % 2 == 1 {
-            algo.set_strategy(dss::heuristic::iterative_greedy::GreedyStrategy::DegreeValue);
+    if id % 2 == 1 {
+        algo.set_strategy(dss::heuristic::iterative_greedy::GreedyStrategy::DegreeValue);
+    }
+
+    let mut remaining_iterations = opts.greedy_iterations.max(1);
+    let start_time = Instant::now();
+    algo.run_while(|_| {
+        remaining_iterations -= 1;
+        (remaining_iterations > 0) && (start_time.elapsed().as_secs_f64() < opts.greedy_timeout)
+    });
+
+    algo.best_known_solution().unwrap()
+}
+
+fn initial_solution_with_external(
+    mapped: &State<CsrGraph>,
+    opts: &Opts,
+) -> Option<(DominatingSet, bool)> {
+    let resp = highs_sub::solve_with_subprocess_find_binary(
+        &mapped.graph,
+        &mapped.covered,
+        &mapped.never_select,
+        Duration::from_secs(opts.exact_presolve_time),
+        Duration::from_secs(5),
+    );
+
+    use dss::exact::highs_advanced::SolverResult;
+    match resp {
+        Ok(SolverResult::Optimal(items)) => {
+            info!(
+                "External solver found optimal solution. Size {}",
+                items.len()
+            );
+            let mut ds = DominatingSet::new(mapped.graph.number_of_nodes());
+            ds.add_nodes(items);
+            Some((ds, true))
         }
 
-        let mut remaining_iterations = opts.greedy_iterations.max(1);
-        let start_time = Instant::now();
-        algo.run_while(|_| {
-            remaining_iterations -= 1;
-            (remaining_iterations > 0) && (start_time.elapsed().as_secs_f64() < opts.greedy_timeout)
-        });
+        Ok(SolverResult::Suboptimal(items)) => {
+            info!("External solver found some solution. Size {}", items.len());
+            let mut ds = DominatingSet::new(mapped.graph.number_of_nodes());
+            ds.add_nodes(items);
+            Some((ds, false))
+        }
 
-        domset = algo.best_known_solution().unwrap();
+        Ok(SolverResult::Timeout) | Ok(SolverResult::Infeasible) => {
+            info!("External solver found no solution");
+            None
+        }
+
+        Err(e) => {
+            info!("External solver error: {e:?}");
+            None
+        }
+    }
+}
+
+fn quick_optimization_run(search: &mut MainHeuristic, opts: &Opts) {
+    let start = Instant::now();
+    let mut last_update_time = start;
+    let mut last_update_score = search.current_score();
+    search.run_while(|a| {
+        let now = Instant::now();
+        if now.duration_since(start) > Duration::from_secs_f64(opts.ls_presolve_timeout) {
+            info!(
+                "Stop bootstrapping due to time limit. Size: {}",
+                a.current_score()
+            );
+            return false;
+        }
+
+        if a.current_score() < last_update_score {
+            last_update_score = a.current_score();
+            last_update_time = now;
+        } else if now.duration_since(last_update_time)
+            > Duration::from_secs_f64(opts.ls_presolve_max_gap)
+        {
+            info!(
+                "Stop bootstrapping run due to lack of improvements. Size: {}",
+                a.current_score()
+            );
+            return false;
+        }
+
+        true
+    });
+}
+
+fn run_main_solve(
+    rng: &mut impl Rng,
+    mapped: &State<CsrGraph>,
+    opts: &Opts,
+    start_time: Instant,
+) -> DominatingSet {
+    let mut best_boot: Option<MainHeuristic> = None;
+    let mut exact_attempts_left = 1;
+
+    // Phase 1: Run several initial solvers (greedy + a short LS, external solver, etc)
+    // for bootstrapping. Select the most promising of them
+    for ls_attempt in 0..opts.ls_attempts as u32 {
+        let mut initial_solution = None;
+
+        // We may bootstrap using HiGHS ...
+        if let Some(best) = best_boot.as_ref()
+            && exact_attempts_left > 0
+            && mapped.graph.number_of_edges() < 100000
+            && best.current_score() < opts.exact_presolve_threshold
+            && start_time.elapsed().as_secs() + opts.exact_presolve_time / 2 < opts.bootstrap_time
+        {
+            if let Some((solution, opt)) = initial_solution_with_external(mapped, opts) {
+                if opt {
+                    return solution;
+                }
+
+                initial_solution = Some(solution);
+            }
+            exact_attempts_left -= 1;
+        }
+
+        // ... or using greedy
+        if initial_solution.is_none() {
+            initial_solution = Some(initial_solution_with_greedy(rng, mapped, opts, ls_attempt));
+        }
+
+        let mut search = MainHeuristic::new(
+            mapped.graph.clone(),
+            initial_solution.unwrap(),
+            mapped.covered.clone(),
+            mapped.never_select.clone(),
+            rng,
+        );
+
+        if opts.verbose {
+            info!("Start LS");
+            search.enable_verbose_logging();
+        }
+
+        quick_optimization_run(&mut search, opts);
+
+        // Update solution
+        if best_boot
+            .as_ref()
+            .is_none_or(|x| x.current_score() > search.current_score())
+        {
+            info!(
+                "Current best phase1 solution with score {} in attempt {ls_attempt}",
+                search.current_score()
+            );
+            best_boot = Some(search);
+        }
     }
 
-    info!("Start GreedyReverseSearch");
-    let mut search = MainHeuristic::new(graph, domset, covered, never_select, rng);
+    let mut best_boot = best_boot.unwrap();
 
-    if opts.verbose {
-        search.enable_verbose_logging();
+    // Phase 2: Try to optimize best initial solution
+    info!("Start final run at score {}", best_boot.current_score());
+    if let Some(timeout) = opts.timeout {
+        best_boot.run_until_timeout(Duration::from_secs_f64(timeout));
+        best_boot.best_known_solution().unwrap()
+    } else {
+        best_boot.run_to_completion().unwrap()
     }
-
-    search
 }
 
 fn main() -> anyhow::Result<()> {
     build_pace_logger_for_level(log::LevelFilter::Info);
     signal_handling::initialize();
+
+    let start_time = Instant::now();
 
     #[cfg(feature = "optil")]
     let opts = Opts::default();
@@ -354,66 +512,15 @@ fn main() -> anyhow::Result<()> {
         let mapped = remap_state(&state, &mapping);
 
         if opts.preprocess_only {
+            // we terminate only after mapping to have some more statistics in the logs
             return Ok(());
         }
 
-        let mut best_heuristic: Option<MainHeuristic> = None;
-
-        for ls_attempt in 0..opts.ls_attempts {
-            let mut heuristic = build_heuristic(&mut rng, mapped.clone(), &opts, ls_attempt as u32);
-
-            let start = Instant::now();
-            let mut last_update_time = start;
-            let mut last_update_score = heuristic.current_score();
-            heuristic.run_while(|a| {
-                let now = Instant::now();
-                if now.duration_since(start) > Duration::from_secs_f64(opts.ls_presolve_timeout) {
-                    info!(" Stop presolve due to timeout");
-                    return false;
-                }
-
-                if a.current_score() < last_update_score {
-                    last_update_score = a.current_score();
-                    last_update_time = now;
-                } else if now.duration_since(last_update_time)
-                    > Duration::from_secs_f64(opts.ls_presolve_max_gap)
-                {
-                    info!(" Stop presolve due to max gap");
-                    return false;
-                }
-
-                true
-            });
-
-            info!(
-                "Heuristic presolve attempt {ls_attempt} with score {}",
-                heuristic.current_score()
-            );
-
-            if best_heuristic
-                .as_ref()
-                .is_none_or(|x| x.current_score() > heuristic.current_score())
-            {
-                best_heuristic = Some(heuristic);
-            }
-        }
-
-        let mut best_heuristic = best_heuristic.unwrap();
-
-        info!(
-            "Start final run at score {}",
-            best_heuristic.current_score()
-        );
-
-        let domset_mapped = if let Some(timeout) = opts.timeout {
-            best_heuristic.run_until_timeout(Duration::from_secs_f64(timeout));
-            best_heuristic.best_known_solution().unwrap()
-        } else {
-            best_heuristic.run_to_completion().unwrap()
-        };
-
+        // run solver
+        let domset_mapped = run_main_solve(&mut rng, &mapped, &opts, start_time);
         info!("Local search found solution size {}", domset_mapped.len());
 
+        // integrate mapped solution into global state
         let size_before = state.domset.len();
         state
             .domset
