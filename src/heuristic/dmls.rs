@@ -201,22 +201,52 @@ where
 
     pub fn step(&mut self) {
         self.update_best_solution();
-        if self.best_solution.len() == self.current_solution.len() {
-            let rnd = self.current_solution.sample_non_fixed(&mut self.rng);
-            self.remove_node_from_solution(rnd);
+
+        if self.round % 10_000 == 0 {
+            info!(
+                " Best solution: size={:6}, current solution: {:6}, uncovered: {:6}, round={:9}, gap={:9}, time={:7}ms",
+                self.best_solution.len(),
+                self.current_solution.len(),
+                self.num_uncovered,
+                self.round,
+                self.round - self.previous_improvement,
+                self.start_time.elapsed().as_millis()
+            );
+        }
+        self.round+=1;
+
+        // Solution is feasible
+        if self.num_uncovered == 0 {
+            let mut min_age:u64 = u64::MAX;
+            let mut max_score:NumNodes = NumNodes::MAX;
+            let mut node:Node = u32::MAX;
+            for x in self.current_solution.iter() {
+                let curr_score = self.uniquely_covered[x as usize];
+                if curr_score < max_score || (curr_score == max_score && self.age[x as usize] < min_age) {
+                    min_age = self.age[x as usize];
+                    max_score = curr_score;
+                    node = x;
+                }
+            }
+            self.remove_node_from_solution(node);
         }
 
         let random = self.current_solution.sample_non_fixed(&mut self.rng);
         self.remove_node_from_solution(random);
 
-        let random_best = self.random_minimum_loss_node::<NUM_SAMPLES>();
-        self.remove_node_from_solution(random_best);
+        if self.rng.r#gen::<f32>() < 0.6 {
+            let random_best = self.random_minimum_loss_node::<NUM_SAMPLES>();
+            self.remove_node_from_solution(random_best);
+        }
 
         self.greedy_add_node_to_domset();
-        self.greedy_add_node_to_domset();
+        if self.best_solution.len() > self.current_solution.len()+1 {
+            self.greedy_add_node_to_domset();
+        }
     }
 
     fn greedy_add_node_to_domset(&mut self) {
+        if self.num_uncovered == 0 {return;}
         let mut min_age:u64 = u64::MAX;
         let mut max_score:NumNodes = 0;
         let mut node:Node = u32::MAX;
@@ -230,6 +260,9 @@ where
             }
             curr_score > 0
         });
+        if self.current_solution.is_in_domset(node) {
+            panic!("Something went wrong here (add) {} and score {}!", node, max_score);
+        }
 
         self.current_solution.add_node(node);
         let _ = self
@@ -282,6 +315,9 @@ where
     }
 
     fn remove_node_from_solution(&mut self, removed_node: Node) {
+        if !self.current_solution.is_in_domset(removed_node) {
+            panic!("Something went wrong here!");
+        }
         self.current_solution.remove_node(removed_node);
         let _ = self
             .domset_modifications
@@ -334,17 +370,6 @@ where
                     DomSetModification::Remove(node) => self.best_solution.remove_node(node),
                 }
             }
-        }
-
-        if self.verbose_logging {
-            info!(
-                " Better solution: size={:6}, round={:9}, gap={:9}, time={:7}ms",
-                self.best_solution.len(),
-                self.round,
-                self.round - self.previous_improvement,
-                self.start_time.elapsed().as_millis()
-            );
-            self.previous_improvement = self.round;
         }
     }
 

@@ -63,6 +63,11 @@ path = "src/bin/heuristic_solver.rs"
 test = false
 
 [[bin]]
+name = "heuristic_dmls"
+path = "src/bin/heuristic_solver_dmls.rs"
+test = false
+
+[[bin]]
 name = "heuristic_set"
 path = "src/bin/heuristic_set_solver.rs"
 test = false

@@ -2,6 +2,7 @@ use std::{cmp::Ordering, collections::VecDeque, fmt::Debug, string::ParseError, 
 
 use log::info;
 use rand::{Rng, SeedableRng};
+use rand::RngCore;
 use rand_pcg::Pcg64Mcg;
 use thiserror::Error;
 
@@ -298,7 +299,7 @@ where
         // Try to escape local minima every 1000 steps
         //
         // TODO: find better threshold
-        if self.round % 10000 == 0 {
+        if (((self.round-self.previous_improvement) % 10_000 == 0) && (self.current_solution.len() - self.best_solution.len()) < 4) || (self.round < self.previous_improvement){
             match self.forced_rule {
                 ForcedRemovalRuleType::DMS => self.force_removal_dms(),
                 ForcedRemovalRuleType::BFS2 => {
@@ -344,14 +345,22 @@ where
                     );
                 }
                 ForcedRemovalRuleType::FRDR => {
-                    if let Some(non_removable_node) = (0..40).map(|_| self.current_solution.sample_non_fixed(&mut self.rng)).find_or_first(|x| {
-                        self.intersection_forest.get_root_nodes(*x).len() == 1
-                    }) {
+                    let removable = if self.rng.next_u32() > u32::MAX>>1 {
+                        Some(self.current_solution.sample_non_fixed(&mut self.rng))
+                    }
+                    else {
+                        (0..10).map(|_| self.current_solution.sample_non_fixed(&mut self.rng)).filter(|x| {
+                            self.intersection_forest.get_root_nodes(*x).len() == 1
+                        }).min_by_key(|a| self.uniquely_covered[*a as usize])
+                    };
+                    if let Some(non_removable_node) = removable {
+                        debug_assert!(self.intersection_forest.get_root_nodes(non_removable_node).len() == 1);
+                        debug_assert!(self.redundant_nodes.len() == 0);
                         for nb in self.graph.neighbors_of(non_removable_node) {
                             if self.num_covered[nb as usize] == 1 {
                                 self.in_nodes_to_update.set_bit(nb);
 
-                                for j in self.graph.neighbors_of(non_removable_node).filter(|x| !self.non_optimal_nodes.get_bit(*x))  {
+                                for j in self.graph.neighbors_of(nb).filter(|x| !self.non_optimal_nodes.get_bit(*x))  {
                                     self.hitting_score[j as usize] += 1;
                                     if self.hitting_score[j as usize] == 1 {
                                         self.redundant_nodes.push(j);
@@ -371,17 +380,18 @@ where
                                 if *nd == non_removable_node {continue;}
                                 if self.hitting_score[*nd as usize] > max_score || (self.hitting_score[*nd as usize] == max_score && self.age[*nd as usize] < min_age) {
                                     max_score = self.hitting_score[*nd as usize];
-                                    max_pos = idx;
+                                    max_pos = idx+added_nodes_len;
                                     min_age = self.age[*nd as usize];
                                 }
                             }
 
-                            if max_pos > self.redundant_nodes.len() {
+                            if max_pos >= self.redundant_nodes.len() {
                                 self.redundant_nodes.iter().for_each(|x| self.hitting_score[*x as usize] = 0);
                                 for nb in self.graph.neighbors_of(non_removable_node) {
                                     self.in_nodes_to_update.clear_bit(nb);
                                 }
                                 self.redundant_nodes.clear();
+                                added_nodes_len = 0;
                                 break 'outer;
                             }
 
@@ -390,7 +400,7 @@ where
                             added_nodes_len+=1;
 
                             for nb in self.graph.neighbors_of(nd) {
-                                if self.in_nodes_to_update.get_bit(nd) {
+                                if self.in_nodes_to_update.get_bit(nb) {
                                     uncovered_nodes -= 1;
                                     self.in_nodes_to_update.clear_bit(nb);
 
@@ -404,32 +414,33 @@ where
                         }
 
                         if added_nodes_len > 0 {
-                            let res: Vec<Node> = self.redundant_nodes[..added_nodes_len].to_vec();
+                            let mut res: Vec<Node> = self.redundant_nodes[..added_nodes_len].to_vec();
+                            res.sort_by_key(|u| self.age[*u as usize]);
                             self.redundant_nodes.clear();
-                            for x in res.into_iter() {
-                                self.add_node_to_domset(x);
+                            for x in res.iter() {
+                                self.add_node_to_domset(*x);
 
                                 // Prefer nodes that have been unchanged for longer
                                 self.redundant_nodes.sort_by_key(|u| self.age[*u as usize]);
 
                                 // Remove redundant nodes from DomSet
                                 if !self.redundant_nodes.is_empty() {
-                                    self.remove_redundant_node::<true>(self.redundant_nodes[0], x);
+                                    self.remove_redundant_node::<true>(self.redundant_nodes[0], *x);
                                     for i in 1..self.redundant_nodes.len() {
-                                        self.remove_redundant_node::<false>(self.redundant_nodes[i], x);
+                                        self.remove_redundant_node::<false>(self.redundant_nodes[i], *x);
                                     }
                                     self.redundant_nodes.clear();
                                 }
-
-                                debug_assert!(self.uniquely_covered[x as usize] > 0);
-
                                 // Update IntersectionForest/Sampler for all remaining nodes_to_update
                                 self.update_forest_and_sampler();
-
-                                // Update the best known solution if needed
-                                self.update_best_solution();
                             }
-
+                            for x in res.into_iter() {
+                                if self.current_solution.is_in_domset(x) {
+                                    self.remove_redundant_node::<false>(x, u32::MAX);
+                                }
+                            }
+                            self.update_forest_and_sampler();
+                            self.update_best_solution();
                         }
                     }
                 },
@@ -437,6 +448,12 @@ where
             };
 
             self.round += 1;
+            info!( " Better solution: size={:6}, current={:6}, round={:9}, gap={:9}, time={:7}ms", self.best_solution.len(),
+                self.current_solution.len(),
+                self.round,
+                self.round - self.previous_improvement,
+                self.start_time.elapsed().as_millis()
+            );
             return;
         }
 
@@ -444,7 +461,7 @@ where
         let proposed_node = if let Some(node) = self.draw_node() {
             node
         } else {
-            self.is_locally_optimal = true;
+            self.previous_improvement = self.round+1;
             return;
         };
 
@@ -516,8 +533,10 @@ where
         // (I3) dominating nodes have no score
         self.scores[u as usize] = 0;
         self.age[u as usize] = self.round;
-        // (I4) Node must be part of Sampler
-        self.sampler.remove_entry(u);
+        if self.sampler.is_in_sampler(u) {
+            // (I4) Node must be part of Sampler
+            self.sampler.remove_entry(u);
+        }
 
         let _ = self
             .domset_modifications
@@ -560,6 +579,9 @@ where
     fn remove_redundant_node<const MARKER: bool>(&mut self, old_node: Node, new_node: Node) {
         if self.uniquely_covered[old_node as usize] > 0 {
             return;
+        }
+        if !MARKER {
+            self.previous_improvement = self.round-1;
         }
 
         // Breaks (I1)
