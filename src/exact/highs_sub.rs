@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HighsSubprocessProblem {
-    timeout: u64,
+    pub timeout: u64,
     graph: CsrGraph,
     covered: Vec<Node>,
     never_select: Vec<Node>,
