@@ -63,10 +63,6 @@ pub struct GreedyReverseSearch<
     /// The currently best known solution of the algorithm
     best_solution: DominatingSet,
 
-    /// Is the algorithm stuck in a (local) optimum?
-    /// Will be true if the sampler is empty, i.e. the algorithm can no longer improve the solution.
-    is_locally_optimal: bool,
-
     /// A sampler for sampling nodes with weights that are powers of 2.
     sampler: WeightedPow2Sampler<NUM_SAMPLER_BUCKETS>,
 
@@ -249,7 +245,6 @@ where
             graph,
             current_solution,
             best_solution,
-            is_locally_optimal: false,
             sampler,
             rng,
             nodes_to_update: Vec::with_capacity(n),
@@ -290,7 +285,7 @@ where
         // Try to escape local minima every 1000 steps
         //
         // TODO: find better threshold
-        if (((self.round-self.previous_improvement) % 10_000 == 0) && (self.current_solution.len() - self.best_solution.len()) < 4) || self.is_locally_optimal {
+        if (((self.round-self.previous_improvement) % 10_000 == 0) && (self.current_solution.len() - self.best_solution.len()) < 4) || (self.round < self.previous_improvement) {
             match self.forced_rule {
                 ForcedRemovalRuleType::FRDR => {
                     let removable = if self.rng.next_u32() > u32::MAX>>1 {
@@ -389,7 +384,6 @@ where
                             }
                             self.update_forest_and_sampler();
                             self.update_best_solution();
-                            self.is_locally_optimal = false;
                         }
                     }
                 },
@@ -405,10 +399,9 @@ where
         let proposed_node = if let Some(node) = self.draw_node() {
             node
         } else {
-            self.is_locally_optimal = true;
+            self.previous_improvement = self.round+1;
             return;
         };
-        self.is_locally_optimal = false;
 
         self.round += 1;
 
