@@ -423,6 +423,7 @@ fn run_main_solve(
         // We may bootstrap using HiGHS ...
         if let Some(best) = best_boot.as_ref()
             && exact_attempts_left > 0
+            && mapped.graph.number_of_edges() < 100000
             && best.current_score() < opts.exact_presolve_threshold
             && start_time.elapsed().as_secs() + opts.exact_presolve_time / 2 < opts.bootstrap_time
         {
