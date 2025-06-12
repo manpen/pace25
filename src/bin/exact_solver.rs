@@ -141,6 +141,7 @@ fn main() -> anyhow::Result<()> {
     let mut rule_articulation = RuleArticulationPoint::new_with_cache(high_cache.clone());
     let mut rule_subset = RuleSubsetReduction::new(graph.number_of_nodes());
     let mut rule_red_twin = RuleRedTwin::new(graph.number_of_nodes());
+    let mut rule_red_subset = RuleRedundantSubsetReduction::new(graph.number_of_nodes());
     let mut rule_subset_two = SubsetRuleTwoReduction::new(graph.number_of_nodes());
 
     loop {
@@ -153,6 +154,7 @@ fn main() -> anyhow::Result<()> {
         changed |= apply!(rule_isolated);
         changed |= apply!(rule_subset);
         changed |= apply!(rule_red_twin);
+        changed |= apply!(rule_red_subset);
         changed |= apply!(rule_red_cover);
         changed |= apply!(rule_articulation);
 
