@@ -1,17 +1,19 @@
 use num::Integer;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::impl_static_graph_tests;
 
 use super::{sliced_buffer::SlicedBuffer, *};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
 pub struct NodeWithCrossPos {
     pub node: Node,
     pub cross_pos: NumNodes,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CsrGraph {
     neighborhoods: SlicedBuffer<NodeWithCrossPos>,
     max_degree: NumNodes,

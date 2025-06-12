@@ -1,5 +1,5 @@
 use dss::{
-    exact::highs_advanced::{HighsCache, HighsDominatingSetSolver, unit_weight},
+    exact::{highs_advanced::HighsCache, highs_sub},
     graph::*,
     heuristic::{iterative_greedy::IterativeGreedy, reverse_greedy_search::GreedyReverseSearch},
     io::PaceWriter as _,
@@ -336,20 +336,17 @@ fn initial_solution_with_external(
     mapped: &State<CsrGraph>,
     opts: &Opts,
 ) -> Option<(DominatingSet, bool)> {
-    let mut solver = HighsDominatingSetSolver::new(mapped.graph.number_of_nodes());
-    let problem = solver.build_problem(
+    let resp = highs_sub::solve_with_subprocess_find_binary(
         &mapped.graph,
         &mapped.covered,
         &mapped.never_select,
-        unit_weight,
+        Duration::from_secs(opts.exact_presolve_time),
+        Duration::from_secs(5),
     );
-    info!(
-        "Invoke external solver with {} vars and {} terms",
-        problem.number_of_variables(),
-        problem.number_of_terms()
-    );
-    match problem.solve_allow_subopt(Some(Duration::from_secs(opts.exact_presolve_time))) {
-        dss::exact::highs_advanced::SolverResult::Optimal(items) => {
+
+    use dss::exact::highs_advanced::SolverResult;
+    match resp {
+        Ok(SolverResult::Optimal(items)) => {
             info!(
                 "External solver found optimal solution. Size {}",
                 items.len()
@@ -359,15 +356,20 @@ fn initial_solution_with_external(
             Some((ds, true))
         }
 
-        dss::exact::highs_advanced::SolverResult::Suboptimal(items) => {
+        Ok(SolverResult::Suboptimal(items)) => {
             info!("External solver found some solution. Size {}", items.len());
             let mut ds = DominatingSet::new(mapped.graph.number_of_nodes());
             ds.add_nodes(items);
             Some((ds, false))
         }
-        dss::exact::highs_advanced::SolverResult::Timeout
-        | dss::exact::highs_advanced::SolverResult::Infeasible => {
+
+        Ok(SolverResult::Timeout) | Ok(SolverResult::Infeasible) => {
             info!("External solver found no solution");
+            None
+        }
+
+        Err(e) => {
+            info!("External solver error: {e:?}");
             None
         }
     }

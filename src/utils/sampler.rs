@@ -71,7 +71,7 @@ impl<const NUM_BUCKETS_PLUS_TWO: usize> WeightedPow2Sampler<NUM_BUCKETS_PLUS_TWO
             self.total_weight,
             (1..(NUM_BUCKETS_PLUS_TWO - 1))
                 .map(|b| { ((self.offsets[b + 1] - self.offsets[b]) << b) >> 1 })
-                .sum()
+                .sum::<usize>()
         );
     }
 
