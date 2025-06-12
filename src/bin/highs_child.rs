@@ -21,8 +21,8 @@ fn main() -> anyhow::Result<()> {
         std::thread::spawn(move || {
             let start = Instant::now();
             while processing_clone.load(Ordering::Acquire) {
-                if start.elapsed().as_secs() > problem.timeout + 3 {
-                    panic!("Timeout");
+                if start.elapsed().as_secs() > problem.timeout + 4 {
+                    std::process::exit(1);
                 }
                 sleep(Duration::from_millis(500));
             }
