@@ -2,7 +2,6 @@ use std::{fmt::Debug, string::ParseError, time::Instant};
 
 use log::info;
 use rand::{Rng, SeedableRng};
-use rand::RngCore;
 use rand_pcg::Pcg64Mcg;
 use thiserror::Error;
 
@@ -291,16 +290,21 @@ where
         if (((self.round-self.previous_improvement) % 10_000 == 0) && (self.current_solution.len() - self.best_solution.len()) < 4) || (self.round < self.previous_improvement) {
             match self.forced_rule {
                 ForcedRemovalRuleType::FRDR => {
-                    let removable = if self.rng.next_u32() > u32::MAX>>1 {
+                    let rnd_choice = self.rng.r#gen::<f32>();
+                    let removable = if rnd_choice < 0.33 {
                         Some(self.current_solution.sample_non_fixed(&mut self.rng))
+                    }
+                    else if rnd_choice < 0.66 {
+                        (0..NUM_SAMPLES).map(|_| self.current_solution.sample_non_fixed(&mut self.rng)).filter(|x| {
+                            self.intersection_forest.get_root_nodes(*x).len() == 1
+                        })
+                        .min_by_key(|a| self.expunge_frequency[*a as usize])
                     }
                     else {
                         (0..NUM_SAMPLES).map(|_| self.current_solution.sample_non_fixed(&mut self.rng)).filter(|x| {
                             self.intersection_forest.get_root_nodes(*x).len() == 1
                         })
-                        .map(|a| (self.expunge_frequency[a as usize], self.uniquely_covered[a as usize], a))
-                        .min()
-                        .map(|(_,_,a)| a)
+                        .min_by_key(|a| self.uniquely_covered[*a as usize])
                     };
                     if let Some(non_removable_node) = removable {
                         self.expunge_frequency[non_removable_node as usize] += 1;
