@@ -1,5 +1,5 @@
+pub mod ext_maxsat;
 pub mod naive;
-pub mod sat_solver;
 
 pub mod highs;
 pub use highs::highs_solver as default_exact_solver;

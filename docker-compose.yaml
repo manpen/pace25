@@ -2,7 +2,7 @@ services:
   ds-heuristic:
     build:
       context: .
-      dockerfile: pace-eval-ds-heuristic/Dockerfile
+      dockerfile: pace-eval-ds/Dockerfile
     deploy:
       resources:
         limits:
