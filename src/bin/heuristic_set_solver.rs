@@ -107,7 +107,6 @@ fn apply_reduction_rules(
     let mut rule_articulation = RuleArticulationPoint::new_with_cache(high_cache.clone());
     let mut rule_subset = RuleSubsetReduction::new(graph.number_of_nodes());
     let mut rule_red_twin = RuleRedTwin::new(graph.number_of_nodes());
-    let mut rule_subset_two = SubsetRuleTwoReduction::new(graph.number_of_nodes());
 
     loop {
         let mut changed = false;
@@ -121,10 +120,6 @@ fn apply_reduction_rules(
         changed |= apply!(rule_red_twin);
         changed |= apply!(rule_red_cover);
         changed |= apply!(rule_articulation);
-
-        if !changed {
-            changed |= apply!(rule_subset_two); // it is crucial that the other rules were applied exhaustively
-        }
 
         if changed {
             continue;
