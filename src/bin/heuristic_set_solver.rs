@@ -8,7 +8,6 @@ use dss::{
     reduction::*,
     utils::{DominatingSet, signal_handling},
 };
-use itertools::Itertools;
 use log::info;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64Mcg;
@@ -80,7 +79,23 @@ fn apply_reduction_rules(
     domset.add_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
 
     let mut reducer = Reducer::new();
-    let mut never_select = BitSet::new(graph.number_of_nodes());
+    // Sets all sets as never_select as we only want to select nodes into the dominating set
+    let mut never_select = BitSet::new_with_bits_set(
+        graph.number_of_nodes(),
+        orig_number_nodes..graph.number_of_nodes(),
+    );
+
+    macro_rules! apply {
+        ($rule:expr) => {
+            reducer.apply_rule(
+                &mut $rule,
+                &mut graph,
+                &mut domset,
+                &mut covered,
+                &mut never_select,
+            )
+        };
+    }
 
     let high_cache = Arc::new(HighsCache::default());
 
@@ -88,89 +103,23 @@ fn apply_reduction_rules(
     let mut rule_one = RuleOneReduction::new(graph.number_of_nodes());
     let mut rule_long_path = LongPathReduction::new(graph.number_of_nodes());
     let mut rule_isolated = RuleIsolatedReduction;
-    let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
+    let mut rule_red_cover = RuleRedundantCover::new(graph.number_of_nodes());
     let mut rule_articulation = RuleArticulationPoint::new_with_cache(high_cache.clone());
     let mut rule_subset = RuleSubsetReduction::new(graph.number_of_nodes());
-    let mut rule_subset_two = SubsetRuleTwoReduction::new(graph.number_of_nodes());
+    let mut rule_red_twin = RuleRedTwin::new(graph.number_of_nodes());
 
     loop {
         let mut changed = false;
 
-        changed |= reducer.apply_rule(
-            &mut rule_vertex_cover,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        changed |= reducer.apply_rule(
-            &mut rule_one,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        changed |= reducer.apply_rule(
-            &mut rule_long_path,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        changed |= reducer.apply_rule(
-            &mut rule_isolated,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        changed |= reducer.apply_rule(
-            &mut rule_redundant,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        if changed {
-            continue;
-        }
-
-        changed |= reducer.apply_rule(
-            &mut rule_articulation,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        if changed {
-            continue;
-        }
-
-        changed |= reducer.apply_rule(
-            &mut rule_subset,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        if changed {
-            continue;
-        }
-
-        changed |= reducer.apply_rule(
-            &mut rule_subset_two,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
+        changed |= apply!(rule_one);
+        changed |= apply!(rule_red_twin);
+        changed |= apply!(rule_vertex_cover);
+        changed |= apply!(rule_long_path);
+        changed |= apply!(rule_isolated);
+        changed |= apply!(rule_subset);
+        changed |= apply!(rule_red_twin);
+        changed |= apply!(rule_red_cover);
+        changed |= apply!(rule_articulation);
 
         if changed {
             continue;
@@ -179,16 +128,9 @@ fn apply_reduction_rules(
         break;
     }
 
-    let mut rule_small_exact = RuleSmallExactReduction::new_with_cache(high_cache.clone());
-
     if graph.number_of_edges() > 0 {
-        reducer.apply_rule(
-            &mut rule_small_exact,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
+        let mut rule_small_exact = RuleSmallExactReduction::new_with_cache(high_cache.clone());
+        apply!(rule_small_exact);
     }
 
     reducer.report_summary();
@@ -403,30 +345,6 @@ fn main() -> anyhow::Result<()> {
         &mut state.never_select,
     );
 
-    let switches: Vec<(Node, Node)> = state
-        .domset
-        .iter()
-        .filter_map(|u| {
-            if u < orig_number_nodes {
-                return None;
-            }
-
-            // Must exist as a set-node only exists for non-empty sets
-            let first_neighbor = input_graph.neighbors_of(u).next().unwrap();
-            assert!(first_neighbor < orig_number_nodes);
-            Some((u, first_neighbor))
-        })
-        .collect_vec();
-
-    for (u, v) in switches {
-        // This should never be true as by definition, the graph is bipartite and u can cover only
-        // itself (as far as the algorithm knows)
-        if !state.domset.is_in_domset(v) {
-            state.domset.add_node(v);
-        }
-
-        state.domset.remove_node(u);
-    }
     assert!(state.domset.iter().all(|u| u < orig_number_nodes));
 
     let reduction_cover =
