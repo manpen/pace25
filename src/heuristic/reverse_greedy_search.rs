@@ -4,6 +4,7 @@ use log::info;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64Mcg;
 use thiserror::Error;
+use stream_bitset::prelude::BitSetImpl;
 
 use crate::{
     errors::InvariantCheck,
@@ -106,9 +107,8 @@ pub struct GreedyReverseSearch<
     round: u64,
 
 
-    working_set: DominatingSet,
 
-    solution_trace: BitSet,
+    solution_trace: BitSetImpl<u64>,
     current_solution_trace: NumNodes,
 
     /// IntersectionForest
@@ -293,8 +293,7 @@ where
             previous_improvement: 0,
             start_time: Instant::now(),
             expunge_frequency: vec![0;n],
-            working_set: DominatingSet::new(n as NumNodes),
-            solution_trace: BitSet::new(NumNodes::MAX),
+            solution_trace: BitSetImpl::<u64>::new(NumNodes::MAX as u64+1),
             current_solution_trace
         }
     }
@@ -310,10 +309,12 @@ where
     /// 3. Remove all now redundant nodes of the DomSet
     /// 4. Update IntersectionTrees/Scores/Sampler accordingly
     pub fn step(&mut self) {
+        let rnd_ch = self.rng.r#gen::<f32>();
+        let diff = 1.0 / (self.current_solution.len() - self.best_solution.len()) as f32;
         // Try to escape local minima every 1000 steps
         //
         // TODO: find better threshold
-        if (((self.round-self.previous_improvement) % 10_000 == 0) && (self.current_solution.len() - self.best_solution.len()) < 4) || (self.round < self.previous_improvement) {
+        if (((self.round-self.previous_improvement) % 10_000 == 0) && ((diff >= 0.25) || (rnd_ch < diff))) || (self.round < self.previous_improvement) {
             match self.forced_rule {
                 ForcedRemovalRuleType::FRDR => {
                     let rnd_choice = self.rng.r#gen::<f32>();
@@ -447,7 +448,7 @@ where
 
         // Add node to DomSet
         self.add_node_to_domset(proposed_node);
-        self.solution_trace.set_bit(self.current_solution_trace);
+        self.solution_trace.set_bit(self.current_solution_trace as u64);
 
         // Prefer nodes that have been unchanged for longer
         self.redundant_nodes.sort_by_key(|u| self.age[*u as usize]);
@@ -475,60 +476,33 @@ where
     /// Returns *None* if the sampler is empty, ie there is no way to replace any node in the
     /// current DomSet.
     fn draw_node(&mut self) -> Option<Node> {
-        let rand_choice = self.rng.r#gen::<f32>();
-        if rand_choice < 0.8 && self.working_set.len() > 0 {
-            let mut sample_node = None;
-            let mut sample_bucket = 0;
-            let mut sample_age = u64::MAX;
-
-            for _ in 0..NUM_SAMPLES {
-                let nd = self.working_set.sample_non_fixed(&mut self.rng);
-                let score = self.sampler.bucket_of_node(nd);
-                if score == 0 {
-                    self.working_set.remove_node(nd);
-                    if self.working_set.len() == 0 {
-                        break;
-                    }
-                    continue;
-                }
-
-                if score > sample_bucket || (score == sample_bucket && sample_age > self.age[nd as usize]) {
-                    sample_node = Some(nd);
-                    sample_bucket = score;
-                    sample_age = self.age[nd as usize];
-                }
-            }
-            sample_node
+        if self.sampler.is_empty() {
+            return None;
         }
-        else {
-            if self.sampler.is_empty() {
-                return None;
-            }
 
-            let mut sample_node = None;
-            let mut sample_bucket = 0;
-            let mut sample_age = 0;
+        let mut sample_node = None;
+        let mut sample_bucket = 0;
+        let mut sample_age = 0;
 
-            self.sampler
-                .sample_many::<_, NUM_SAMPLES>(&mut self.rng, |bucket, node| {
-                    if sample_bucket == bucket && (sample_age < self.age[node as usize]) {
+        self.sampler
+            .sample_many::<_, NUM_SAMPLES>(&mut self.rng, |bucket, node| {
+                if sample_bucket == bucket && (sample_age < self.age[node as usize]) {
+                    return;
+                }
+                let tr = self.current_solution_trace ^ hash32(node);
+                if sample_node.is_some() && self.solution_trace.get_bit(tr as u64) {
+                    if self.rng_sec.r#gen::<bool>() {
                         return;
                     }
-                    let tr = self.current_solution_trace ^ hash32(node);
-                    if self.solution_trace.get_bit(tr) {
-                        if self.rng_sec.r#gen::<bool>() {
-                            return;
-                        }
-                        self.solution_trace.clear_bit(tr);
-                    }
+                    self.solution_trace.clear_bit(tr as u64);
+                }
 
-                    sample_node = Some(node);
-                    sample_bucket = bucket;
-                    sample_age = self.age[node as usize];
-                });
+                sample_node = Some(node);
+                sample_bucket = bucket;
+                sample_age = self.age[node as usize];
+            });
 
-            sample_node
-        }
+        sample_node
     }
 
     /// Adds a node to the DomSet that was not part of it before.
@@ -541,9 +515,6 @@ where
         // Breaks (I1)
         self.current_solution.add_node(u);
         self.current_solution_trace ^= hash32(u);
-        if self.working_set.is_in_domset(u) {
-            self.working_set.remove_node(u);
-        }
         // (I3) dominating nodes have no score
         self.scores[u as usize] = 0;
         self.age[u as usize] = self.round;
@@ -683,29 +654,14 @@ where
             }
 
             // Add all entries of IntersectionTree[dominating_node] to sampler
-            if self.num_covered[*candidate as usize].0 > 1 {
-                for &node in self.intersection_forest.get_root_nodes(*dominating_node) {
-                    if node != *dominating_node {
-                        self.scores[node as usize] += 1;
-                        self.sampler
-                            .set_bucket(node, self.scores[node as usize] as usize);
-                        if !self.current_solution.is_in_domset(node) {
-                            if !self.working_set.is_in_domset(node) {
-                                self.working_set.add_node(node);
-                            }
-                        }
-                    }
+            for &node in self.intersection_forest.get_root_nodes(*dominating_node) {
+                if node != *dominating_node {
+                    self.scores[node as usize] += 1;
+                    self.sampler
+                        .set_bucket(node, self.scores[node as usize] as usize);
                 }
             }
-            else {
-                for &node in self.intersection_forest.get_root_nodes(*dominating_node) {
-                    if node != *dominating_node {
-                        self.scores[node as usize] += 1;
-                        self.sampler
-                            .set_bucket(node, self.scores[node as usize] as usize);
-                    }
-                }
-            }
+
             if self.in_nodes_to_update.cardinality() == 0 {
                 break;
             }
@@ -718,7 +674,6 @@ where
         if self.current_solution.len() >= self.best_solution.len() {
             return;
         }
-        self.working_set.clear();
 
         if self.domset_modifications.len() > self.graph.number_of_nodes() as usize / 64 {
             self.best_solution = self.current_solution.clone();
