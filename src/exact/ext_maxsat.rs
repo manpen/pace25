@@ -189,6 +189,9 @@ mod test {
     fn cross_with_naive_eval_maxsat() {
         const NODES: NumNodes = 20;
         let solver_binary: PathBuf = "./EvalMaxSAT_bin".into();
+        if !solver_binary.is_file() {
+            return;
+        }
 
         let mut rng = Pcg64Mcg::seed_from_u64(0x123612873);
 
@@ -219,6 +222,9 @@ mod test {
     fn cross_with_naive_eval_uwrmaxsat() {
         const NODES: NumNodes = 20;
         let solver_binary: PathBuf = "./uwrmaxsat".into();
+        if !solver_binary.is_file() {
+            return;
+        }
 
         let mut rng = Pcg64Mcg::seed_from_u64(0x12362873);
 
