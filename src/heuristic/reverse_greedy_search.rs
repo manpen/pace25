@@ -17,17 +17,6 @@ use crate::{
     },
 };
 
-pub fn hash32(x: u32) -> u32 {
-    let mut y:u32 = x ^ (x >> 16);
-    y *= 0x21f0aaad;
-    y ^= y >> 15;
-    y *= 0x735a2d97;
-    y ^= y >> 15;
-    return y;
-}
-
-
-
 /// # GreedyReverseSearch
 ///
 /// An iterative algorithm that replaces at least one node in the current DomSet by another. If
@@ -108,9 +97,6 @@ pub struct GreedyReverseSearch<
 
 
 
-    solution_trace: BitSetImpl<u64>,
-    current_solution_trace: NumNodes,
-
     /// IntersectionForest
     ///
     /// Every node u in the DomSet is assigned an IntersectionTree. Nodes that are uniquely covered by this
@@ -188,11 +174,9 @@ where
             .collect();
         let mut age = vec![0; n];
 
-        let mut current_solution_trace: NumNodes = 0;
         // (I1) Reorder adjacency lists such that dominating nodes appear first
         for u in initial_solution.iter() {
             age[u as usize] = 1;
-            current_solution_trace ^= hash32(u);
             for v in graph.neighbors_of(u) {
                 num_covered[v as usize].0 += 1;
                 num_covered[v as usize].1 ^= u;
@@ -219,7 +203,6 @@ where
             // Possibly breaks (I1)
             initial_solution.remove_node(u);
             age[u as usize] = 0;
-            current_solution_trace ^= hash32(u);
 
             // Restores (I1)
             for v in graph.neighbors_of(u)  {
@@ -293,8 +276,6 @@ where
             previous_improvement: 0,
             start_time: Instant::now(),
             expunge_frequency: vec![0;n],
-            solution_trace: BitSetImpl::<u64>::new(NumNodes::MAX as u64+1),
-            current_solution_trace
         }
     }
 
@@ -310,11 +291,11 @@ where
     /// 4. Update IntersectionTrees/Scores/Sampler accordingly
     pub fn step(&mut self) {
         let rnd_ch = self.rng.r#gen::<f32>();
-        let diff = 1.0 / (self.current_solution.len() - self.best_solution.len()) as f32;
+        let diff = 1.0 / ((self.current_solution.len()+1) - self.best_solution.len()) as f32;
         // Try to escape local minima every 1000 steps
         //
         // TODO: find better threshold
-        if (((self.round-self.previous_improvement) % 10_000 == 0) && ((diff >= 0.25) || (rnd_ch < diff))) || (self.round < self.previous_improvement) {
+        if (((self.round-self.previous_improvement) % 10_000 == 0) && (rnd_ch < diff)) || (self.round < self.previous_improvement) {
             match self.forced_rule {
                 ForcedRemovalRuleType::FRDR => {
                     let rnd_choice = self.rng.r#gen::<f32>();
@@ -325,13 +306,13 @@ where
                         (0..NUM_SAMPLES).map(|_| self.current_solution.sample_non_fixed(&mut self.rng)).filter(|x| {
                             self.intersection_forest.get_root_nodes(*x).len() == 1
                         })
-                        .min_by_key(|a| self.expunge_frequency[*a as usize])
+                        .min_by_key(|a| (self.expunge_frequency[*a as usize], self.age[*a as usize]))
                     }
                     else {
                         (0..NUM_SAMPLES).map(|_| self.current_solution.sample_non_fixed(&mut self.rng)).filter(|x| {
                             self.intersection_forest.get_root_nodes(*x).len() == 1
                         })
-                        .min_by_key(|a| self.uniquely_covered[*a as usize])
+                        .min_by_key(|a| (self.uniquely_covered[*a as usize], self.age[*a as usize]))
                     };
                     if let Some(non_removable_node) = removable {
                         self.expunge_frequency[non_removable_node as usize] += 1;
@@ -448,7 +429,6 @@ where
 
         // Add node to DomSet
         self.add_node_to_domset(proposed_node);
-        self.solution_trace.set_bit(self.current_solution_trace as u64);
 
         // Prefer nodes that have been unchanged for longer
         self.redundant_nodes.sort_by_key(|u| self.age[*u as usize]);
@@ -489,13 +469,6 @@ where
                 if sample_bucket == bucket && (sample_age < self.age[node as usize]) {
                     return;
                 }
-                let tr = self.current_solution_trace ^ hash32(node);
-                if sample_node.is_some() && self.solution_trace.get_bit(tr as u64) {
-                    if self.rng_sec.r#gen::<bool>() {
-                        return;
-                    }
-                    self.solution_trace.clear_bit(tr as u64);
-                }
 
                 sample_node = Some(node);
                 sample_bucket = bucket;
@@ -514,7 +487,6 @@ where
 
         // Breaks (I1)
         self.current_solution.add_node(u);
-        self.current_solution_trace ^= hash32(u);
         // (I3) dominating nodes have no score
         self.scores[u as usize] = 0;
         self.age[u as usize] = self.round;
@@ -569,7 +541,6 @@ where
 
         // Breaks (I1)
         self.current_solution.remove_node(old_node);
-        self.current_solution_trace ^= hash32(old_node);
         self.age[old_node as usize] = self.round;
 
         let _ = self
