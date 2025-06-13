@@ -1,14 +1,13 @@
 use dss::{
     exact::highs_advanced::HighsCache,
     graph::*,
-    heuristic::{iterative_greedy::IterativeGreedy, reverse_greedy_search::GreedyReverseSearch},
-    io::set_reader::SetPaceReader,
+    heuristic::{iterative_greedy::IterativeGreedy, dmls::DMLS},
+    io::PaceWriter as _,
     log::build_pace_logger_for_level,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
     reduction::*,
     utils::{DominatingSet, signal_handling},
 };
-use itertools::Itertools;
 use log::info;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64Mcg;
@@ -19,13 +18,16 @@ use std::{
 };
 use structopt::StructOpt;
 
-#[derive(StructOpt, Default)]
+#[derive(StructOpt)]
 struct Opts {
     #[structopt(short = "i")]
     input: Option<PathBuf>,
 
     #[structopt(short = "T")]
     timeout: Option<f64>,
+
+    #[structopt(short = "k")]
+    preprocess_only: bool,
 
     #[structopt(short = "q")]
     no_output: bool,
@@ -47,16 +49,95 @@ struct Opts {
 
     #[structopt(short = "m", default_value = "2")]
     ls_presolve_max_gap: f64,
+
+    #[structopt(short = "c")]
+    dump_ccs_lower_size: Option<NumNodes>,
+
+    #[structopt(short = "C")]
+    dump_ccs_upper_size: Option<NumNodes>,
 }
 
-fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<(AdjArray, NumNodes)> {
+impl Default for Opts {
+    fn default() -> Self {
+        Self {
+            input: None,
+            timeout: None,
+            no_output: false,
+            greedy_timeout: 5.0,
+            greedy_iterations: 20,
+            dump_ccs_lower_size: None,
+            dump_ccs_upper_size: None,
+            verbose: false,
+            ls_attempts: 6,
+            ls_presolve_timeout: 13.0,
+            ls_presolve_max_gap: 2.0,
+            preprocess_only: false,
+        }
+    }
+}
+
+fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<AdjArray> {
     use dss::prelude::*;
 
     if let Some(path) = path {
-        Ok(AdjArray::try_read_set_pace_file(path)?)
+        Ok(AdjArray::try_read_pace_file(path)?)
     } else {
         let stdin = std::io::stdin().lock();
-        Ok(AdjArray::try_read_set_pace(stdin)?)
+        Ok(AdjArray::try_read_pace(stdin)?)
+    }
+}
+
+fn dump_ccs(graph: &AdjArray, opts: &Opts) {
+    if opts.dump_ccs_lower_size.is_none() && opts.dump_ccs_upper_size.is_none() {
+        return;
+    }
+
+    let size_lb = opts.dump_ccs_lower_size.unwrap_or(8);
+    let size_ub = opts.dump_ccs_upper_size.unwrap_or(NumNodes::MAX);
+
+    let graph_name = if let Some(path) = &opts.input {
+        String::from(
+            path.file_stem()
+                .expect("Filestem")
+                .to_str()
+                .expect("String"),
+        )
+    } else if let Ok(iid) = std::env::var("STRIDE_IID") {
+        format!(
+            "{}",
+            iid.parse::<u32>()
+                .expect("STRIDE_IID needs to be an integer")
+        )
+    } else {
+        panic!("Expect instances name either using -i or via env var STRIDE_IID");
+    };
+
+    info!(
+        "Start export of CC with sizes between [{size_lb}, {size_ub}] into export_ccs/{graph_name}/"
+    );
+
+    let partition = graph.partition_into_connected_components(true);
+    let subgraphs = partition.split_into_subgraphs(graph);
+
+    let mut dir_checked = false;
+
+    for (i, (subgraph, _)) in subgraphs.into_iter().enumerate() {
+        if !(size_lb..=size_ub).contains(&subgraph.number_of_nodes()) {
+            continue;
+        }
+
+        let store_path: PathBuf = format!(
+            "export_ccs/{graph_name}/n{}_m{}-{i}.gr",
+            subgraph.number_of_nodes(),
+            subgraph.number_of_edges()
+        )
+        .into();
+
+        if !dir_checked {
+            std::fs::create_dir_all(store_path.parent().unwrap()).unwrap();
+            dir_checked = true;
+        }
+        subgraph.try_write_pace_file(store_path).unwrap();
     }
 }
 
@@ -68,19 +149,27 @@ struct State<G: Clone> {
     never_select: BitSet,
 }
 
-fn apply_reduction_rules(
-    mut graph: AdjArray,
-    orig_number_nodes: NumNodes,
-) -> (State<AdjArray>, Reducer<AdjArray>) {
-    // Sets all original nodes as covered as we only want to cover the sets
-    // Reductions/Algorithms should be fine with it as they assume that a removed fixed-node exists
-    let mut covered = BitSet::new_with_bits_set(graph.number_of_nodes(), 0..orig_number_nodes);
+fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjArray>) {
+    let mut covered = graph.vertex_bitset_unset();
     let mut domset = DominatingSet::new(graph.number_of_nodes());
 
+    // singleton nodes need to be fixed
     domset.add_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
 
     let mut reducer = Reducer::new();
     let mut never_select = BitSet::new(graph.number_of_nodes());
+
+    macro_rules! apply {
+        ($rule:expr) => {
+            reducer.apply_rule(
+                &mut $rule,
+                &mut graph,
+                &mut domset,
+                &mut covered,
+                &mut never_select,
+            )
+        };
+    }
 
     let high_cache = Arc::new(HighsCache::default());
 
@@ -88,89 +177,23 @@ fn apply_reduction_rules(
     let mut rule_one = RuleOneReduction::new(graph.number_of_nodes());
     let mut rule_long_path = LongPathReduction::new(graph.number_of_nodes());
     let mut rule_isolated = RuleIsolatedReduction;
-    let mut rule_redundant = RuleRedundantCover::new(graph.number_of_nodes());
+    let mut rule_red_cover = RuleRedundantCover::new(graph.number_of_nodes());
     let mut rule_articulation = RuleArticulationPoint::new_with_cache(high_cache.clone());
     let mut rule_subset = RuleSubsetReduction::new(graph.number_of_nodes());
-    let mut rule_subset_two = SubsetRuleTwoReduction::new(graph.number_of_nodes());
+    let mut rule_red_twin = RuleRedTwin::new(graph.number_of_nodes());
 
     loop {
         let mut changed = false;
 
-        changed |= reducer.apply_rule(
-            &mut rule_vertex_cover,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        changed |= reducer.apply_rule(
-            &mut rule_one,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        changed |= reducer.apply_rule(
-            &mut rule_long_path,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        changed |= reducer.apply_rule(
-            &mut rule_isolated,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        changed |= reducer.apply_rule(
-            &mut rule_redundant,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        if changed {
-            continue;
-        }
-
-        changed |= reducer.apply_rule(
-            &mut rule_articulation,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        if changed {
-            continue;
-        }
-
-        changed |= reducer.apply_rule(
-            &mut rule_subset,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
-
-        if changed {
-            continue;
-        }
-
-        changed |= reducer.apply_rule(
-            &mut rule_subset_two,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
+        changed |= apply!(rule_one);
+        changed |= apply!(rule_red_twin);
+        changed |= apply!(rule_vertex_cover);
+        changed |= apply!(rule_long_path);
+        changed |= apply!(rule_isolated);
+        changed |= apply!(rule_subset);
+        changed |= apply!(rule_red_twin);
+        changed |= apply!(rule_red_cover);
+        changed |= apply!(rule_articulation);
 
         if changed {
             continue;
@@ -179,16 +202,9 @@ fn apply_reduction_rules(
         break;
     }
 
-    let mut rule_small_exact = RuleSmallExactReduction::new_with_cache(high_cache.clone());
-
     if graph.number_of_edges() > 0 {
-        reducer.apply_rule(
-            &mut rule_small_exact,
-            &mut graph,
-            &mut domset,
-            &mut covered,
-            &mut never_select,
-        );
+        let mut rule_small_exact = RuleSmallExactReduction::new_with_cache(high_cache.clone());
+        apply!(rule_small_exact);
     }
 
     reducer.report_summary();
@@ -259,7 +275,7 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
     }
 }
 
-type MainHeuristic = GreedyReverseSearch<CsrGraph, 10, 10>;
+type MainHeuristic = DMLS<CsrGraph, 10>;
 
 fn build_heuristic(
     rng: &mut impl Rng,
@@ -296,7 +312,7 @@ fn build_heuristic(
     }
 
     info!("Start GreedyReverseSearch");
-    let mut search = MainHeuristic::new(graph, domset, covered, never_select, rng, dss::heuristic::ForcedRemovalRuleType::FRDR);
+    let mut search = MainHeuristic::new(graph, domset, covered, never_select, rng);
 
     if opts.verbose {
         search.enable_verbose_logging();
@@ -317,19 +333,24 @@ fn main() -> anyhow::Result<()> {
 
     let mut rng = Pcg64Mcg::seed_from_u64(123u64);
 
-    let (input_graph, orig_number_nodes) = load_graph(&opts.input).unwrap();
+    let input_graph = load_graph(&opts.input).unwrap();
     info!(
         "Graph loaded n={:7} m={:8}",
         input_graph.number_of_nodes(),
         input_graph.number_of_edges()
     );
 
-    let (mut state, mut reducer) = apply_reduction_rules(input_graph.clone(), orig_number_nodes);
+    let (mut state, mut reducer) = apply_reduction_rules(input_graph.clone());
+    dump_ccs(&state.graph, &opts);
 
     let mapping = state.graph.cuthill_mckee();
     if mapping.len() > 0 {
         // if the reduction rules are VERY successful, no nodes remain
         let mapped = remap_state(&state, &mapping);
+
+        if opts.preprocess_only {
+            return Ok(());
+        }
 
         let mut best_heuristic: Option<MainHeuristic> = None;
 
@@ -403,40 +424,7 @@ fn main() -> anyhow::Result<()> {
         &mut state.never_select,
     );
 
-    let switches: Vec<(Node, Node)> = state
-        .domset
-        .iter()
-        .filter_map(|u| {
-            if u < orig_number_nodes {
-                return None;
-            }
-
-            // Must exist as a set-node only exists for non-empty sets
-            let first_neighbor = input_graph.neighbors_of(u).next().unwrap();
-            assert!(first_neighbor < orig_number_nodes);
-            Some((u, first_neighbor))
-        })
-        .collect_vec();
-
-    for (u, v) in switches {
-        // This should never be true as by definition, the graph is bipartite and u can cover only
-        // itself (as far as the algorithm knows)
-        if !state.domset.is_in_domset(v) {
-            state.domset.add_node(v);
-        }
-
-        state.domset.remove_node(u);
-    }
-    assert!(state.domset.iter().all(|u| u < orig_number_nodes));
-
-    let reduction_cover =
-        BitSet::new_with_bits_set(input_graph.number_of_nodes(), 0..orig_number_nodes);
-    assert!(
-        state
-            .domset
-            .is_valid_given_previous_cover(&input_graph, &reduction_cover)
-    );
-
+    assert!(state.domset.is_valid(&input_graph));
     if !opts.no_output {
         state.domset.write(std::io::stdout())?;
     }

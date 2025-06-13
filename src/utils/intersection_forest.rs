@@ -101,6 +101,8 @@ impl Default for IntersectionForest {
     }
 }
 
+/// Helper macro for better readibility
+/// Panics if $node >= $self.nodes.len()
 macro_rules! node {
     ($self:ident, $node:expr) => {
         $self.nodes[$node as usize]

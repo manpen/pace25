@@ -76,6 +76,10 @@ struct Opts {
 
     #[structopt(short = "C")]
     dump_ccs_upper_size: Option<NumNodes>,
+
+    #[allow(unused)]
+    #[structopt(short = "l", long="local-minima-rule")]
+    local_minima_rule: dss::heuristic::reverse_greedy_search::ForcedRemovalRuleType
 }
 
 impl Default for Opts {
@@ -96,6 +100,7 @@ impl Default for Opts {
             exact_presolve_time: 60,
             bootstrap_time: 120,
             preprocess_only: false,
+            local_minima_rule: dss::heuristic::reverse_greedy_search::ForcedRemovalRuleType::FRDR
         }
     }
 }
@@ -448,6 +453,7 @@ fn run_main_solve(
             mapped.covered.clone(),
             mapped.never_select.clone(),
             rng,
+            opts.local_minima_rule
         );
 
         if opts.verbose {
