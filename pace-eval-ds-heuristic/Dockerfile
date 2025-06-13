@@ -11,26 +11,20 @@ RUN apt-get update && apt-get install -y \
     util-linux \
     && rm -rf /var/lib/apt/lists/*
 
-#################################################
-# Install deps of solver & build it
+# Install solver related software
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     g++ build-essential pkg-config cmake clang-14 git\
     curl ca-certificates libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly --profile minimal
 
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly --profile minimal
-
-RUN mkdir /build
-COPY Cargo.toml /build/
+RUN mkdir /build /solver
+COPY Cargo.toml pace-eval-ds-heuristic/build.sh /build/
 COPY src /build/src
 COPY stream-bitset /build/stream-bitset
-RUN . /root/.cargo/env && \
-    cd /build && ls -ahl && \
-    cargo b --profile optil -F optil --bin heuristic && \
-    mkdir /solver && cp /build/target/optil/heuristic /solver && \
-    cd / && rm -rf /build
-####################################################
+RUN bash /build/build.sh
+
 
 # working directory
 WORKDIR /pace

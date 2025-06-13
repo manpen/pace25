@@ -6,3 +6,6 @@ logs
 stride-logs
 runner
 ogdf
+HiGHS
+instances
+PACE2025-instances
