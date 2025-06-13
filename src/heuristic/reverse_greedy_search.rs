@@ -529,6 +529,7 @@ where
         if !MARKER {
             self.previous_improvement = self.round-1;
         }
+        self.expunge_frequency[old_node as usize] += 1;
 
         // Breaks (I1)
         self.current_solution.remove_node(old_node);
@@ -590,37 +591,44 @@ where
     /// Remove nodes from the forest that are no longer uniquely covered
     /// or add nodes to the forest that are now uniquely covered
     fn update_forest_and_sampler(&mut self) {
-        for (dominating_node,candidate) in self.nodes_to_update.drain(..).rev() {
-            if !self.in_nodes_to_update.clear_bit(candidate) {
+        for (dominating_node,candidate) in self.nodes_to_update.iter().rev() {
+            if !self.in_nodes_to_update.clear_bit(*candidate) {
+                if self.in_nodes_to_update.cardinality() == 0 {
+                    break;
+                }
                 continue;
             }
 
             // Remove entries of IntersectionTree[dominating_node] from sampler
-            for &node in self.intersection_forest.get_root_nodes(dominating_node) {
-                if node != dominating_node && self.scores[node as usize] != 0 {
+            for &node in self.intersection_forest.get_root_nodes(*dominating_node) {
+                if node != *dominating_node && self.scores[node as usize] != 0 {
                     self.scores[node as usize] -= 1;
                     self.sampler
                         .set_bucket(node, self.scores[node as usize] as usize);
                 }
             }
             // Update IntersectionTree[dominating_node]
-            if self.num_covered[candidate as usize].0 == 1 {
+            if self.num_covered[*candidate as usize].0 == 1 {
                 self.intersection_forest
-                    .add_entry(dominating_node, candidate);
+                    .add_entry(*dominating_node, *candidate);
             } else {
                 self.intersection_forest
-                    .remove_entry(dominating_node, candidate);
+                    .remove_entry(*dominating_node, *candidate);
             }
 
             // Add all entries of IntersectionTree[dominating_node] to sampler
-            for &node in self.intersection_forest.get_root_nodes(dominating_node) {
-                if node != dominating_node {
+            for &node in self.intersection_forest.get_root_nodes(*dominating_node) {
+                if node != *dominating_node {
                     self.scores[node as usize] += 1;
                     self.sampler
                         .set_bucket(node, self.scores[node as usize] as usize);
                 }
             }
+            if self.in_nodes_to_update.cardinality() == 0 {
+                break;
+            }
         }
+        self.nodes_to_update.clear();
     }
 
     /// Updates the best_solution to current_solution if better
