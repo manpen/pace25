@@ -296,7 +296,14 @@ fn build_heuristic(
     }
 
     info!("Start GreedyReverseSearch");
-    let mut search = MainHeuristic::new(graph, domset, covered, never_select, rng, dss::heuristic::ForcedRemovalRuleType::FRDR);
+    let mut search = MainHeuristic::new(
+        graph,
+        domset,
+        covered,
+        never_select,
+        rng,
+        dss::heuristic::ForcedRemovalRuleType::FRDR,
+    );
 
     if opts.verbose {
         search.enable_verbose_logging();

@@ -40,10 +40,8 @@ use crate::{
 /// As this is a step-based algorithm, different members of this struct have certain BaseStates in
 /// which they must be at the beginning/end of each *round*. See BaseStateError down below for a
 /// description of these states.
-pub struct DMLS<
-    G,
-    const NUM_SAMPLES: usize = 10,
-> where
+pub struct DMLS<G, const NUM_SAMPLES: usize = 10>
+where
     G: StaticGraph + SelfLoop,
 {
     /// A reference to the graph: mutable access is needed as we need to re-order adjacency lists
@@ -58,9 +56,8 @@ pub struct DMLS<
     /// RNG used for sampling
     rng: Pcg64Mcg,
 
-    eligible_nodes: Vec<(u64,Node)>,
+    eligible_nodes: Vec<(u64, Node)>,
     node_score: Vec<NumNodes>,
-
 
     /// Number of incident dominating nodes
     num_covered: Vec<NumNodes>,
@@ -95,8 +92,7 @@ pub struct DMLS<
     start_time: Instant,
 }
 
-impl<G, const NUM_SAMPLES: usize>
-    DMLS<G, NUM_SAMPLES>
+impl<G, const NUM_SAMPLES: usize> DMLS<G, NUM_SAMPLES>
 where
     G: StaticGraph + SelfLoop,
 {
@@ -179,13 +175,13 @@ where
             rng,
 
             eligible_nodes: Vec::with_capacity(n),
-            node_score: vec![0;n],
+            node_score: vec![0; n],
             num_covered,
             uniquely_covered,
             redundant_nodes: Vec::with_capacity(n),
             age,
             round: 1,
-            domset_modifications: Vec::with_capacity(n>>5),
+            domset_modifications: Vec::with_capacity(n >> 5),
             is_perm_covered,
             verbose_logging: false,
             previous_improvement: 1,
@@ -213,16 +209,18 @@ where
                 self.start_time.elapsed().as_millis()
             );
         }
-        self.round+=1;
+        self.round += 1;
 
         // Solution is feasible
         if self.num_uncovered == 0 {
-            let mut min_age:u64 = u64::MAX;
-            let mut max_score:NumNodes = NumNodes::MAX;
-            let mut node:Node = u32::MAX;
+            let mut min_age: u64 = u64::MAX;
+            let mut max_score: NumNodes = NumNodes::MAX;
+            let mut node: Node = u32::MAX;
             for x in self.current_solution.iter() {
                 let curr_score = self.uniquely_covered[x as usize];
-                if curr_score < max_score || (curr_score == max_score && self.age[x as usize] < min_age) {
+                if curr_score < max_score
+                    || (curr_score == max_score && self.age[x as usize] < min_age)
+                {
                     min_age = self.age[x as usize];
                     max_score = curr_score;
                     node = x;
@@ -240,18 +238,20 @@ where
         }
 
         self.greedy_add_node_to_domset();
-        if self.best_solution.len() > self.current_solution.len()+1 {
+        if self.best_solution.len() > self.current_solution.len() + 1 {
             self.greedy_add_node_to_domset();
         }
     }
 
     fn greedy_add_node_to_domset(&mut self) {
-        if self.num_uncovered == 0 {return;}
-        let mut min_age:u64 = u64::MAX;
-        let mut max_score:NumNodes = 0;
-        let mut node:Node = u32::MAX;
+        if self.num_uncovered == 0 {
+            return;
+        }
+        let mut min_age: u64 = u64::MAX;
+        let mut max_score: NumNodes = 0;
+        let mut node: Node = u32::MAX;
 
-        self.eligible_nodes.retain_mut(|(age,nd)| {
+        self.eligible_nodes.retain_mut(|(age, nd)| {
             let curr_score = self.node_score[*nd as usize];
             if curr_score > max_score || (curr_score == max_score && *age < min_age) {
                 min_age = *age;
@@ -260,9 +260,6 @@ where
             }
             curr_score > 0
         });
-        if self.current_solution.is_in_domset(node) {
-            panic!("Something went wrong here (add) {} and score {}!", node, max_score);
-        }
 
         self.current_solution.add_node(node);
         let _ = self
@@ -270,7 +267,6 @@ where
             .push_within_capacity(DomSetModification::Add(node));
 
         self.age[node as usize] = self.round;
-
 
         for i in 0..self.graph.degree_of(node) {
             let neighbor = self.graph.ith_neighbor(node, i);
@@ -286,7 +282,11 @@ where
             if self.num_covered[neighbor as usize] == 1 {
                 self.uniquely_covered[node as usize] += 1;
                 self.num_uncovered -= 1;
-                for nb in self.graph.neighbors_of(neighbor).filter(|x| !self.non_optimal_nodes.get_bit(*x)) {
+                for nb in self
+                    .graph
+                    .neighbors_of(neighbor)
+                    .filter(|x| !self.non_optimal_nodes.get_bit(*x))
+                {
                     self.node_score[nb as usize] -= 1;
                 }
             }
@@ -315,16 +315,12 @@ where
     }
 
     fn remove_node_from_solution(&mut self, removed_node: Node) {
-        if !self.current_solution.is_in_domset(removed_node) {
-            panic!("Something went wrong here!");
-        }
         self.current_solution.remove_node(removed_node);
         let _ = self
             .domset_modifications
             .push_within_capacity(DomSetModification::Remove(removed_node));
 
         self.age[removed_node as usize] = self.round;
-
 
         // (I1) Re-order neighbors
         for i in (0..self.graph.degree_of(removed_node)).rev() {
@@ -339,7 +335,11 @@ where
             // New uncovered node
             if self.num_covered[neighbor as usize] == 0 {
                 self.num_uncovered += 1;
-                for nb_2 in self.graph.neighbors_of(neighbor).filter(|x| !self.non_optimal_nodes.get_bit(*x)) {
+                for nb_2 in self
+                    .graph
+                    .neighbors_of(neighbor)
+                    .filter(|x| !self.non_optimal_nodes.get_bit(*x))
+                {
                     self.node_score[nb_2 as usize] += 1;
                     if self.node_score[nb_2 as usize] == 1 {
                         self.eligible_nodes.push((self.age[nb_2 as usize], nb_2));
@@ -400,8 +400,7 @@ enum DomSetModification {
     Remove(Node),
 }
 
-impl<G, const NUM_SAMPLES: usize>
-    IterativeAlgorithm<DominatingSet> for DMLS<G, NUM_SAMPLES>
+impl<G, const NUM_SAMPLES: usize> IterativeAlgorithm<DominatingSet> for DMLS<G, NUM_SAMPLES>
 where
     G: StaticGraph + SelfLoop,
 {
@@ -418,8 +417,7 @@ where
     }
 }
 
-impl<G, const NUM_SAMPLES: usize>
-    TerminatingIterativeAlgorithm<DominatingSet>
+impl<G, const NUM_SAMPLES: usize> TerminatingIterativeAlgorithm<DominatingSet>
     for DMLS<G, NUM_SAMPLES>
 where
     G: StaticGraph + SelfLoop,

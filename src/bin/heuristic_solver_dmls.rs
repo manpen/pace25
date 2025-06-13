@@ -1,7 +1,7 @@
 use dss::{
     exact::highs_advanced::HighsCache,
     graph::*,
-    heuristic::{iterative_greedy::IterativeGreedy, dmls::DMLS},
+    heuristic::{dmls::DMLS, iterative_greedy::IterativeGreedy},
     io::PaceWriter as _,
     log::build_pace_logger_for_level,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},

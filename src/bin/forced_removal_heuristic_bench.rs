@@ -8,7 +8,7 @@ use std::{
 use dss::{
     graph::CsrGraph,
     heuristic::{
-        greedy_approximation, reverse_greedy_search::GreedyReverseSearch, ForcedRemovalRuleType,
+        ForcedRemovalRuleType, greedy_approximation, reverse_greedy_search::GreedyReverseSearch,
     },
     io::GraphPaceReader,
     prelude::IterativeAlgorithm,

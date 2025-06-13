@@ -70,7 +70,7 @@ pub struct GreedyReverseSearch<
 
     /// List of all nodes that are either currently inserted into an IntersectionTree and need to
     /// be removed to maintain (I2) or need to be added to an IntersectionTree to maintain (I2)
-    nodes_to_update: Vec<(Node,Node)>,
+    nodes_to_update: Vec<(Node, Node)>,
 
     /// Helper BitSet to easily identify if a node is pushed to `nodes_to_update`
     in_nodes_to_update: BitSet,
@@ -92,7 +92,6 @@ pub struct GreedyReverseSearch<
 
     /// Current iteration
     round: u64,
-
 
     working_set: DominatingSet,
 
@@ -143,8 +142,7 @@ pub struct GreedyReverseSearch<
     previous_improvement: u64,
     start_time: Instant,
 
-
-    hitting_score: Vec<NumNodes>
+    hitting_score: Vec<NumNodes>,
 }
 
 impl<G, const NUM_SAMPLER_BUCKETS: usize, const NUM_SAMPLES: usize>
@@ -160,7 +158,7 @@ where
         is_perm_covered: BitSet,
         non_optimal_nodes: BitSet,
         seeding_rng: &mut impl Rng,
-        rule: ForcedRemovalRuleType
+        rule: ForcedRemovalRuleType,
     ) -> Self {
         assert!(initial_solution.is_valid_given_previous_cover(&graph, &is_perm_covered));
         assert!(graph.len() > 0);
@@ -168,8 +166,8 @@ where
         let n = graph.len();
 
         // Initialize NumCovered with 2 for permanently covered nodes to prevent unique-checks
-        let mut num_covered: Vec<(NumNodes,NumNodes)> = (0..graph.number_of_nodes())
-            .map(|i| (is_perm_covered.get_bit(i) as NumNodes * 2,0))
+        let mut num_covered: Vec<(NumNodes, NumNodes)> = (0..graph.number_of_nodes())
+            .map(|i| (is_perm_covered.get_bit(i) as NumNodes * 2, 0))
             .collect();
         let mut age = vec![0; n];
 
@@ -204,7 +202,7 @@ where
             age[u as usize] = 0;
 
             // Restores (I1)
-            for v in graph.neighbors_of(u)  {
+            for v in graph.neighbors_of(u) {
                 num_covered[v as usize].0 -= 1;
                 num_covered[v as usize].1 ^= u;
 
@@ -267,12 +265,12 @@ where
             helper_bitset: BitSet::new(n as NumNodes),
             num_uncovered_neighbors: vec![0; n],
             forced_rule: rule,
-            hitting_score: vec![0;n],
+            hitting_score: vec![0; n],
             is_perm_covered,
             verbose_logging: false,
             previous_improvement: 0,
             start_time: Instant::now(),
-            expunge_frequency: vec![0;n],
+            expunge_frequency: vec![0; n],
             working_set: DominatingSet::new(n as NumNodes),
         }
     }
@@ -289,39 +287,52 @@ where
     /// 4. Update IntersectionTrees/Scores/Sampler accordingly
     pub fn step(&mut self) {
         let rnd_ch = self.rng.r#gen::<f32>();
-        let diff = 1.0 / ((self.current_solution.len()+1) - self.best_solution.len()) as f32;
+        let diff = 1.0 / ((self.current_solution.len() + 1) - self.best_solution.len()) as f32;
         // Try to escape local minima every 1000 steps
         //
         // TODO: find better threshold
-        if (((self.round-self.previous_improvement) % 10_000 == 0) && (rnd_ch < diff)) || (self.round < self.previous_improvement) {
+        if self.round < self.previous_improvement
+            || (((self.round - self.previous_improvement) % 10_000 == 0) && (rnd_ch < diff))
+        {
             self.working_set.clear();
             match self.forced_rule {
                 ForcedRemovalRuleType::FRDR => {
                     let rnd_choice = self.rng.r#gen::<f32>();
                     let removable = if rnd_choice < 0.33 {
                         Some(self.current_solution.sample_non_fixed(&mut self.rng))
-                    }
-                    else if rnd_choice < 0.66 {
-                        (0..NUM_SAMPLES).map(|_| self.current_solution.sample_non_fixed(&mut self.rng)).filter(|x| {
-                            self.intersection_forest.get_root_nodes(*x).len() == 1
-                        })
-                        .min_by_key(|a| (self.expunge_frequency[*a as usize], self.age[*a as usize]))
-                    }
-                    else {
-                        (0..NUM_SAMPLES).map(|_| self.current_solution.sample_non_fixed(&mut self.rng)).filter(|x| {
-                            self.intersection_forest.get_root_nodes(*x).len() == 1
-                        })
-                        .min_by_key(|a| (self.uniquely_covered[*a as usize], self.age[*a as usize]))
+                    } else if rnd_choice < 0.66 {
+                        (0..NUM_SAMPLES)
+                            .map(|_| self.current_solution.sample_non_fixed(&mut self.rng))
+                            .filter(|x| self.intersection_forest.get_root_nodes(*x).len() == 1)
+                            .min_by_key(|a| {
+                                (self.expunge_frequency[*a as usize], self.age[*a as usize])
+                            })
+                    } else {
+                        (0..NUM_SAMPLES)
+                            .map(|_| self.current_solution.sample_non_fixed(&mut self.rng))
+                            .filter(|x| self.intersection_forest.get_root_nodes(*x).len() == 1)
+                            .min_by_key(|a| {
+                                (self.uniquely_covered[*a as usize], self.age[*a as usize])
+                            })
                     };
                     if let Some(non_removable_node) = removable {
                         self.expunge_frequency[non_removable_node as usize] += 1;
-                        debug_assert!(self.intersection_forest.get_root_nodes(non_removable_node).len() == 1);
-                        debug_assert!(self.redundant_nodes.len() == 0);
+                        debug_assert!(
+                            self.intersection_forest
+                                .get_root_nodes(non_removable_node)
+                                .len()
+                                == 1
+                        );
+                        debug_assert!(self.redundant_nodes.is_empty());
                         for nb in self.graph.neighbors_of(non_removable_node) {
                             if self.num_covered[nb as usize].0 == 1 {
                                 self.in_nodes_to_update.set_bit(nb);
 
-                                for j in self.graph.neighbors_of(nb).filter(|x| !self.non_optimal_nodes.get_bit(*x))  {
+                                for j in self
+                                    .graph
+                                    .neighbors_of(nb)
+                                    .filter(|x| !self.non_optimal_nodes.get_bit(*x))
+                                {
                                     self.hitting_score[j as usize] += 1;
                                     if self.hitting_score[j as usize] == 1 {
                                         self.redundant_nodes.push(j);
@@ -331,23 +342,33 @@ where
                         }
 
                         let mut added_nodes_len = 0;
-                        let mut uncovered_nodes = self.uniquely_covered[non_removable_node as usize];
+                        let mut uncovered_nodes =
+                            self.uniquely_covered[non_removable_node as usize];
                         'outer: while uncovered_nodes > 0 {
                             let mut max_score = 0;
                             let mut max_pos = usize::MAX;
                             let mut min_age = u64::MAX;
 
-                            for (idx,nd) in self.redundant_nodes[added_nodes_len..].iter().enumerate() {
-                                if *nd == non_removable_node {continue;}
-                                if self.hitting_score[*nd as usize] > max_score || (self.hitting_score[*nd as usize] == max_score && self.age[*nd as usize] < min_age) {
+                            for (idx, nd) in
+                                self.redundant_nodes[added_nodes_len..].iter().enumerate()
+                            {
+                                if *nd == non_removable_node {
+                                    continue;
+                                }
+                                if self.hitting_score[*nd as usize] > max_score
+                                    || (self.hitting_score[*nd as usize] == max_score
+                                        && self.age[*nd as usize] < min_age)
+                                {
                                     max_score = self.hitting_score[*nd as usize];
-                                    max_pos = idx+added_nodes_len;
+                                    max_pos = idx + added_nodes_len;
                                     min_age = self.age[*nd as usize];
                                 }
                             }
 
                             if max_pos >= self.redundant_nodes.len() {
-                                self.redundant_nodes.iter().for_each(|x| self.hitting_score[*x as usize] = 0);
+                                self.redundant_nodes
+                                    .iter()
+                                    .for_each(|x| self.hitting_score[*x as usize] = 0);
                                 for nb in self.graph.neighbors_of(non_removable_node) {
                                     self.in_nodes_to_update.clear_bit(nb);
                                 }
@@ -358,14 +379,18 @@ where
 
                             let nd = self.redundant_nodes[max_pos];
                             self.redundant_nodes.swap(max_pos, added_nodes_len);
-                            added_nodes_len+=1;
+                            added_nodes_len += 1;
 
                             for nb in self.graph.neighbors_of(nd) {
                                 if self.in_nodes_to_update.get_bit(nb) {
                                     uncovered_nodes -= 1;
                                     self.in_nodes_to_update.clear_bit(nb);
 
-                                    for j in self.graph.neighbors_of(nb).filter(|x| !self.non_optimal_nodes.get_bit(*x))  {
+                                    for j in self
+                                        .graph
+                                        .neighbors_of(nb)
+                                        .filter(|x| !self.non_optimal_nodes.get_bit(*x))
+                                    {
                                         if self.hitting_score[j as usize] > 0 {
                                             self.hitting_score[j as usize] -= 1;
                                         }
@@ -375,7 +400,8 @@ where
                         }
 
                         if added_nodes_len > 0 {
-                            let mut res: Vec<Node> = self.redundant_nodes[..added_nodes_len].to_vec();
+                            let mut res: Vec<Node> =
+                                self.redundant_nodes[..added_nodes_len].to_vec();
                             res.sort_by_key(|u| self.age[*u as usize]);
                             self.redundant_nodes.clear();
                             for x in res.iter() {
@@ -388,7 +414,10 @@ where
                                 if !self.redundant_nodes.is_empty() {
                                     self.remove_redundant_node::<true>(self.redundant_nodes[0], *x);
                                     for i in 1..self.redundant_nodes.len() {
-                                        self.remove_redundant_node::<false>(self.redundant_nodes[i], *x);
+                                        self.remove_redundant_node::<false>(
+                                            self.redundant_nodes[i],
+                                            *x,
+                                        );
                                     }
                                     self.redundant_nodes.clear();
                                 }
@@ -404,8 +433,8 @@ where
                             self.update_best_solution();
                         }
                     }
-                },
-                ForcedRemovalRuleType::None => {},
+                }
+                ForcedRemovalRuleType::None => {}
                 _ => unimplemented!("Rule not implemented!"),
             };
 
@@ -417,7 +446,7 @@ where
         let proposed_node = if let Some(node) = self.draw_node() {
             node
         } else {
-            self.previous_improvement = self.round+1;
+            self.previous_improvement = self.round + 1;
             return;
         };
 
@@ -456,7 +485,7 @@ where
     /// current DomSet.
     fn draw_node(&mut self) -> Option<Node> {
         let rand_choice = self.rng.r#gen::<f32>();
-        if rand_choice < 0.8 && self.working_set.len() != 0 {
+        if rand_choice < 0.8 && !self.working_set.is_empty() {
             let mut sample_node: Option<Node> = None;
             let mut sample_bucket = 0;
             let mut sample_age = u64::MAX;
@@ -466,21 +495,22 @@ where
                 let score = self.sampler.bucket_of_node(nd);
                 if score == 0 {
                     self.working_set.remove_node(nd);
-                    if self.working_set.len() == 0 {
+                    if self.working_set.is_empty() {
                         break;
                     }
                     continue;
                 }
 
-                if score > sample_bucket || (score == sample_bucket && sample_age > self.age[nd as usize]) {
+                if score > sample_bucket
+                    || (score == sample_bucket && sample_age > self.age[nd as usize])
+                {
                     sample_node = Some(nd);
                     sample_bucket = score;
                     sample_age = self.age[nd as usize];
                 }
             }
             sample_node
-        }
-        else {
+        } else {
             if self.sampler.is_empty() {
                 return None;
             }
@@ -532,19 +562,23 @@ where
         //
         // If a previously uniquely covered node is now not longer uniquely covered,
         // add it to nodes_to_update as we must later update its IntersectionTree-Appearance
-        for neighbor in self.graph.neighbors_of(u)  {
+        for neighbor in self.graph.neighbors_of(u) {
             self.num_covered[neighbor as usize].0 += 1;
 
             // If self.is_perm_covered is true, NumCovered must now be at least 3
             if self.num_covered[neighbor as usize].0 == 2 {
                 // (I1) the first neighbor must be a dominating node
                 let former_unique_covering_node = self.num_covered[neighbor as usize].1;
-                if !self.current_solution.is_in_domset(former_unique_covering_node) {
+                if !self
+                    .current_solution
+                    .is_in_domset(former_unique_covering_node)
+                {
                     panic!("Error!");
                 }
                 self.uniquely_covered[former_unique_covering_node as usize] -= 1;
                 if !self.in_nodes_to_update.set_bit(neighbor) {
-                    self.nodes_to_update.push((former_unique_covering_node,neighbor));
+                    self.nodes_to_update
+                        .push((former_unique_covering_node, neighbor));
                 }
 
                 if self.uniquely_covered[former_unique_covering_node as usize] == 0 {
@@ -564,7 +598,7 @@ where
             return;
         }
         if !MARKER {
-            self.previous_improvement = self.round-1;
+            self.previous_improvement = self.round - 1;
         }
         self.expunge_frequency[old_node as usize] += 1;
 
@@ -628,7 +662,7 @@ where
     /// Remove nodes from the forest that are no longer uniquely covered
     /// or add nodes to the forest that are now uniquely covered
     fn update_forest_and_sampler(&mut self) {
-        for (dominating_node,candidate) in self.nodes_to_update.iter().rev() {
+        for (dominating_node, candidate) in self.nodes_to_update.iter().rev() {
             if !self.in_nodes_to_update.clear_bit(*candidate) {
                 if self.in_nodes_to_update.cardinality() == 0 {
                     break;
@@ -660,15 +694,14 @@ where
                         self.scores[node as usize] += 1;
                         self.sampler
                             .set_bucket(node, self.scores[node as usize] as usize);
-                        if !self.current_solution.is_in_domset(node) {
-                            if !self.working_set.is_in_domset(node) {
-                                self.working_set.add_node(node);
-                            }
+                        if !self.current_solution.is_in_domset(node)
+                            && !self.working_set.is_in_domset(node)
+                        {
+                            self.working_set.add_node(node);
                         }
                     }
                 }
-            }
-            else {
+            } else {
                 for &node in self.intersection_forest.get_root_nodes(*dominating_node) {
                     if node != *dominating_node {
                         self.scores[node as usize] += 1;
@@ -1018,6 +1051,7 @@ mod tests {
                     graph.vertex_bitset_unset(),
                     graph.vertex_bitset_unset(),
                     &mut rng,
+                    ForcedRemovalRuleType::None,
                 );
 
                 for _ in 0..50 {
@@ -1067,6 +1101,7 @@ mod tests {
                     perm_covered.clone(),
                     non_opt_nodes.clone(),
                     &mut rng,
+                    ForcedRemovalRuleType::None,
                 );
 
                 for _ in 0..50 {
@@ -1111,6 +1146,7 @@ mod tests {
                     graph.vertex_bitset_unset(),
                     non_opt_nodes.clone(),
                     &mut rng,
+                    ForcedRemovalRuleType::None,
                 );
 
                 for _ in 0..50 {

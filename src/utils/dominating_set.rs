@@ -1,6 +1,6 @@
+use itertools::Itertools;
 use rand::Rng;
 use rand_distr::{Distribution, Uniform};
-use itertools::Itertools;
 
 use crate::prelude::*;
 use std::{fmt::Debug, io::Write};
