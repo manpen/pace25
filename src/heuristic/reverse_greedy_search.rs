@@ -453,13 +453,10 @@ where
     /// current DomSet.
     fn draw_node(&mut self) -> Option<Node> {
         let rand_choice = self.rng.r#gen::<f32>();
-        if rand_choice < 0.8 {
+        if rand_choice < 0.8 && self.working_set.len() > 0 {
             let mut sample_node = None;
             let mut sample_bucket = 0;
             let mut sample_age = u64::MAX;
-            if self.working_set.len() == 0 {
-                return None;
-            }
 
             for _ in 0..NUM_SAMPLES {
                 let nd = self.working_set.sample_non_fixed(&mut self.rng);
@@ -689,6 +686,7 @@ where
         if self.current_solution.len() >= self.best_solution.len() {
             return;
         }
+        self.working_set.clear();
 
         if self.domset_modifications.len() > self.graph.number_of_nodes() as usize / 64 {
             self.best_solution = self.current_solution.clone();

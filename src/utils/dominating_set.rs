@@ -74,6 +74,12 @@ impl DominatingSet {
         self.solution.push(u);
     }
 
+    pub fn clear(&mut self) {
+        for x in self.solution.drain(..) {
+            self.positions[x as usize] = NumNodes::MAX;
+        }
+    }
+
     /// Adds multiple nodes to the dominating set.
     ///
     /// # Example
