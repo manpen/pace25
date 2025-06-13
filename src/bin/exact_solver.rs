@@ -11,7 +11,7 @@ use dss::{exact::naive::naive_solver, log::build_pace_logger_for_level, prelude:
 use log::info;
 use structopt::StructOpt;
 
-#[derive(StructOpt)]
+#[derive(StructOpt, Default)]
 pub struct SatSolverOpts {}
 
 #[derive(StructOpt)]
@@ -52,7 +52,7 @@ pub enum Commands {
 
 impl Default for Commands {
     fn default() -> Self {
-        Commands::HighsSolverEnum(Default::default())
+        Commands::SatSolverEnum(SatSolverOptsEnum::Sat(Default::default()))
     }
 }
 
@@ -254,7 +254,7 @@ fn solve_staged_maxsat(
 
     {
         let solver_binary: PathBuf = "./EvalMaxSAT_bin".into();
-        let args = vec!["--TCT".into(), "1".into()];
+        let args = vec!["--TCT".into(), "900".into()];
 
         if let Ok(d) = ext_maxsat::solve(
             &solver_binary,
