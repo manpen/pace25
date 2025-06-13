@@ -1,17 +1,13 @@
+use std::time::Duration;
 use std::{fs::File, path::PathBuf, sync::Arc};
 
-use dss::exact::highs_advanced::*;
+use dss::exact::{ext_maxsat, highs_advanced::*};
 
 use dss::reduction::{
     RuleIsolatedReduction, RuleRedundantCover, RuleVertexCover, SubsetRuleTwoReduction,
 };
 #[allow(unused_imports)]
-use dss::{
-    exact::{naive::naive_solver, sat_solver::SolverBackend},
-    log::build_pace_logger_for_level,
-    prelude::*,
-    reduction::*,
-};
+use dss::{exact::naive::naive_solver, log::build_pace_logger_for_level, prelude::*, reduction::*};
 use log::info;
 use structopt::StructOpt;
 
@@ -225,6 +221,56 @@ fn remap_state_to_adj(org_state: &State<AdjArray>, mapping: &NodeMapper) -> AdjA
     )
 }
 
+fn solve_staged_maxsat(
+    graph: &(impl StaticGraph + SelfLoop),
+    covered: &BitSet,
+    never_select: &BitSet,
+) -> anyhow::Result<DominatingSet> {
+    {
+        let solver_binary: PathBuf = "./uwrmaxsat".into();
+        let args = vec![
+            "-v0".into(),
+            "-no-bin".into(),
+            "-no-sat".into(),
+            "-no-par".into(),
+            "-maxpre-time=60".into(),
+            "-scip-cpu=800".into(),
+            "-scip-delay=400".into(),
+            "-m".into(),
+            "-bm".into(),
+        ];
+
+        if let Ok(d) = ext_maxsat::solve(
+            &solver_binary,
+            args,
+            graph,
+            covered,
+            never_select,
+            Some(Duration::from_secs(900)),
+        ) {
+            return Ok(d);
+        }
+    }
+
+    {
+        let solver_binary: PathBuf = "./EvalMaxSAT_bin".into();
+        let args = vec!["--TCT".into(), "1".into()];
+
+        if let Ok(d) = ext_maxsat::solve(
+            &solver_binary,
+            args,
+            graph,
+            covered,
+            never_select,
+            Some(Duration::from_secs(900)),
+        ) {
+            return Ok(d);
+        }
+    }
+
+    anyhow::bail!("No solver succeeded");
+}
+
 fn map_and_solve_kernel_exact(
     state: &State<AdjArray>,
     mapping: &NodeMapper,
@@ -247,7 +293,7 @@ fn map_and_solve_kernel_exact(
         Commands::SatSolverEnum(SatSolverOptsEnum::Sat(_)) => {
             let csr_graph = remap_state_to_csr(state, mapping);
             assert_eq!(csr_graph.number_of_nodes(), n);
-            dss::exact::sat_solver::solve(&csr_graph, covered, None, SolverBackend::MAXSAT).unwrap()
+            solve_staged_maxsat(&csr_graph, &covered, &never_select).unwrap()
         }
         Commands::NaiveSolverEnum(_) => {
             let adj_graph = remap_state_to_adj(state, mapping);
