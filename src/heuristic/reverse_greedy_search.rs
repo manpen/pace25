@@ -16,6 +16,17 @@ use crate::{
     },
 };
 
+pub fn hash32(x: u32) -> u32 {
+    let mut y:u32 = x ^ (x >> 16);
+    y *= 0x21f0aaad;
+    y ^= y >> 15;
+    y *= 0x735a2d97;
+    y ^= y >> 15;
+    return y;
+}
+
+
+
 /// # GreedyReverseSearch
 ///
 /// An iterative algorithm that replaces at least one node in the current DomSet by another. If
@@ -67,6 +78,7 @@ pub struct GreedyReverseSearch<
 
     /// RNG used for sampling
     rng: Pcg64Mcg,
+    rng_sec: Pcg64Mcg,
 
     /// List of all nodes that are either currently inserted into an IntersectionTree and need to
     /// be removed to maintain (I2) or need to be added to an IntersectionTree to maintain (I2)
@@ -95,6 +107,9 @@ pub struct GreedyReverseSearch<
 
 
     working_set: DominatingSet,
+
+    solution_trace: BitSet,
+    current_solution_trace: NumNodes,
 
     /// IntersectionForest
     ///
@@ -173,9 +188,11 @@ where
             .collect();
         let mut age = vec![0; n];
 
+        let mut current_solution_trace: NumNodes = 0;
         // (I1) Reorder adjacency lists such that dominating nodes appear first
         for u in initial_solution.iter() {
             age[u as usize] = 1;
+            current_solution_trace ^= hash32(u);
             for v in graph.neighbors_of(u) {
                 num_covered[v as usize].0 += 1;
                 num_covered[v as usize].1 ^= u;
@@ -202,6 +219,7 @@ where
             // Possibly breaks (I1)
             initial_solution.remove_node(u);
             age[u as usize] = 0;
+            current_solution_trace ^= hash32(u);
 
             // Restores (I1)
             for v in graph.neighbors_of(u)  {
@@ -245,12 +263,14 @@ where
         let best_solution = initial_solution;
 
         let rng = Pcg64Mcg::seed_from_u64(seeding_rng.r#gen());
+        let rng_sec = Pcg64Mcg::seed_from_u64(seeding_rng.r#gen());
         Self {
             graph,
             current_solution,
             best_solution,
             sampler,
             rng,
+            rng_sec,
             nodes_to_update: Vec::with_capacity(n),
             in_nodes_to_update: BitSet::new(n as NumNodes),
             num_covered,
@@ -274,6 +294,8 @@ where
             start_time: Instant::now(),
             expunge_frequency: vec![0;n],
             working_set: DominatingSet::new(n as NumNodes),
+            solution_trace: BitSet::new(NumNodes::MAX),
+            current_solution_trace
         }
     }
 
@@ -425,6 +447,7 @@ where
 
         // Add node to DomSet
         self.add_node_to_domset(proposed_node);
+        self.solution_trace.set_bit(self.current_solution_trace);
 
         // Prefer nodes that have been unchanged for longer
         self.redundant_nodes.sort_by_key(|u| self.age[*u as usize]);
@@ -491,6 +514,13 @@ where
                     if sample_bucket == bucket && (sample_age < self.age[node as usize]) {
                         return;
                     }
+                    let tr = self.current_solution_trace ^ hash32(node);
+                    if self.solution_trace.get_bit(tr) {
+                        if self.rng_sec.r#gen::<bool>() {
+                            return;
+                        }
+                        self.solution_trace.clear_bit(tr);
+                    }
 
                     sample_node = Some(node);
                     sample_bucket = bucket;
@@ -510,6 +540,7 @@ where
 
         // Breaks (I1)
         self.current_solution.add_node(u);
+        self.current_solution_trace ^= hash32(u);
         if self.working_set.is_in_domset(u) {
             self.working_set.remove_node(u);
         }
@@ -567,6 +598,7 @@ where
 
         // Breaks (I1)
         self.current_solution.remove_node(old_node);
+        self.current_solution_trace ^= hash32(old_node);
         self.age[old_node as usize] = self.round;
 
         let _ = self
