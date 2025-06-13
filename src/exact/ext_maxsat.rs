@@ -78,9 +78,6 @@ fn read_solver_response(
 ) -> anyhow::Result<DominatingSet> {
     let mut domset = DominatingSet::new(graph.number_of_nodes());
 
-    println!("{:?}", never_select.iter_set_bits().collect_vec());
-    println!("{stdout_string}");
-
     for line in stdout_string.lines() {
         let line: &str = line;
         let mut parts = line.split(' ').filter(|t| !t.is_empty());
