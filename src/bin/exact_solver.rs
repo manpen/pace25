@@ -99,17 +99,15 @@ fn write_solution(ds: &DominatingSet, path: &Option<PathBuf>) -> anyhow::Result<
     Ok(())
 }
 
-fn main() -> anyhow::Result<()> {
-    build_pace_logger_for_level(log::LevelFilter::Info);
-    #[cfg(feature = "optil")]
-    let opts = Opts::default();
+#[derive(Clone)]
+struct State<G: Clone> {
+    graph: G,
+    domset: DominatingSet,
+    covered: BitSet,
+    never_select: BitSet,
+}
 
-    #[cfg(not(feature = "optil"))]
-    let opts = Opts::from_args();
-
-    let mut graph = load_graph(&opts.instance)?;
-    let org_graph = graph.clone();
-
+fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjArray>) {
     let mut covered = graph.vertex_bitset_unset();
     let mut domset = DominatingSet::new(graph.number_of_nodes());
 
@@ -141,7 +139,6 @@ fn main() -> anyhow::Result<()> {
     let mut rule_articulation = RuleArticulationPoint::new_with_cache(high_cache.clone());
     let mut rule_subset = RuleSubsetReduction::new(graph.number_of_nodes());
     let mut rule_red_twin = RuleRedTwin::new(graph.number_of_nodes());
-    let mut rule_red_subset = RuleRedundantSubsetReduction::new(graph.number_of_nodes());
     let mut rule_subset_two = SubsetRuleTwoReduction::new(graph.number_of_nodes());
 
     loop {
@@ -154,7 +151,6 @@ fn main() -> anyhow::Result<()> {
         changed |= apply!(rule_isolated);
         changed |= apply!(rule_subset);
         changed |= apply!(rule_red_twin);
-        changed |= apply!(rule_red_subset);
         changed |= apply!(rule_red_cover);
         changed |= apply!(rule_articulation);
 
@@ -174,46 +170,147 @@ fn main() -> anyhow::Result<()> {
         apply!(rule_small_exact);
     }
 
-    let mut domset = if graph.number_of_edges() > 0 {
-        let csr_graph = CsrGraph::from_edges(graph.number_of_nodes(), graph.edges(true));
-        let cmd = opts.cmd.unwrap_or_default();
+    reducer.report_summary();
 
-        match cmd {
-            Commands::SatSolverEnum(SatSolverOptsEnum::Sat(_)) => dss::exact::sat_solver::solve(
-                &csr_graph,
-                covered,
-                Some(domset),
-                SolverBackend::MAXSAT,
-            )?,
-            Commands::NaiveSolverEnum(_) => {
-                info!("Start Naive Solver");
-                signal_handling::initialize();
-                let local_sol = naive_solver(&graph, &covered, &never_select, None, None).unwrap();
-                domset.add_nodes(local_sol.iter());
-                domset
-            }
-            Commands::HighsSolverEnum(_) => {
-                info!("Start Highs Solver");
+    (
+        State {
+            graph,
+            domset,
+            covered,
+            never_select,
+        },
+        reducer,
+    )
+}
 
-                let mut solver = HighsDominatingSetSolver::new(graph.number_of_nodes());
-                let problem = solver.build_problem(&graph, &covered, &never_select, unit_weight);
-                let local_sol = problem.solve_exact(None).take_solution().unwrap();
-                domset.add_nodes(local_sol.iter().cloned());
-                domset
+fn remap_state_to_csr(org_state: &State<AdjArray>, mapping: &NodeMapper) -> CsrGraph {
+    CsrGraph::from_edges(
+        mapping.len() as NumNodes,
+        org_state.graph.edges(true).filter_map(|Edge(u, v)| {
+            // usually edges between covered nodes should have been removed by reduction rules,
+            // but let's make sure
+            if org_state.covered.get_bit(u) && org_state.covered.get_bit(v) {
+                return None;
             }
+
+            // new id exist since the mapping only drops vertices of degree zero, which
+            // by definition do not appear as endpoints of edges!
+            let edge =
+                Edge(mapping.new_id_of(u).unwrap(), mapping.new_id_of(v).unwrap()).normalized();
+
+            debug_assert!(!edge.is_loop());
+            Some(edge)
+        }),
+    )
+}
+
+fn remap_state_to_adj(org_state: &State<AdjArray>, mapping: &NodeMapper) -> AdjArray {
+    AdjArray::from_edges(
+        mapping.len() as NumNodes,
+        org_state.graph.edges(true).filter_map(|Edge(u, v)| {
+            // usually edges between covered nodes should have been removed by reduction rules,
+            // but let's make sure
+            if org_state.covered.get_bit(u) && org_state.covered.get_bit(v) {
+                return None;
+            }
+
+            // new id exist since the mapping only drops vertices of degree zero, which
+            // by definition do not appear as endpoints of edges!
+            let edge =
+                Edge(mapping.new_id_of(u).unwrap(), mapping.new_id_of(v).unwrap()).normalized();
+
+            debug_assert!(!edge.is_loop());
+            Some(edge)
+        }),
+    )
+}
+
+fn map_and_solve_kernel_exact(
+    state: &State<AdjArray>,
+    mapping: &NodeMapper,
+    opts: &mut Opts,
+) -> DominatingSet {
+    let n = mapping.len();
+
+    let covered = BitSet::new_with_bits_set(
+        n,
+        mapping.get_filtered_new_ids(state.covered.iter_set_bits()),
+    );
+
+    let never_select = BitSet::new_with_bits_set(
+        n,
+        mapping.get_filtered_new_ids(state.never_select.iter_set_bits()),
+    );
+
+    let cmd = std::mem::take(&mut opts.cmd).unwrap_or_default();
+    match cmd {
+        Commands::SatSolverEnum(SatSolverOptsEnum::Sat(_)) => {
+            let csr_graph = remap_state_to_csr(state, mapping);
+            assert_eq!(csr_graph.number_of_nodes(), n);
+            dss::exact::sat_solver::solve(&csr_graph, covered, None, SolverBackend::MAXSAT).unwrap()
         }
-    } else {
-        domset
-    };
+        Commands::NaiveSolverEnum(_) => {
+            let adj_graph = remap_state_to_adj(state, mapping);
+            assert_eq!(adj_graph.number_of_nodes(), n);
+            info!("Start Naive Solver");
+            naive_solver(&adj_graph, &covered, &never_select, None, None).unwrap()
+        }
+        Commands::HighsSolverEnum(_) => {
+            let adj_graph = remap_state_to_adj(state, mapping);
+            assert_eq!(adj_graph.number_of_nodes(), n);
+            info!("Start Highs Solver");
 
-    let mut covered = domset.compute_covered(&org_graph);
-    reducer.post_process(&mut graph, &mut domset, &mut covered, &mut never_select);
+            let mut solver = HighsDominatingSetSolver::new(adj_graph.number_of_nodes());
+            let problem = solver.build_problem(&adj_graph, &covered, &never_select, unit_weight);
+            let local_sol = problem.solve_exact(None).take_solution().unwrap();
+            let mut domset = DominatingSet::new(n);
+            domset.add_nodes(local_sol.iter().copied());
+            domset
+        }
+    }
+}
 
-    assert!(domset.is_valid(&org_graph), "Produced DS is not valid");
+fn main() -> anyhow::Result<()> {
+    build_pace_logger_for_level(log::LevelFilter::Info);
+    #[cfg(feature = "optil")]
+    let mut opts = Opts::default();
+
+    #[cfg(not(feature = "optil"))]
+    let mut opts = Opts::from_args();
+
+    let input_graph = load_graph(&opts.instance)?;
+
+    let (mut state, mut reducer) = apply_reduction_rules(input_graph.clone());
+
+    let mapping = state.graph.cuthill_mckee();
+    if mapping.len() > 0 {
+        // if the reduction rules are VERY successful, no nodes remain
+        let domset_mapped = map_and_solve_kernel_exact(&state, &mapping, &mut opts);
+
+        // integrate mapped solution into global state
+        let size_before = state.domset.len();
+        state
+            .domset
+            .add_nodes(mapping.get_filtered_old_ids(domset_mapped.iter()));
+        assert_eq!(size_before + domset_mapped.len(), state.domset.len());
+    }
+
+    let mut covered = state.domset.compute_covered(&input_graph);
+    reducer.post_process(
+        &mut input_graph.clone(),
+        &mut state.domset,
+        &mut covered,
+        &mut state.never_select,
+    );
+
+    assert!(
+        state.domset.is_valid(&input_graph),
+        "Produced DS is not valid"
+    );
     if opts.no_output {
-        info!("Final solution size: {}", domset.len());
+        info!("Final solution size: {}", state.domset.len());
     } else {
-        write_solution(&domset, &opts.output)?;
+        write_solution(&state.domset, &opts.output)?;
     }
 
     Ok(())
