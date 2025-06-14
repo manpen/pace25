@@ -20,12 +20,31 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/* \
     && curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly --profile minimal
 
-RUN mkdir /build /solver
-COPY Cargo.toml pace-eval-ds/build.sh /build/
+RUN mkdir /solver
+
+# Fetch external solvers
+RUN mkdir /build && cd /build && \
+    curl -o solver.zip https://maxsat-evaluations.github.io/2024/mse24-solver-src/exact/unweighted/UWrMaxSat-SCIP-MaxPre.zip && \
+    unzip solver.zip UWrMaxSat-SCIP-MaxPre/bin/uwrmaxsat && \
+    mv UWrMaxSat-SCIP-MaxPre/bin/uwrmaxsat /solver && \
+    rm -rf solver.zip UWrMaxSat-SCIP-MaxPre && \
+    curl -o solver.zip https://maxsat-evaluations.github.io/2024/mse24-solver-src/exact/unweighted/EvalMaxSAT_2024.zip && \
+    unzip solver.zip EvalMaxSAT_2024/bin/EvalMaxSAT && \
+    mv EvalMaxSAT_2024/bin/EvalMaxSAT /solver/EvalMaxSAT_bin && \
+    cd / && rm -rf /build
+
+# Build our solvers
+COPY Cargo.toml /build/
 COPY src /build/src
 COPY stream-bitset /build/stream-bitset
-RUN bash /build/build.sh
-
+RUN . /root/.cargo/env && \
+    mkdir -p /build && cd /build && \
+    cargo b --profile optil -F optil && \
+    ls -ahl /build/target/optil/ && \
+    cp /build/target/optil/heuristic   /solver && \
+    cp /build/target/optil/highs_child /solver && \
+    cp /build/target/optil/exact       /solver && \
+    cd / && rm -rf /build
 
 # working directory
 WORKDIR /pace

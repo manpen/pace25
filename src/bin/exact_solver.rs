@@ -1,7 +1,7 @@
 use std::time::Duration;
 use std::{fs::File, path::PathBuf, sync::Arc};
 
-use dss::exact::{ext_maxsat, highs_advanced::*};
+use dss::exact::{ext_maxsat, highs_advanced::*, search_binary_path};
 
 use dss::reduction::{
     RuleIsolatedReduction, RuleRedundantCover, RuleVertexCover, SubsetRuleTwoReduction,
@@ -226,8 +226,7 @@ fn solve_staged_maxsat(
     covered: &BitSet,
     never_select: &BitSet,
 ) -> anyhow::Result<DominatingSet> {
-    {
-        let solver_binary: PathBuf = "./uwrmaxsat".into();
+    if let Ok(solver_binary) = search_binary_path(&PathBuf::from("uwrmaxsat")) {
         let args = vec![
             "-v0".into(),
             "-no-bin".into(),
@@ -252,8 +251,7 @@ fn solve_staged_maxsat(
         }
     }
 
-    {
-        let solver_binary: PathBuf = "./EvalMaxSAT_bin".into();
+    if let Ok(solver_binary) = search_binary_path(&PathBuf::from("EvalMaxSAT_bin")) {
         let args = vec!["--TCT".into(), "1100".into()];
 
         if let Ok(d) = ext_maxsat::solve(&solver_binary, args, graph, covered, never_select, None) {

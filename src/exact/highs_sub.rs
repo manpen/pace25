@@ -1,13 +1,16 @@
 use std::{
     io::Read,
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     thread::sleep,
     time::{Duration, Instant},
 };
 
 use crate::{
-    exact::highs_advanced::{HighsDominatingSetSolver, SolverResult, unit_weight},
+    exact::{
+        highs_advanced::{HighsDominatingSetSolver, SolverResult, unit_weight},
+        search_binary_path,
+    },
     graph::*,
 };
 use itertools::Itertools;
@@ -120,25 +123,7 @@ pub fn solve_with_subprocess_find_binary(
     timeout: Duration,
     grace: Duration,
 ) -> anyhow::Result<SolverResult> {
-    let path = (|| {
-        // search in the same directory where this binary lies
-        if let Ok(path) = std::env::current_exe() {
-            let cand = path.with_file_name(HIGHS_CHILD);
-            if cand.is_file() {
-                return Ok(cand);
-            }
-        }
-
-        // search in the current working dir
-        if let Ok(path) = std::env::current_dir() {
-            let cand = path.join(HIGHS_CHILD);
-            if cand.is_file() {
-                return Ok(cand);
-            }
-        }
-
-        anyhow::bail!("Binary {HIGHS_CHILD} not found");
-    })()?;
+    let path = search_binary_path(&PathBuf::from(HIGHS_CHILD))?;
     info!("Start subprocess using {path:?}");
     solve_with_subprocess(&path, graph, covered, never_select, timeout, grace)
 }
