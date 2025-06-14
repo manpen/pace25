@@ -9,7 +9,7 @@ services:
           cpus: "1"
           memory: "16GB"
     environment:
-      MAX_TIME: 600  #in seconds
+      MAX_TIME: 300  #in seconds
       MERCY_TIME: 25 #in seconds
       SOLVER_CMD: "/solver/heuristic"
     volumes:
