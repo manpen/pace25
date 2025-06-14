@@ -235,7 +235,7 @@ fn solve_staged_maxsat(
             "-no-par".into(),
             "-maxpre-time=60".into(),
             "-scip-cpu=800".into(),
-            "-scip-delay=400".into(),
+            "-scip-delay=300".into(),
             "-m".into(),
             "-bm".into(),
         ];
@@ -246,7 +246,7 @@ fn solve_staged_maxsat(
             graph,
             covered,
             never_select,
-            Some(Duration::from_secs(900)),
+            Some(Duration::from_secs(600)),
         ) {
             return Ok(d);
         }
@@ -254,7 +254,7 @@ fn solve_staged_maxsat(
 
     {
         let solver_binary: PathBuf = "./EvalMaxSAT_bin".into();
-        let args = vec!["--TCT".into(), "900".into()];
+        let args = vec!["--TCT".into(), "1100".into()];
 
         if let Ok(d) = ext_maxsat::solve(
             &solver_binary,
@@ -262,7 +262,7 @@ fn solve_staged_maxsat(
             graph,
             covered,
             never_select,
-            Some(Duration::from_secs(900)),
+            None,
         ) {
             return Ok(d);
         }
