@@ -6,7 +6,7 @@ use dss::{
     log::build_pace_logger_for_level,
     prelude::{IterativeAlgorithm, TerminatingIterativeAlgorithm},
     reduction::*,
-    utils::{DominatingSet, signal_handling},
+    utils::{DominatingSet, signal_handling, signal_handling::received_ctrl_c},
 };
 use log::info;
 use rand::{Rng, SeedableRng};
@@ -183,18 +183,6 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
     let mut reducer = Reducer::new();
     let mut never_select = BitSet::new(graph.number_of_nodes());
 
-    macro_rules! apply {
-        ($rule:expr) => {
-            reducer.apply_rule(
-                &mut $rule,
-                &mut graph,
-                &mut domset,
-                &mut covered,
-                &mut never_select,
-            )
-        };
-    }
-
     let high_cache = Arc::new(HighsCache::default());
 
     let mut rule_vertex_cover = RuleVertexCover::new(graph.number_of_nodes());
@@ -208,6 +196,22 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
     let mut rule_subset_two = SubsetRuleTwoReduction::new(graph.number_of_nodes());
 
     loop {
+        macro_rules! apply {
+            ($rule:expr) => {{
+                if received_ctrl_c() {
+                    break;
+                }
+
+                reducer.apply_rule(
+                    &mut $rule,
+                    &mut graph,
+                    &mut domset,
+                    &mut covered,
+                    &mut never_select,
+                )
+            }};
+        }
+
         let mut changed = false;
 
         changed |= apply!(rule_one);
@@ -231,9 +235,15 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
         break;
     }
 
-    if graph.number_of_edges() > 0 {
+    if !received_ctrl_c() && graph.number_of_edges() > 0 {
         let mut rule_small_exact = RuleSmallExactReduction::new_with_cache(high_cache.clone());
-        apply!(rule_small_exact);
+        reducer.apply_rule(
+            &mut rule_small_exact,
+            &mut graph,
+            &mut domset,
+            &mut covered,
+            &mut never_select,
+        );
     }
 
     reducer.report_summary();
@@ -324,6 +334,7 @@ fn initial_solution_with_greedy(
 
     let mut remaining_iterations = opts.greedy_iterations.max(1);
     let start_time = Instant::now();
+    algo.execute_step(); // we force at least a single stop to have a solution in case of ctrl_c
     algo.run_while(|_| {
         remaining_iterations -= 1;
         (remaining_iterations > 0) && (start_time.elapsed().as_secs_f64() < opts.greedy_timeout)
@@ -426,6 +437,7 @@ fn run_main_solve(
             && mapped.graph.number_of_edges() < 100000
             && best.current_score() < opts.exact_presolve_threshold
             && start_time.elapsed().as_secs() + opts.exact_presolve_time / 2 < opts.bootstrap_time
+            && !received_ctrl_c()
         {
             if let Some((solution, opt)) = initial_solution_with_external(mapped, opts) {
                 if opt {
@@ -467,6 +479,10 @@ fn run_main_solve(
                 search.current_score()
             );
             best_boot = Some(search);
+        }
+
+        if received_ctrl_c() {
+            break;
         }
     }
 
