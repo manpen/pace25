@@ -991,6 +991,12 @@ pub enum ForcedRemovalRuleType {
     None = 8,
 }
 
+impl Default for ForcedRemovalRuleType {
+    fn default() -> Self {
+        Self::FRDR
+    }
+}
+
 impl std::str::FromStr for ForcedRemovalRuleType {
     type Err = ParseError;
     fn from_str(rule: &str) -> Result<Self, ParseError> {

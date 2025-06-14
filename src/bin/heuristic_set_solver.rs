@@ -46,6 +46,10 @@ struct Opts {
 
     #[structopt(short = "m", default_value = "2")]
     ls_presolve_max_gap: f64,
+
+    #[allow(unused)]
+    #[structopt(short = "l", long = "local-minima-rule")]
+    local_minima_rule: dss::heuristic::reverse_greedy_search::ForcedRemovalRuleType,
 }
 
 fn load_graph(path: &Option<PathBuf>) -> anyhow::Result<(AdjArray, NumNodes)> {
@@ -201,7 +205,7 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
     }
 }
 
-type MainHeuristic = GreedyReverseSearch<CsrGraph, 10, 10>;
+type MainHeuristic = GreedyReverseSearch<CsrGraph, 5, 5>;
 
 fn build_heuristic(
     rng: &mut impl Rng,
@@ -244,7 +248,7 @@ fn build_heuristic(
         covered,
         never_select,
         rng,
-        dss::heuristic::ForcedRemovalRuleType::FRDR,
+        opts.local_minima_rule
     );
 
     if opts.verbose {
