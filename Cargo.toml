@@ -9,6 +9,7 @@ edition = "2024"
 goodlp = ["good_lp"]
 par = []
 optil = ["log/max_level_off"]
+conc_solvers = []
 
 
 [dependencies]

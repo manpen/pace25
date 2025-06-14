@@ -11,8 +11,23 @@ use dss::{exact::naive::naive_solver, log::build_pace_logger_for_level, prelude:
 use log::info;
 use structopt::StructOpt;
 
-#[derive(StructOpt, Default)]
-pub struct SatSolverOpts {}
+#[derive(StructOpt)]
+pub struct SatSolverOpts {
+    #[structopt(short = "p")]
+    conc_solvers: bool,
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for SatSolverOpts {
+    fn default() -> Self {
+        Self {
+            #[cfg(feature = "conc_solvers")]
+            conc_solvers: true,
+            #[cfg(not(feature = "conc_solvers"))]
+            conc_solvers: false,
+        }
+    }
+}
 
 #[derive(StructOpt)]
 pub enum SatSolverOptsEnum {
@@ -221,45 +236,86 @@ fn remap_state_to_adj(org_state: &State<AdjArray>, mapping: &NodeMapper) -> AdjA
     )
 }
 
+fn args_uwrmaxsat() -> Vec<String> {
+    vec![
+        "-v0".into(),
+        "-no-bin".into(),
+        "-no-sat".into(),
+        "-no-par".into(),
+        "-maxpre-time=60".into(),
+        "-scip-cpu=800".into(),
+        "-scip-delay=300".into(),
+        "-m".into(),
+        "-bm".into(),
+    ]
+}
+
+fn args_evalmaxsat() -> Vec<String> {
+    vec!["--TCT".into(), "1100".into()]
+}
+
 fn solve_staged_maxsat(
     graph: &(impl StaticGraph + SelfLoop),
     covered: &BitSet,
     never_select: &BitSet,
 ) -> anyhow::Result<DominatingSet> {
-    if let Ok(solver_binary) = search_binary_path(&PathBuf::from("uwrmaxsat")) {
-        let args = vec![
-            "-v0".into(),
-            "-no-bin".into(),
-            "-no-sat".into(),
-            "-no-par".into(),
-            "-maxpre-time=60".into(),
-            "-scip-cpu=800".into(),
-            "-scip-delay=300".into(),
-            "-m".into(),
-            "-bm".into(),
-        ];
-
-        if let Ok(d) = ext_maxsat::solve(
+    if let Ok(solver_binary) = search_binary_path(&PathBuf::from("uwrmaxsat"))
+        && let Ok(d) = ext_maxsat::solve(
             &solver_binary,
-            args,
+            args_uwrmaxsat(),
             graph,
             covered,
             never_select,
             Some(Duration::from_secs(600)),
-        ) {
-            return Ok(d);
-        }
+        )
+    {
+        return Ok(d);
     }
 
-    if let Ok(solver_binary) = search_binary_path(&PathBuf::from("EvalMaxSAT_bin")) {
-        let args = vec!["--TCT".into(), "1100".into()];
-
-        if let Ok(d) = ext_maxsat::solve(&solver_binary, args, graph, covered, never_select, None) {
-            return Ok(d);
-        }
+    if let Ok(solver_binary) = search_binary_path(&PathBuf::from("EvalMaxSAT_bin"))
+        && let Ok(d) = ext_maxsat::solve(
+            &solver_binary,
+            args_evalmaxsat(),
+            graph,
+            covered,
+            never_select,
+            None,
+        )
+    {
+        return Ok(d);
     }
 
     anyhow::bail!("No solver succeeded");
+}
+
+fn solve_staged_maxsat_concurrent(
+    graph: &(impl StaticGraph + SelfLoop),
+    covered: &BitSet,
+    never_select: &BitSet,
+) -> anyhow::Result<DominatingSet> {
+    let mut solvers = vec![];
+
+    if let Ok(solver_binary) = search_binary_path(&PathBuf::from("uwrmaxsat")) {
+        solvers.push((
+            solver_binary,
+            args_uwrmaxsat(),
+            Some(Duration::from_secs(600)),
+        ));
+    }
+
+    if let Ok(solver_binary) = search_binary_path(&PathBuf::from("EvalMaxSAT_bin")) {
+        solvers.push((solver_binary, args_evalmaxsat(), None));
+    }
+
+    if solvers.is_empty() {
+        anyhow::bail!("No solvers found");
+    }
+
+    if solvers.len() == 1 {
+        solvers[0].2 = None;
+    }
+
+    ext_maxsat::solve_multiple(solvers, graph, covered, never_select)
 }
 
 fn map_and_solve_kernel_exact(
@@ -281,10 +337,14 @@ fn map_and_solve_kernel_exact(
 
     let cmd = std::mem::take(&mut opts.cmd).unwrap_or_default();
     match cmd {
-        Commands::SatSolverEnum(SatSolverOptsEnum::Sat(_)) => {
+        Commands::SatSolverEnum(SatSolverOptsEnum::Sat(o)) => {
             let csr_graph = remap_state_to_csr(state, mapping);
             assert_eq!(csr_graph.number_of_nodes(), n);
-            solve_staged_maxsat(&csr_graph, &covered, &never_select).unwrap()
+            if o.conc_solvers {
+                solve_staged_maxsat_concurrent(&csr_graph, &covered, &never_select).unwrap()
+            } else {
+                solve_staged_maxsat(&csr_graph, &covered, &never_select).unwrap()
+            }
         }
         Commands::NaiveSolverEnum(_) => {
             let adj_graph = remap_state_to_adj(state, mapping);

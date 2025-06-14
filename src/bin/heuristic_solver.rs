@@ -78,7 +78,7 @@ struct Opts {
     dump_ccs_upper_size: Option<NumNodes>,
 
     #[allow(unused)]
-    #[structopt(short = "l", long = "local-minima-rule")]
+    #[structopt(short = "l", long = "local-minima-rule", default_value = "7")]
     local_minima_rule: dss::heuristic::reverse_greedy_search::ForcedRemovalRuleType,
 }
 
