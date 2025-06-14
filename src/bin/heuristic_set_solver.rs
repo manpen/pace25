@@ -248,7 +248,7 @@ fn build_heuristic(
         covered,
         never_select,
         rng,
-        opts.local_minima_rule
+        opts.local_minima_rule,
     );
 
     if opts.verbose {
