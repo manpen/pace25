@@ -256,14 +256,7 @@ fn solve_staged_maxsat(
         let solver_binary: PathBuf = "./EvalMaxSAT_bin".into();
         let args = vec!["--TCT".into(), "1100".into()];
 
-        if let Ok(d) = ext_maxsat::solve(
-            &solver_binary,
-            args,
-            graph,
-            covered,
-            never_select,
-            None,
-        ) {
+        if let Ok(d) = ext_maxsat::solve(&solver_binary, args, graph, covered, never_select, None) {
             return Ok(d);
         }
     }
