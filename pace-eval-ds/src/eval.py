@@ -27,6 +27,8 @@ with open(RESULTS_FILE, "w") as result_file:
         instance_path = os.path.join(INSTANCES_DIR, instance_file)
         output_path = os.path.join(CACHE_DIR, f"{instance_file}.sol")
 
+        print(f"Process instance {instance_file}")
+
         try:
             with open(instance_path, "r") as infile:
                 instance = infile.read()
@@ -50,17 +52,20 @@ with open(RESULTS_FILE, "w") as result_file:
             try:
                 # stdout, stderr = proc.communicate(timeout=MAX_TIME)
                 stdout, stderr = proc.communicate(timeout=MAX_TIME, input=instance)
-                end = time.time()
-                runtime = end - start
+                print(f" Received solution after {runtime} seconds")
             except subprocess.TimeoutExpired:
+                print(" Send SIGTERM")
                 proc.send_signal(signal.SIGTERM)
                 try:
                     stdout, stderr = proc.communicate(timeout=MERCY_TIME)
                 except subprocess.TimeoutExpired:
                     proc.kill()
                     stdout, stderr = proc.communicate()
-                result_file.write(f"{instance_file},TIMEOUT,,,\n")
-                continue
+                    result_file.write(f"{instance_file},TIMEOUT,,,\n")
+                    continue
+
+            end = time.time()
+            runtime = end - start
 
             if proc.returncode != 0:
                 result_file.write(f"{instance_file},RUNTIME_ERROR,,,{stderr.strip()}\n")
@@ -92,5 +97,7 @@ with open(RESULTS_FILE, "w") as result_file:
 
         except Exception as e:
             result_file.write(f"{instance_file},EXCEPTION,,,{str(e)}\n")
+
+        result_file.flush()
 
 print("End")
