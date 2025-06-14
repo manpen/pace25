@@ -299,7 +299,7 @@ fn solve_staged_maxsat_concurrent(
         solvers.push((
             solver_binary,
             args_uwrmaxsat(),
-            Some(Duration::from_secs(600)),
+            Some(Duration::from_secs(1200)),
         ));
     }
 

@@ -355,6 +355,9 @@ mod test {
 
         // delete solvers that could not be found
         solvers.retain(|s| s.0.is_file());
+        if solvers.is_empty() {
+            return;
+        }
 
         for (graph, covered, never_select) in generate_random_graph_stream(rng, NODES).take(100) {
             let naive = naive_solver(&graph, &covered, &never_select, None, None).unwrap();
