@@ -1,17 +1,19 @@
-
-
 import subprocess
 import time
 import os
 import signal
 from datetime import datetime
+
 now = datetime.now()
 
-SOLVER_CMD = os.getenv("SOLVER_CMD").split(",")     # how to invoke the solver
-VERIFIER_CMD = ["python3", "./verifier.py"] # the verifier is provided as a python3 script; note that no optimality checks are performed at this point
+SOLVER_CMD = os.getenv("SOLVER_CMD").split(",")  # how to invoke the solver
+VERIFIER_CMD = [
+    "python3",
+    "./verifier.py",
+]  # the verifier is provided as a python3 script; note that no optimality checks are performed at this point
 INSTANCES_DIR = "/instances"  # path to the instances
-CACHE_DIR = "/cache"                           # created by this script
-RESULTS_FILE = f"/output/results_{now.year:02d}-{now.month:02d}-{now.day:02d}_{now.hour:02d}-{now.minute:02d}.csv"                         # created by this script
+CACHE_DIR = "/cache"  # created by this script
+RESULTS_FILE = f"/output/results_{now.year:02d}-{now.month:02d}-{now.day:02d}_{now.hour:02d}-{now.minute:02d}.csv"  # created by this script
 
 MAX_TIME = int(os.getenv("MAX_TIME"))
 MERCY_TIME = int(os.getenv("MERCY_TIME"))
@@ -26,16 +28,28 @@ with open(RESULTS_FILE, "w") as result_file:
         output_path = os.path.join(CACHE_DIR, f"{instance_file}.sol")
 
         try:
+            with open(instance_path, "r") as infile:
+                instance = infile.read()
+
             start = time.time()
             proc = subprocess.Popen(
-                ["taskset", "-c", "0"] + SOLVER_CMD + [instance_path],
+                ["taskset", "-c", "0"] + SOLVER_CMD,
+                stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
             )
 
+            # proc = subprocess.Popen(
+            #    ["taskset", "-c", "0"] + SOLVER_CMD + [instance_path],
+            #    stdout=subprocess.PIPE,
+            #    stderr=subprocess.PIPE,
+            #    text=True
+            # )
+
             try:
-                stdout, stderr = proc.communicate(timeout=MAX_TIME)
+                # stdout, stderr = proc.communicate(timeout=MAX_TIME)
+                stdout, stderr = proc.communicate(timeout=MAX_TIME, input=instance)
                 end = time.time()
                 runtime = end - start
             except subprocess.TimeoutExpired:
@@ -51,7 +65,7 @@ with open(RESULTS_FILE, "w") as result_file:
             if proc.returncode != 0:
                 result_file.write(f"{instance_file},RUNTIME_ERROR,,,{stderr.strip()}\n")
                 continue
-            
+
             with open(output_path, "w") as out_file:
                 out_file.write(stdout)
 
@@ -59,7 +73,7 @@ with open(RESULTS_FILE, "w") as result_file:
                 VERIFIER_CMD + [instance_path, output_path],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
             )
 
             if verifier.returncode == 0:
@@ -67,10 +81,14 @@ with open(RESULTS_FILE, "w") as result_file:
                 result_file.write(f"{instance_file},OK,{runtime:.2f},{sol_size},\n")
             elif verifier.returncode == -1:
                 # verifier reports error
-                result_file.write(f"{instance_file},INVALID_SOLUTION,{runtime:.2f},,VerifierError: {verifier.stderr.strip()}\n")
+                result_file.write(
+                    f"{instance_file},INVALID_SOLUTION,{runtime:.2f},,VerifierError: {verifier.stderr.strip()}\n"
+                )
             else:
                 # something went totally wrong
-                result_file.write(f"{instance_file},VERIFIER_ERROR,{runtime:.2f},,ReturnCode: {verifier.returncode}, {verifier.stderr.strip()}\n")
+                result_file.write(
+                    f"{instance_file},VERIFIER_ERROR,{runtime:.2f},,ReturnCode: {verifier.returncode}, {verifier.stderr.strip()}\n"
+                )
 
         except Exception as e:
             result_file.write(f"{instance_file},EXCEPTION,,,{str(e)}\n")
