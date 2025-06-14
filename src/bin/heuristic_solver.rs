@@ -319,7 +319,7 @@ fn remap_state(org_state: &State<AdjArray>, mapping: &NodeMapper) -> State<CsrGr
     }
 }
 
-type MainHeuristic = GreedyReverseSearch<CsrGraph, 10, 10>;
+type MainHeuristic = GreedyReverseSearch<CsrGraph, 5, 5>;
 
 fn initial_solution_with_greedy(
     rng: &mut impl Rng,
