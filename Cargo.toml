@@ -65,6 +65,11 @@ path = "src/bin/heuristic_solver.rs"
 test = false
 
 [[bin]]
+name = "heuristic_dmls"
+path = "src/bin/heuristic_solver_dmls.rs"
+test = false
+
+[[bin]]
 name = "heuristic_set"
 path = "src/bin/heuristic_set_solver.rs"
 test = false
@@ -72,4 +77,10 @@ test = false
 [[bin]]
 name = "exact"
 path = "src/bin/exact_solver.rs"
+test = false
+
+[[bin]]
+name = "heuristic_fr_bench"
+path = "src/bin/forced_removal_heuristic_bench.rs"
+required-features = ["signal-handling"]
 test = false

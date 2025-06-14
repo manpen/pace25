@@ -1,4 +1,6 @@
 use itertools::Itertools;
+use rand::Rng;
+use rand_distr::{Distribution, Uniform};
 
 use crate::prelude::*;
 use std::{fmt::Debug, io::Write};
@@ -70,6 +72,12 @@ impl DominatingSet {
         debug_assert!(self.positions[u as usize] == NumNodes::MAX);
         self.positions[u as usize] = self.len() as NumNodes;
         self.solution.push(u);
+    }
+
+    pub fn clear(&mut self) {
+        for x in self.solution.drain(..) {
+            self.positions[x as usize] = NumNodes::MAX;
+        }
     }
 
     /// Adds multiple nodes to the dominating set.
@@ -214,6 +222,24 @@ impl DominatingSet {
         sol2.sort_unstable();
 
         sol1 == sol2
+    }
+
+    /// Samples a uniform node from all non-fixed nodes in the DominatingSet.
+    /// Panics if there are no there are no non-fixed nodes in the DominatingSet.
+    pub fn sample_non_fixed<R: Rng>(&self, rng: &mut R) -> Node {
+        self.solution[rng.gen_range(0..self.len())]
+    }
+
+    /// Samples multiple non-fixed nodes in the DominatingSet as an iterator.
+    /// Panics if there are no non-fixed nodes in the DominatingSet.
+    pub fn sample_many_non_fixed<'a, R: Rng, const NUM_SAMPLES: usize>(
+        &'a self,
+        rng: &'a mut R,
+    ) -> impl Iterator<Item = Node> + 'a {
+        Uniform::new(0, self.len())
+            .sample_iter(rng)
+            .take(NUM_SAMPLES)
+            .map(move |idx| self.solution[idx])
     }
 
     pub fn complete_set(n: NumNodes) -> Self {
