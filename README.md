@@ -17,7 +17,7 @@ cargo b --profile optil -F optil
 # The binaries are now stored in target/optil/{heuristic,exact}
 ```
 
-The `-F optil` feature disables logging and disables command line parsing. If you are not build for PACE we recommend to
+The `-F optil` feature disables logging and disables command line parsing. If you are not building for PACE we recommend to
 use `cargo b -r` instead (this places the binaries into `target/release`). This will give you a lot of command line arguments. 
 
 ## External Solvers
@@ -26,7 +26,7 @@ The exact solver depends on two external MaxSAT solvers:
  - https://maxsat-evaluations.github.io/2024/mse24-solver-src/exact/unweighted/EvalMaxSAT_2024.zip
 
 The linked archives contain Linux binaries that seem to work on most x64 system directly; but compiling from scratch is also
-an option. Please put them into either the current working director or the same director as our solvers. Use the names
+an option. Please put them into either the current working director or the same directory as our solvers. Use the names
 `EvalMaxSAT_bin` and `uwrmaxsat`.
 
 ## Team
