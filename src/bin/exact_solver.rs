@@ -381,6 +381,8 @@ fn main() -> anyhow::Result<()> {
 
     let mapping = state.graph.cuthill_mckee();
     if mapping.len() > 0 {
+        signal_handling::initialize();
+
         // if the reduction rules are VERY successful, no nodes remain
         let domset_mapped = map_and_solve_kernel_exact(&state, &mapping, &mut opts);
 
@@ -393,6 +395,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     let mut covered = state.domset.compute_covered(&input_graph);
+
     reducer.post_process(
         &mut input_graph.clone(),
         &mut state.domset,
