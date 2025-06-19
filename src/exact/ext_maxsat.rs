@@ -159,6 +159,12 @@ pub fn solve(
                     anyhow::bail!("Timeout");
                 }
 
+                if signal_handling::received_ctrl_c() {
+                    info!("Kill subprocess due to received ctrl_c");
+                    child.kill()?;
+                    anyhow::bail!("Timeout / Signal");
+                }
+
                 if elapsed.as_millis() < 1000 {
                     sleep(Duration::from_millis(5));
                 } else {

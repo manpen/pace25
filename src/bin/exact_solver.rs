@@ -3,6 +3,7 @@ use std::{fs::File, path::PathBuf, sync::Arc};
 
 use dss::exact::{ext_maxsat, highs_advanced::*, search_binary_path};
 
+use anyhow::anyhow;
 use dss::reduction::{
     RuleIsolatedReduction, RuleRedundantCover, RuleVertexCover, SubsetRuleTwoReduction,
 };
@@ -322,7 +323,7 @@ fn map_and_solve_kernel_exact(
     state: &State<AdjArray>,
     mapping: &NodeMapper,
     opts: &mut Opts,
-) -> DominatingSet {
+) -> anyhow::Result<DominatingSet> {
     let n = mapping.len();
 
     let covered = BitSet::new_with_bits_set(
@@ -336,21 +337,21 @@ fn map_and_solve_kernel_exact(
     );
 
     let cmd = std::mem::take(&mut opts.cmd).unwrap_or_default();
-    match cmd {
+    Ok(match cmd {
         Commands::SatSolverEnum(SatSolverOptsEnum::Sat(o)) => {
             let csr_graph = remap_state_to_csr(state, mapping);
             assert_eq!(csr_graph.number_of_nodes(), n);
             if o.conc_solvers {
-                solve_staged_maxsat_concurrent(&csr_graph, &covered, &never_select).unwrap()
+                solve_staged_maxsat_concurrent(&csr_graph, &covered, &never_select)?
             } else {
-                solve_staged_maxsat(&csr_graph, &covered, &never_select).unwrap()
+                solve_staged_maxsat(&csr_graph, &covered, &never_select)?
             }
         }
         Commands::NaiveSolverEnum(_) => {
             let adj_graph = remap_state_to_adj(state, mapping);
             assert_eq!(adj_graph.number_of_nodes(), n);
             info!("Start Naive Solver");
-            naive_solver(&adj_graph, &covered, &never_select, None, None).unwrap()
+            naive_solver(&adj_graph, &covered, &never_select, None, None)?
         }
         Commands::HighsSolverEnum(_) => {
             let adj_graph = remap_state_to_adj(state, mapping);
@@ -359,12 +360,15 @@ fn map_and_solve_kernel_exact(
 
             let mut solver = HighsDominatingSetSolver::new(adj_graph.number_of_nodes());
             let problem = solver.build_problem(&adj_graph, &covered, &never_select, unit_weight);
-            let local_sol = problem.solve_exact(None).take_solution().unwrap();
+            let local_sol = problem
+                .solve_exact(None)
+                .take_solution()
+                .ok_or(anyhow!("No solution"))?;
             let mut domset = DominatingSet::new(n);
             domset.add_nodes(local_sol.iter().copied());
             domset
         }
-    }
+    })
 }
 
 fn main() -> anyhow::Result<()> {
@@ -381,8 +385,10 @@ fn main() -> anyhow::Result<()> {
 
     let mapping = state.graph.cuthill_mckee();
     if mapping.len() > 0 {
+        signal_handling::initialize();
+
         // if the reduction rules are VERY successful, no nodes remain
-        let domset_mapped = map_and_solve_kernel_exact(&state, &mapping, &mut opts);
+        let domset_mapped = map_and_solve_kernel_exact(&state, &mapping, &mut opts)?;
 
         // integrate mapped solution into global state
         let size_before = state.domset.len();
@@ -393,6 +399,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     let mut covered = state.domset.compute_covered(&input_graph);
+
     reducer.post_process(
         &mut input_graph.clone(),
         &mut state.domset,

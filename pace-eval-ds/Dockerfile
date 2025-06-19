@@ -39,7 +39,7 @@ COPY src /build/src
 COPY stream-bitset /build/stream-bitset
 RUN . /root/.cargo/env && \
     mkdir -p /build && cd /build && \
-    cargo b --profile optil -F optil && \
+    RUSTFLAGS="-Ctarget-cpu=native" cargo b --profile optil -F optil && \
     ls -ahl /build/target/optil/ && \
     cp /build/target/optil/heuristic   /solver && \
     cp /build/target/optil/highs_child /solver && \

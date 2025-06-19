@@ -12,6 +12,7 @@ use crate::{
         search_binary_path,
     },
     graph::*,
+    utils::signal_handling,
 };
 use itertools::Itertools;
 use log::info;
@@ -108,6 +109,13 @@ pub fn solve_with_subprocess(
                     child.kill()?;
                     return Ok(SolverResult::Timeout);
                 }
+
+                if signal_handling::received_ctrl_c() {
+                    info!("Kill subprocess due to received ctrl_c");
+                    child.kill()?;
+                    anyhow::bail!("Timeout / Signal");
+                }
+
                 sleep(Duration::from_millis(500));
             }
         }

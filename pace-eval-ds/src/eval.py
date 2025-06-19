@@ -35,7 +35,7 @@ with open(RESULTS_FILE, "w") as result_file:
 
             start = time.time()
             proc = subprocess.Popen(
-                ["taskset", "-c", "0"] + SOLVER_CMD,
+                SOLVER_CMD,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -52,9 +52,7 @@ with open(RESULTS_FILE, "w") as result_file:
             try:
                 # stdout, stderr = proc.communicate(timeout=MAX_TIME)
                 stdout, stderr = proc.communicate(timeout=MAX_TIME, input=instance)
-                print(f" Received solution after {runtime} seconds")
             except subprocess.TimeoutExpired:
-                print(" Send SIGTERM")
                 proc.send_signal(signal.SIGTERM)
                 try:
                     stdout, stderr = proc.communicate(timeout=MERCY_TIME)
