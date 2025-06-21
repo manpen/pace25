@@ -38,7 +38,7 @@ COPY Cargo.toml /build/
 COPY src /build/src
 COPY stream-bitset /build/stream-bitset
 RUN . /root/.cargo/env && \
-    mkdir -p /build && cd /build && \
+    cd /build && \
     RUSTFLAGS="-Ctarget-cpu=native" cargo b --profile optil -F optil && \
     ls -ahl /build/target/optil/ && \
     cp /build/target/optil/heuristic   /solver && \
