@@ -1,6 +1,3 @@
-#![allow(incomplete_features)]
-#![feature(inherent_associated_types)]
-
 pub mod bitmask;
 pub mod bitmask_stream;
 pub mod bitmask_stream_consumer;

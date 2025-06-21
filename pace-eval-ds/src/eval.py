@@ -3,17 +3,13 @@ import time
 import os
 import signal
 from datetime import datetime
-
 now = datetime.now()
 
-SOLVER_CMD = os.getenv("SOLVER_CMD").split(",")  # how to invoke the solver
-VERIFIER_CMD = [
-    "python3",
-    "./verifier.py",
-]  # the verifier is provided as a python3 script; note that no optimality checks are performed at this point
+SOLVER_CMD = os.getenv("SOLVER_CMD").split(",")     # how to invoke the solver
+VERIFIER_CMD = ["python3", "./verifier.py"] # the verifier is provided as a python3 script; note that no optimality checks are performed at this point
 INSTANCES_DIR = "/instances"  # path to the instances
-CACHE_DIR = "/cache"  # created by this script
-RESULTS_FILE = f"/output/results_{now.year:02d}-{now.month:02d}-{now.day:02d}_{now.hour:02d}-{now.minute:02d}.csv"  # created by this script
+CACHE_DIR = "/cache"                           # created by this script
+RESULTS_FILE = f"/output/results_{now.year:02d}-{now.month:02d}-{now.day:02d}_{now.hour:02d}-{now.minute:02d}.csv"                         # created by this script
 
 MAX_TIME = int(os.getenv("MAX_TIME"))
 MERCY_TIME = int(os.getenv("MERCY_TIME"))
@@ -27,11 +23,9 @@ with open(RESULTS_FILE, "w") as result_file:
         instance_path = os.path.join(INSTANCES_DIR, instance_file)
         output_path = os.path.join(CACHE_DIR, f"{instance_file}.sol")
 
-        print(f"Process instance {instance_file}")
-
         try:
             with open(instance_path, "r") as infile:
-                instance = infile.read()
+                instance =infile.read()
 
             start = time.time()
             proc = subprocess.Popen(
@@ -39,18 +33,18 @@ with open(RESULTS_FILE, "w") as result_file:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
+                text=True
             )
 
-            # proc = subprocess.Popen(
+            #proc = subprocess.Popen(
             #    ["taskset", "-c", "0"] + SOLVER_CMD + [instance_path],
             #    stdout=subprocess.PIPE,
             #    stderr=subprocess.PIPE,
             #    text=True
-            # )
+            #)
 
             try:
-                # stdout, stderr = proc.communicate(timeout=MAX_TIME)
+                #stdout, stderr = proc.communicate(timeout=MAX_TIME)
                 stdout, stderr = proc.communicate(timeout=MAX_TIME, input=instance)
             except subprocess.TimeoutExpired:
                 proc.send_signal(signal.SIGTERM)
@@ -59,16 +53,26 @@ with open(RESULTS_FILE, "w") as result_file:
                 except subprocess.TimeoutExpired:
                     proc.kill()
                     stdout, stderr = proc.communicate()
-                    result_file.write(f"{instance_file},TIMEOUT,,,\n")
+                    end = time.time()
+                    runtime = end - start
+                    result_file.write(f"{instance_file},TIMEOUT,{runtime:.2f},,\n")
+                    result_file.flush()
                     continue
+            finally:
+                end = time.time()
+                runtime = end - start
 
-            end = time.time()
-            runtime = end - start
-
-            if proc.returncode != 0:
-                result_file.write(f"{instance_file},RUNTIME_ERROR,,,{stderr.strip()}\n")
+            if proc.returncode == -15:  # SIGTERM not handled by the solver
+                result_file.write(f"{instance_file},TIMEOUT,{runtime:.2f},,\n")
+                result_file.flush()
                 continue
 
+            if proc.returncode != 0:
+                error_msg = stderr.strip().replace(",", " ").replace("\n", " ") if stderr else "Unknown error"
+                result_file.write(f"{instance_file},RUNTIME_ERROR,{runtime:.2f},,{error_msg}\n")
+                result_file.flush()
+                continue
+            
             with open(output_path, "w") as out_file:
                 out_file.write(stdout)
 
@@ -76,26 +80,26 @@ with open(RESULTS_FILE, "w") as result_file:
                 VERIFIER_CMD + [instance_path, output_path],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
+                text=True
             )
 
             if verifier.returncode == 0:
                 sol_size = int(verifier.stdout.strip())
                 result_file.write(f"{instance_file},OK,{runtime:.2f},{sol_size},\n")
+                result_file.flush()
             elif verifier.returncode == -1:
                 # verifier reports error
-                result_file.write(
-                    f"{instance_file},INVALID_SOLUTION,{runtime:.2f},,VerifierError: {verifier.stderr.strip()}\n"
-                )
+                result_file.write(f"{instance_file},INVALID_SOLUTION,{runtime:.2f},,VerifierError: {verifier.stderr.strip()}\n")
+                result_file.flush()
             else:
                 # something went totally wrong
-                result_file.write(
-                    f"{instance_file},VERIFIER_ERROR,{runtime:.2f},,ReturnCode: {verifier.returncode}, {verifier.stderr.strip()}\n"
-                )
+                verifier_msg = verifier.stderr.strip().replace(",", " ").replace("\n", " ") 
+                result_file.write(f"{instance_file},VERIFIER_ERROR,{runtime:.2f},,ReturnCode: {verifier.returncode} ({verifier_msg})\n")
+                result_file.flush()
 
         except Exception as e:
-            result_file.write(f"{instance_file},EXCEPTION,,,{str(e)}\n")
-
-        result_file.flush()
+            msg = str(e).replace(",", " ").replace("\n", " ")
+            result_file.write(f"{instance_file},EXCEPTION,,,{msg}\n")
+            result_file.flush()
 
 print("End")

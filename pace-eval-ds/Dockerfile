@@ -18,7 +18,7 @@ RUN apt-get update && \
     g++ build-essential pkg-config cmake clang-14 git\
     curl ca-certificates libssl-dev \
     && rm -rf /var/lib/apt/lists/* \
-    && curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly --profile minimal
+    && curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly-2025-06-20 --profile minimal
 
 RUN mkdir /solver
 
@@ -38,7 +38,7 @@ COPY Cargo.toml /build/
 COPY src /build/src
 COPY stream-bitset /build/stream-bitset
 RUN . /root/.cargo/env && \
-    mkdir -p /build && cd /build && \
+    cd /build && \
     RUSTFLAGS="-Ctarget-cpu=native" cargo b --profile optil -F optil && \
     ls -ahl /build/target/optil/ && \
     cp /build/target/optil/heuristic   /solver && \
