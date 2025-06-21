@@ -125,6 +125,7 @@ fn apply_reduction_rules(mut graph: AdjArray) -> (State<AdjArray>, Reducer<AdjAr
 
     // singleton nodes need to be fixed
     domset.add_nodes(graph.vertices().filter(|&u| graph.degree_of(u) == 0));
+    covered.set_bits(domset.iter());
 
     let mut reducer = Reducer::new();
     let mut never_select = BitSet::new(graph.number_of_nodes());
