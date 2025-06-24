@@ -1,0 +1,475 @@
+\documentclass[a4paper, USenglish, cleveref, autoref, thm-restate, noalgorithm2e]{socg-lipics-v2021}
+
+%This is a template for producing LIPIcs articles. 
+%See lipics-v2021-authors-guidelines.pdf for further information.
+%for A4 paper format use option "a4paper", for US-letter use option "letterpaper"
+%for british hyphenation rules use option "UKenglish", for american hyphenation rules use option "USenglish"
+%for section-numbered lemmas etc., use "numberwithinsect"
+%for enabling cleveref support, use "cleveref"
+%for enabling autoref support, use "autoref"
+%for anonymousing the authors (e.g. for double-blind review), add "anonymous"
+%for enabling thm-restate support, use "thm-restate"
+%for enabling a two-column layout for the author/affilation part (only applicable for > 6 authors), use "authorcolumns"
+%for producing a PDF according the PDF/A standard, add "pdfa"
+
+%\pdfoutput=1 %uncomment to ensure pdflatex processing (mandatatory e.g. to submit to arXiv)
+%\hideLIPIcs  %uncomment to remove references to LIPIcs series (logo, DOI, ...), e.g. when preparing a pre-final version to be uploaded to arXiv or another public repository
+
+%\graphicspath{{./graphics/}}%helpful if your graphic files are in another directory
+\usepackage[table]{xcolor} 
+\bibliographystyle{plainurl}% the mandatory bibstyle
+\usepackage[nocompress]{cite}
+
+\title{PaceYourself: Heuristic and Exact Solvers for the Minimum Dominating Set Problem}
+\titlerunning{PaceYourself: Solvers for the Minimum Dominating Set Problem} %Dummy short title} %TODO optional, please use if title is longer than one line
+
+\author{Lukas Geis}{Goethe University Frankfurt, Germany}{lukas.geis@ae.cs.uni-frankfurt.de}{}{}%
+\author{Alexander Leonhardt}{Goethe University Frankfurt, Germany}{alexander.leonhardt@ae.cs.uni-frankfurt.de}{}{}
+\author{Johannes Meintrup}{THM, University of Applied Sciences Mittelhessen, Gie{\ss}en, Germany}{johannes.meintrup@mni.th.de}{https://orcid.org/0000-0003-4001-1153}{}
+\author{Ulrich Meyer}{Goethe University Frankfurt, Germany}{umeyer@ae.cs.uni-frankfurt.de}{}{}
+\author{Manuel Penschuck}{Goethe University Frankfurt, Germany}{mpenschuck@ae.cs.uni-frankfurt.de}{}{}
+
+\authorrunning{J. Open Access and J.\,R. Public} %TODO mandatory. First: Use abbreviated first/middle names. Second (only in severe cases): Use first author plus 'et al.'
+
+\Copyright{Jane Open Access and Joan R. Public} %TODO mandatory, please use full first names. LIPIcs license is "CC-BY";  http://creativecommons.org/licenses/by/3.0/
+
+\ccsdesc[100]{Theory of computation $\to$ Design and analysis of algorithms $\to$ Graph algorithms analysis} %TODO mandatory: Please choose ACM 2012 classifications from https://dl.acm.org/ccs/ccs_flat.cfm 
+
+\keywords{Dominating Set, Reduction Rule, Data Reduction, Practical Algorithm} %TODO mandatory; please add comma-separated list of keywords
+
+\category{} %optional, e.g. invited paper
+
+\relatedversion{} %optional, e.g. full version hosted on arXiv, HAL, or other respository/website
+%\relatedversiondetails[linktext={opt. text shown instead of the URL}, cite=DBLP:books/mk/GrayR93]{Classification (e.g. Full Version, Extended Version, Previous Version}{URL to related version} %linktext and cite are optional
+
+%\supplement{}%optional, e.g. related research data, source code, ... hosted on a repository like zenodo, figshare, GitHub, ...
+%\supplementdetails[linktext={opt. text shown instead of the URL}, cite=DBLP:books/mk/GrayR93, subcategory={Description, Subcategory}, swhid={Software Heritage Identifier}]{General Classification (e.g. Software, Dataset, Model, ...)}{URL to related version} %linktext, cite, and subcategory are optional
+
+%\funding{(Optional) general funding statement \dots}%optional, to capture a funding statement, which applies to all authors. Please enter author specific funding statements as fifth argument of the \author macro.
+
+\acknowledgements{
+    We would like to sincerely thank M.~Grobler, S.Siebertz, and everyone else involved for their efforts in organizing PACE2025.
+}%optional
+
+%\nolinenumbers %uncomment to disable line numbering
+
+
+
+%Editor-only macros:: begin (do not touch as author)%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\EventEditors{John Q. Open and Joan R. Access}
+\EventNoEds{2}
+\EventLongTitle{42nd Conference on Very Important Topics (CVIT 2016)}
+\EventShortTitle{CVIT 2016}
+\EventAcronym{CVIT}
+\EventYear{2016}
+\EventDate{December 24--27, 2016}
+\EventLocation{Little Whinging, United Kingdom}
+\EventLogo{}
+\SeriesVolume{42}
+\ArticleNo{23}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\usepackage{fixmath}
+\usepackage{mathtools}
+\usepackage{xspace}
+\usepackage{tikz}
+\usetikzlibrary{graphs}
+\usetikzlibrary {graphs.standard}
+\usetikzlibrary{shapes.symbols}
+\usepackage{intcalc}
+
+\usepackage{todonotes}
+\usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+\DontPrintSemicolon
+\LinesNumbered
+\SetKwBlock{AlgoDetails}{}{}
+
+
+\newcommand{\setc}[2]{\ensuremath\left\{#1\;\middle|\;#2\right\}}
+\newcommand{\set}[1]{\ensuremath\left\{#1\right\}}
+\def\deg{\ensuremath{\mathrm{deg}}}
+
+\newcommand{\Dom}{\textsc{Dominating Set}\xspace}
+\newcommand{\MSat}{\textsc{MaxSat}\xspace}
+\newcommand{\DomK}{\textsc{Dominating Set}$_{k}$\xspace}
+\newcommand{\probRKA}{\textsc{Rule}-$k$-\textsc{Applicable}\xspace}
+\newcommand{\tone}{type~\texorpdfstring{$1$}{1}\xspace}
+\newcommand{\ttwo}{type~\texorpdfstring{$2$}{2}\xspace}
+\newcommand{\tthree}{type~\texorpdfstring{$3$}{3}\xspace}
+\newcommand{\ttwothree}{type~\texorpdfstring{$2$}{2} and~\texorpdfstring{$3$}{3}\xspace}
+\newcommand{\ie}{i.e.,\xspace}
+\newcommand{\eg}{e.g.\xspace}
+\newcommand{\etal}{et al.\xspace}
+
+\colorlet{ref}{black}
+\colorlet{wit}{black}
+
+\def\refa{\ensuremath{{\color{ref}\rho}}\xspace}
+\def\refb{\ensuremath{{\color{ref}\sigma}}\xspace}
+\def\nodeu{\ensuremath{{u}}\xspace}
+\def\nodev{\ensuremath{{v}}\xspace}
+\def\witu{\ensuremath{{\color{wit}u}}\xspace}
+\def\witv{\ensuremath{{\color{wit}v}}\xspace}
+\def\typeOfAt#1#2#3{\ensuremath{#2 @_#1 #3}}
+\def\Oh#1{\ensuremath{\mathcal O\!\left(#1\right)}}
+
+\newcommand{\domset}{\ensuremath{\mathcal D}\xspace}
+\newcommand{\cov}{\ensuremath{\mathcal C}\xspace}
+\newcommand{\red}{\ensuremath{\mathcal R}\xspace}
+\newcommand{\rem}{\ensuremath{\mathcal V'}\xspace}
+
+\newcommand{\uniquelycovered}{\ensuremath{\mathcal U}\xspace}
+\newcommand{\multicovered}{\ensuremath{\mathcal M}\xspace}
+\newcommand{\intersectiontree}{\ensuremath{\mathcal T}\xspace}
+
+\newcommand{\cdomset}{\ensuremath{\overline{\mathcal D}}\xspace}
+\newcommand{\ccov}{\ensuremath{\overline{\mathcal C}}\xspace}
+\newcommand{\cred}{\ensuremath{\overline{\mathcal R}}\xspace}
+\newcommand{\crem}{\ensuremath{\overline{\mathcal V'}}\xspace}
+
+\newcommand{\Rule}[1]{{\texttt{#1}}}
+
+\newcommand{\alexander}[1]{{\color{red}Alexander: #1}}
+\newcommand{\manpen}[1]{{\color{blue}ManPen: #1}}
+\newcommand{\lukas}[1]{{\color{orange}Lukas: #1}}
+\def\citeneed{\textsuperscript{\textcolor{red}{cite}}}
+
+\def\defrule#1{%
+    \medskip
+    
+    \noindent
+    \underline{\texttt{#1.}}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+    Minimum-\Dom is a classical NP-complete problem.
+    Given graph $G$, it asks to compute a smallest subset of nodes $\domset \subseteq V(G)$ such that each node of $G$ has at least one neighbor in \domset or is in \domset itself. 
+    
+    We submit two solvers to the PACE 2025 challenge, one to the exact track and one to the heuristic track.
+    Both algorithms rely on heavy preprocessing with ---to the best of our knowledge--- novel reduction rules for the \Dom problem.
+    The exact solver utilizes a reduction to the \MSat problem to correctly identify a dominating set of minimum cardinality.
+    The heuristic solver uses a randomized greedy local search to iteratively improve upon an initial dominating set as fast as possible.
+\end{abstract}
+
+\section{Introduction}
+In this document we describe an exact and a heuristic solver for the Minimum-\Dom.
+Both share the preprocessing phase outline in \cref{sec:preprocessing}.
+It uses only safe data reduction rules to shrink the input instances, \ie rules that allow us to recover the cardinality of an optimal solution.
+To the best of our knowledge, most of these data reduction rules were not described before --- at least not in the context of Minimum-\Dom.
+
+After preprocessing, our exact solver translates the instance into a \MSat formulation that is handed over to external solvers (see \cref{sec:exact}).
+As discussed in \cref{sec:heuristic}, our heuristic uses repeated runs of a greedy search (using two different scoring functions) with randomized tie-braking for bootstrapping.
+It then relies on a carefully engineered local search scheme to optimize these initial solutions.
+
+\section{Preliminaries and Notation}
+Let $G = (V, E)$ be an undirected graph with $n \coloneqq |V|$ nodes and $m \coloneqq |E|$ (unweighted) edges.
+We denote the open neighborhood of a node $u \in V$ with $N(u) \coloneqq \setc{v \in V}{\set{u, v} \in E, u \neq v}$ and the closed neighborhood of $u$ with $N[u] = N(u) \cup \set{u}$.
+We define the degree~$\deg(u) = |N(u)|$ of a node~$u \in V$ as the number of (open) neighbors.
+For some $X \subseteq V$, we use $G[X] = (X, E_X)$ to denote the vertex-induced subgraph of $G = (V, E)$ where $E_X = \setc{ \set{u,v} \in E }{ u,v \in X }$.
+
+The Minimum-\Dom asks to find a subset $D \subseteq V$ that is as small as possible, such that for every node $u \in V$, we have $N[u] \cap D \neq \emptyset$.
+Furthermore, let $V=\uniquelycovered\cup\multicovered$ be a partition into the set of nodes $\uniquelycovered$ that have exactly one neighboring node in $\domset$ in their closed neighborhood, and all remaining nodes $\multicovered$.
+We define $N_{\uniquelycovered}[u] = N[u]\cap \uniquelycovered$, as the uniquely covered neighbors of $u$.
+If $u\in \domset$ we say the nodes $N_{\uniquelycovered}[u]$ are uniquely covered by $u$.
+
+
+
+\section{Internal representation and preprocessing}\label{sec:preprocessing}
+Before running the main algorithms, we first attempt to reduce the size of the input graph~$G$.
+To this end, we apply a multitude of reduction rules that may
+(i) modify the instance itself (delete nodes or edges) and
+(ii) assign nodes to the following (possibly overlapping) classes:
+\begin{itemize}
+    \item \textbf{Selected nodes}~\domset will become part of the solution set (\ie there is an optimal dominating set including these nodes)
+    \item \textbf{Covered nodes}~\cov have at least one node in their closed neighborhood in \domset (this implies that $\domset \subseteq \cov$).
+          Roughly speaking, nodes in \cov do not impose constraints, but may be useful to cover their neighbors.
+    \item \textbf{Redundant\footnote{The solver implementation refers to \emph{redundant} nodes as \emph{NeverSelect}.} nodes}~\red are conceptually the opposite of covered nodes:
+          a node $u \in \red$ may not be added into the solution~\domset, and thus requires at least one of its open neighbors to be selected.
+          Observe that this class introduces additional constraints to reduce the search space by identifying ``superfluous'' nodes:
+          To add a node~$u$ into \red, we have to proof that there exists a Minimum-\Dom $\domset'$ that does not contain $\red \cup \set{u}$.
+
+    \item As shortcuts, we define the complements $\cdomset = V \setminus \domset$, as well as $\ccov = V \setminus \cov$, and $\cred = V \setminus \red$.
+\end{itemize}
+
+Thus, we can fully describe some intermediate state by $(G', \domset, \cov, \red)$, where $G'$ is the modified graph.\footnote{%
+    The \texttt{LongPaths} rule introduces a gadget, which requires additional post-processing.
+    It is the only exception to this claim.
+}
+All our rules operate on this tuple.
+Before the first application, we initialize it as $(G, \domset_0, \domset_0, \emptyset)$, where $G$ is the input graph and $\domset_0 = \setc{u \in V}{\deg(u) = 0}$ the set of isolated vertices.
+After this point, all isolated nodes can be ignored.
+
+Identifying \emph{redundant nodes}~$\red$ often boils down to a simple exchange-argument in which a neighbor is always at least as good as the redundant node itself.
+For example, consider two nodes $u, v \in V$, $u \neq v$ with $N[u] \subseteq N[v]$.
+Then, the only `benefit' of adding $u$ into the dominating set~\domset is to cover nodes in $N[u]$.
+But because $N[v]$ is a superset of $N[u]$, adding $v$ \emph{instead} of $u$ never yields a worse solution.
+Hence, we say that $u$ is \emph{subset-dominated} by $v$ and can thus be marked as \emph{redundant} (if $v$ is not already marked as \emph{redundant}).
+
+We maintain the invariant that a classification cannot be undone, \ie we may only add new nodes into the aforementioned sets \domset, \cov, and \red, but never delete existing ones.
+Since our rules are often applied iteratively, some care must be taken to uphold this invariant.
+For example, we need appropriate tie-breaking in the aforementioned \emph{subset-domination} case to ensure that $u$ and $v$ do not change roles
+--- even if they become twins (\ie $N[u] = N[v]$) in later stages of the reductions.
+
+This monotonic invariant is a quite important design decision in our solver, as it prevents ``destructive interference'' between rules.
+For instance, it generally is not possible to gleam from $(G', \domset, \cov, \red)$, \emph{why} some previous decision was correct.
+Yet if we uphold the monotonicity and show that each rule is safe on it own, the overall safety follows inductively.
+
+\paragraph*{Trivial pruning based on node classes}
+The node classifications are often sufficient to shrink the graph.
+The key idea is that only \emph{non-covered} nodes $u \in \ccov$ can act as `witnesses' to put a neighbor $v \in N[u]$ into~$\domset$.
+Similarly, only \emph{non-redundant} nodes $v \in \cred$ are eligible to be put in $\domset$ in the first place.
+Then consider a node $u \in V$:
+\begin{itemize}
+    \item If $u \in \cov \land u \in \red$: Since the node is redundant, it must never be added to $\domset$.
+          As it is already covered, it will also never act as a witness to select one its neighbors.
+          Thus, we can safely remove $u$ and all its incident edges from $G$.
+
+    \item If $u \in \cov \land u \in \cred$, the node is covered.
+          But as it is not classified as redundant, it might still be put $u$ into \domset to cover a subset of neighbors in $N(u)$.
+          However, if a neighbor $v \in N(u)$ is already \emph{covered}, it will not act as a witness for $u$ and the edge $\set{u, v}$ can thus be safely deleted from $G$.
+
+    \item If $u \in \ccov \land u \in \red$, the redundant node~$u$ can still act as witness for one of it neighbors $N(u)$ ---
+          but only for non-redundant neighbors $N(u) \setminus \red$.
+          Hence, if $v \in N(u)$ is also marked as \emph{redundant}, the edge $\set{u, v}$ can be safely deleted.
+\end{itemize}
+
+We run this deletion-scheme after every application of every rule.
+Thus, we always assume that the input provided to a rule contains no edges between a pair of redundant nodes, no edges between a pair of covered nodes, and that all nodes that are covered and redundant have degree 0.
+At the same time, most reduction rules are phrased (and implemented) only in terms of adding nodes to classes; while implying the deletions.
+
+We applied the following reduction rules exhaustively:
+
+\defrule{CoveredLeaf}
+If a node $u$ is \emph{covered} and has at most $1$ \emph{non-covered} neighbor $v \in N(u)$, mark $u$ as redundant ($\red \gets \red \cup \set{u}$) ---
+this implicitly deletes $u$ and $\set{u, v}$ from $G$. 
+This rule is safe, since the only benefit of taking $u$ into \domset is to cover $v$ which can also be achieved by~$v$ (or any other neighbor of $v$).
+It is also the only rule that is part of the deletion-scheme itself and is thus run after every application of every other rule.
+In the special case that $v \in \red$ and $N(v) = \set{u}$, add $u$ to $\domset$ instead and mark $v$ as \emph{covered} --- also deleting $\set{u, v}$ from $G$.
+
+\defrule{SubsetRule}
+This rule classifies nodes as \emph{redundant} by the aforementioned subset-domination property.
+If $N[u] \subseteq N[v]$, then mark $u$ as \emph{redundant}.
+In case of a tie, break in favor of the node with higher index.
+We extend this notion by observing that only neighbors that are not already marked as \emph{covered} are relevant for this property.
+Let $N_\cov[u] = N[u] \setminus \cov$ denote the subset of the closed neighborhood of $u$ that is not \emph{covered} yet.
+If $N_\cov[u] \subseteq N_\cov[v]$, mark $u$ as \emph{redundant} since the subset of potential witnesses for $v$ is a superset of the set of potential witnesses for $u$.
+
+\defrule{RuleOne}
+For a node $u$, partition its neighborhood $N(u)$ into three distinct sets:
+\begin{itemize}
+    \item $N_1(u) \coloneqq \setc{v \in N(u)}{N(v) \setminus N[u] \neq \emptyset}$,
+    \item $N_2(u) \coloneqq \setc{v \in N(u) \setminus N_1(u)}{N(v) \cap N_1(u) \neq \emptyset}$,
+    \item $N_3(u) \coloneqq N(u) \setminus N_1(u) \setminus N_2(u)$.
+\end{itemize}
+Alber et al. show in~\cite{DBLP:journals/jacm/AlberFN04} that if $|N_3(u)| > 0$, it is optimal to put $u$ into \domset and delete $N_2(u) \cup N_3(u)$ from the graph --- replacing it with a single gadget leaf node.
+In our framework, we instead set $\cov \gets \cov \cup N[u]$ and $\domset \gets \domset \cup \set{u}$.
+We use a novel linear-time implementation of this rule that we describe and engineer in detail in~\cite{SBFS}.
+
+Using ideas of \texttt{SubsetRule}, we further alter the original definition by putting every $v \in N_1(u)$ with $N(v) \setminus N[u] \subseteq \cov$ into $N_2(u)$ instead.
+This is correct as $u$ \emph{subset-dominates} $v$ which is the criterion for nodes in $N_2(u)$.
+
+\defrule{SubsetRuleTwo}
+Alber et al. extend \texttt{RuleOne} to pairs of nodes in a rule they dub RuleTwo~\cite{DBLP:journals/jacm/AlberFN04}.
+For $u, v \in V, u \neq v$, we define $N(u, v) = N(u) \cup N(v)$ and $N[u, v] = N[u] \cup N[v]$:
+\begin{itemize}
+    \item $N_1(u, v) \coloneqq \setc{x \in N(u, v)}{N(x) \setminus N[u, v] \neq \emptyset}$,
+    \item $N_2(u, v) \coloneqq \setc{x \in N(u, v) \setminus N_1(u, v)}{N(x) \cap N_1(u, v) \neq \emptyset}$,
+    \item $N_3(u, v) \coloneqq N(u, v) \setminus N_1(u, v) \setminus N_2(u, v)$.
+\end{itemize}
+If $|N_3(u, v)| > 1$ \textbf{and} no node in $N_2(u, v) \cup N_3(u, v)$ is incident to every node in $N_3(u, v)$, one can either add $u$ and/or $v$ to $\domset$ and/or mark every node in $N_2(u, v) \cup N_3(u, v)$ as \emph{redundant}.
+As the original rule is --- even with optimizations of~\cite{SBFS} --- prohibitively slow on bigger instances, we restrict ourselves to a subset of RuleTwo in which every node $x \in N_2(u, v) \cup N_3(u, v)$ is either \emph{subset-dominated} by $u$ or $v$, or connected to both $u$ and $v$.
+We also apply similar changes as in \texttt{RuleOne} for classification of nodes in $N_2(u, v)$.
+
+\defrule{RedundantTwins}
+\texttt{SubsetRule} and \texttt{SubsetRuleTwo} lead to many \emph{redundant} nodes \red.
+After deleting all edges between redundant endpoints, redundant nodes can become twins (this happens quite often in the PACE dataset).
+Since a single witness suffices, all but one node of each set of twins can be removed.
+
+\defrule{Isolated}
+If every neighbor $N(u)$ of some node~$u \in \ccov$ is marked as \emph{redundant}, we add $u$ to the solution~$\domset$.
+Thereby we also cover all neighbors, which implies their deletion.
+
+\defrule{RedundantCover}
+Consider a ``redundant triangle'' on pairwise different nodes $r, u, v \in V$ where node~$r \in \red$;
+as we remove all edges between redundant nodes, we know that $u, v \in \cred$.
+Since node~$r$ must not be added to the solution, we further know that at least $u$ or $v$ will become part of the solution and then cover the other two.
+Thus, $u$ and $v$ do not benefit from neighbors $w \in N(u) \cup N(v)$ that may provide coverage for them.
+This allows us to delete all edges~$\set{u, w}$ to covered neighbors $w \in N(u) \cap \cov$ (and analogously for $v$).
+
+\defrule{VertexCover}
+Consider a ``redundant triangle'' on pairwise different nodes $r, u, v \in V$ where node~$r \in \red$ (see rule~\Rule{RedundantCover}).
+Since either $u$ or $v$ need to be added to the solution, we can interpret it as a (trivial) vertex cover problem on the baseline edge $\set{u,v}$.
+Based on this observation, we conceptually compute a ``vertex cover graph'' $G_{VC}$ consisting of all baseline edges of redundant triangles.
+
+Now we solve vertex cover on special structures in $G_{VC}$; more specifically, the only structure which we identified sufficiently frequent are cliques.
+Observe that the vertex cover of any complete graph $K_n$ consists of $n-1$ nodes.
+Thus, we search for a (maximal) clique~$C$ in $G_{VC}$ which has at least one ``internal'' node~$u \in C$, s.t. all neighbors are either in the clique or part of redundant triangles that formed the clique.
+Then, we assign $C \setminus \set{u}$ to the solution covering all neighbors $N[C \setminus \set{u}]$.
+This implicitly deletes $C$ and all its redundant triangles.
+
+\defrule{SmallExact}
+We may compute a Minimum-\Dom as the union of optimal solutions for each connected component.
+Even if the input is connected, previous reduction rules may delete sufficiently many edges and nodes to disconnect parts of the graph.
+At the same time, small connected components can be dealt with generic solvers for mixed integer linear programs (MILP).
+Thus, after all other rules have been exhausted, we search for small connected components.
+For each small component, we construct an ILP formulation and attempt to solve it using HiGHS~\cite{highs} with a very short timeout.
+To reduce overheads, we combine sufficiently small components into a single ILP problem.
+
+The ILP is constructed in the straight-forward manner (for simplicity we formulate it for the whole graph; restriction to subgraphs is trivial):
+Each non-redundant node~$u \in \cred$ corresponds to a binary variable~$x_u$ and we want to minimize their sum $\sum_u x_u$.
+Each uncovered node~$u \in \ccov$ adds the constraint $\sum_{v \in (N[u] \setminus \red)} x_v \ge 1$.
+%
+As an optimization, we can drop the following constraints:
+Consider an induced triangle on the three different nodes $r, u, v \in V$ where $r \in \red$.
+Thus, node~$r$ forces at least $u$ or $v$ into the solution; the edge $\set{u,v}$ ensures that either will cover the other.
+Hence, we can omit the constraints of $u$ and $v$ (which may have high degree!) in favor of the simple constraint $x_u + x_v \ge 1$.
+
+\defrule{ArticulationPoint}
+An articulation point $u \in V$ is a cut-vertex, whose removal disconnects a component.
+The set $A \subseteq V$ of all articulation points in a graph can be computed in linear time.~\cite{DBLP:journals/cacm/HopcroftT73}
+%
+For each node $a \in A$, we test whether its removal results in at least one small connected components $C \subseteq V$.
+Then, we attempt to solve the subproblem $G[C']$ induced by $C' = C \cup \set{a}$ using the ILP formulation discussed for rule \Rule{SmallExact}.
+
+There is one complication: by restricting to $C'$, the ILP does not encode the full context anymore.
+Without this, we cannot properly decide whether in a globally optimal solution (i) node~$a$ covers itself, and/or whether a node (ii) in $C$, or (iii) in $V \setminus C'$ takes over this role.
+
+Suppose that all optimal global solutions cover $a$ only from the outside (\ie case iii).
+Then, requiring the $G[C']$ to cover $a$ ``from within'' leads to suboptimal solutions.
+To prevent this case, we treat $a$ as already being covered while solving the ILP.
+
+This of course leads to issues, if globally optimal solutions do, in fact, require $a$ to be covered from within~$C'$.
+Then there are two cases: either there exists a minimum-\Dom on $G[C']$ that includes node~$a$.
+Otherwise, adding $a$ will increase the solution size by one.
+Thus, we setup a weighted variant of the ILP that is biased towards nodes near $a$;
+formally, the cost function to minimize becomes $\sum_{u} \alpha_u x_u$, where
+\begin{equation}
+    \alpha_u = \begin{cases}
+        1 - 2\varepsilon & \text{if } u=a        \\
+        1 - \varepsilon  & \text{if } u \in N(a) \\
+        1                & \text{otherwise}
+    \end{cases}.
+\end{equation}
+
+For $0 < \varepsilon < 1/(2|C'|)$, this will select a Minimum-\Dom on $C'$ and favor those that include $a$, or (with smaller priority) a neighbor of $a$.
+It will, however, never increase the solution size on $G[C']$.
+
+\defrule{LongPaths}
+The long path rule searches for induced paths $P = (s, u_1, u_2, \ldots, u_k, t)$ in $G$ where $\deg(u_i) = 2, \forall i\colon 1 \le i \le k$.
+We implement various special cases if $s = t$ (\ie $P$ is a cycle) or either one or both endpoints~$e_i$ are leafs.
+These are already implied by \Rule{RuleOne}, \Rule{SmallExact}, or \Rule{ArticulationPoint} but can be more efficiently addressed here.
+However, since correctness follows from these rules, we omit a detailed discussion here.
+
+The remaining case is $s \ne t \ \land\  \deg(s) > 2 \ \land\  deg(t) > 2$.
+As soon as any of the nodes in $P$ is covered or redundant, we can optimally solve the path in a single scan.
+Otherwise if all nodes are unclassified and $k\ge5$, we can shorten the path.
+In this case, we delete the nodes $u_2, \ldots, u_{1+3\ell}$ (where $\ell \in \mathbb N$) and instead add the edge $\set{u_1, u_{3\ell + 2}}$.
+We record the removed edges.
+After the solver computed a solution on the reduced graph, a post-processing reintroduces the removed edges and solves them in a single scan based on the solved context.
+
+
+
+\section{Exact Solver}\label{sec:exact}
+Our exact solver is explicitly designed to test the effectiveness of our reduction rules when preprocessing inputs for \emph{unmodified off-the-shelve} solvers.
+We consider this an interesting line of inquiry, since general-purpose solvers integrate extensive advancements in solving broad optimization problems, whereas problem-specific preprocessing can significantly leverage domain-specific knowledge to enhance performance.
+
+To this end, we conducted experiments with several ILP solvers (including HiGHS, gurobi, coin-cbc, scip) and \MSat solvers (most submissions of the MaxSAT~2024\footnote{
+    \url{https://maxsat-evaluations.github.io/2024/}.
+} competition).
+Ultimately, two different \MSat solvers were selected since their performance characteristics complement quite nicely:
+after preprocessing, we first run UWrMaxSat\footnote{\url{https://maxsat-evaluations.github.io/2024/mse24-solver-src/exact/unweighted/UWrMaxSat-SCIP-MaxPre.zip} based on \cite{DBLP:conf/ictai/Piotrow20}} by M. Piotrów with a timeout of 600s;
+if no solution was found within the time budget, we start EvalMaxSAT\footnote{\url{https://maxsat-evaluations.github.io/2024/mse24-solver-src/exact/unweighted/EvalMaxSAT_2024.zip}} by F.~Avellaneda.
+
+Both solvers support the concept of soft and hard constraints, where all hard constraints have to be satisfied while minimizing the number of violated soft constraints.
+Similarly to the ILP formulation discussed earlier, each non-redundant nodes is assigned a binary predicate~$x_u$; where node $u \in V$ is part of the solution~$\domset$ iff $x_u = 1$.
+Each non-covered neighbor then emits a hard constraint that at least one node in its closed neighbors must be included.
+In order to minimize the number of selected nodes, we produce a soft constraint $\lnot x_u$ for each predicate~$x_u$.
+
+\section{Heuristic Solver}\label{sec:heuristic}
+The strategy of our heuristic solver is based on a local search heuristic, which has been shown to work well for finding minimum dominating sets~\cite{DBLP:journals/kbs/ZhuZWSL24}, and a wide variety of other NP-complete problems~\cite{DBLP:journals/jair/CaiSLS13,DBLP:conf/compgeom/MustafaR09}.
+Before running the search however, we remap and relabel $G, \domset, \cov, \red$ to the induced subgraph that does not contain isolated vertices.
+As each node in $\domset$ is isolated after our deletion scheme, the induced subgraph has no nodes in $\domset$ at the start.
+After running the local search, we map the resulting $\domset$ back to the original graph concatening it with the preprocessed $\domset$ to obtain a valid dominating set for $G$. 
+
+In each iteration of the local search process the heuristic solver chooses between one of two possible actions:
+\medskip
+
+\noindent
+\textbf{Eviction \textit{(rarely)}.} 
+Evict a single node $v$ from the dominating set $\domset$ to form $\domset'=\domset\setminus\{v\}$.
+In the following we greedily add nodes to $\domset'$, while avoiding $v$, until $\domset'$ is a valid dominating set again.
+\medskip
+
+\noindent
+\textbf{Swap \textit{(frequently)}.}
+Pick a vertex $v \in \cdomset$ for which there exists a $(x,1)$-swap for $x\geq 1$.
+%
+A $(x,1)$-swap creates a new valid dominating set $\domset' = (\domset\setminus \{v_1,v_2,\ldots,v_x\}) \cup \{v\}$ by the addition of a single new vertex and the removal of $x$ former constituents of $\domset$.
+
+As opposed to the local search by Zhu~\etal~\cite{DBLP:journals/kbs/ZhuZWSL24}, we maintain the invariant that at the end of each round the ensuing dominating set $\domset$ is valid.
+%
+This is an important design choice, as it confers some algorithmic benefits while having mixed effects on the traversal of the solution space by the local search procedure.
+%
+On one hand it constrains the new solutions that can be possibly reached by one of the aforementioned actions.
+%
+On the other hand it implies that while searching for a better solution we always stay close to an actual solution instead of (possibly) straying arbitrarily far from any valid solution.
+%
+But most importantly, as stated before, the \textit{swap} action is the most prevalent one in our solver, and maintaining the previously mentioned invariant allows for an efficient datastructure to maintain a set of eligible canidates for it.
+
+Throughout the local search procedure, we dynamically maintain a tree $\intersectiontree_v$ for each node $v \in D$ that keeps track of the intersection of the closed neighborhoods of all nodes in $N_{\uniquelycovered}[v]$.
+%
+Clearly, there exists an $(x,1)$-swap if there is a set $S = \{v_1,\ldots,v_k\}$ and a vertex $u \in \cdomset$ such that
+\begin{equation}\label{eq:rep}
+    \bigcup_{1\leq i \leq k}N_{\uniquelycovered}[v_i] \subseteq N[u]
+\end{equation}
+where $1 \leq x\leq k$.
+%
+Observe, that the previous condition is necessary but not sufficient to establish $x=k$ due to overlapping neighborhoods\footnote{Consider for example $w$, a node neighbored by only two nodes within $\domset$, say $v_1$ and $v_2$ and assume $w\notin N[u]$. Since $w\in\multicovered$, the stated condition does not assert that $u$ covers $w$ as well, therefore $u$ cannot replace both $v_1$ and $v_2$, but it can always replace at least one of them.}.
+%
+Therefore, if we dynamically maintain the tree $\intersectiontree_v$ with vertex set $N_{\uniquelycovered}[v]$ where each inner node $u \in N_{\uniquelycovered}[v]$ of the tree is the intersection of the closed neighborhoods of all nodes in the subtree rooted in $u$, we can make several observations:
+\begin{enumerate}
+    \item The root of $\intersectiontree_v$ contains all nodes that are eligible for a $(1,1)$-swap where $v$ is swapped out of the dominating set.
+    \item We can maintain this datastructure in $\Oh m$\footnote{For this it suffices to see that $\bigcup_{v\in D} N_{\uniquelycovered}[v]$ is always a partition of $\uniquelycovered$.} space and $\Oh{\Delta\log\Delta}$ time per update of $\intersectiontree_v$ where $\Delta$ is the maximum degree of the input graph.
+    \item If we maintain for all nodes $u \in \cdomset$ a counter how often they appear in the root of some tree $\intersectiontree_v$ we recover $k$ for the condition mentioned in~\cref{eq:rep}.
+\end{enumerate}
+By virtue of the previous observations we are able to use a random weighted sampling procedure where the weight of $u \in \cdomset$ is given by $w_u = 2^{k}$ where $k$ is the number of nodes in $\domset$ for which $u$ is within the root of their respective trees\footnote{For practical reasons we clamp $k$ to $5$.}.
+%
+Upon executing a swap we dynamically remove and add the former and newly \textit{uniquely covered} neighbors to and from the trees of their respective unique coverer.
+%
+To support this efficiently, it is essential for us to know the unique covering node when (i) a node that was covered by two nodes in $\domset$ is now uniquely covered, (ii) a node loses the property of being uniquely covered since another neighboring node entered $\domset$.
+%
+We compactly represent the previously mentioned requirements by storing the covering nodes of any node $u \in V$ as the XOR'ed signature $\bigoplus_{v \in N[u]\cap D} v$ of the set of $u$ covering nodes.
+%
+Clearly, addition and removal are the same operation depending on the stored XOR'ed signature due to the commutativity of $\oplus$.
+%
+If a node is \textit{uniquely covered} the XOR'ed signature is exactly the covering node.
+%
+This allows to store a large set of covering nodes cache-efficiently, while being able to retrieve the unique covering node at the aforementioned critical points in time. 
+
+\textbf{Working set.} After any swap we keep track of all nodes within the roots of all dominating set nodes whose uniquely covered neighbor sets were shrinked by the most recent swap.
+%
+We preferentially sample multiple times from this \textit{working set} and tie-break by considering the aforementioned score to enhance the locality of our heuristic.
+
+Clearly, the \textit{swap} action makes the solver prone to enter local minima, without any means to leave them again.
+%
+Therefore, we evict a single vertex from $\domset$ either if there has been no improvement to the current solution for some time, or if the weighted sampling structure is empty.
+%
+We rely on three different procedures each with equal probability when evicting a vertex (i) we randomly choose a vertex from $\domset$, (ii) we randomly choose a vertex $v \in \domset$ where the root of $\intersectiontree_v$ only contains $v$ and tie-break by frequency and age, (iii) we randomly choose a vertex $v \in \domset$ where root of $\intersectiontree_v$ only contains $v$ and tie-break by the cardinality of $|N_{\uniquelycovered}[u]|$ and age.
+%
+Here, the frequency is defined as the number of times a vertex has left $\domset$ during the local search and the age is defined as the last iteration that a node has either entered of left $\domset$.   
+
+
+
+
+
+
+
+
+
+\bibliography{article}
+
+\end{document}
+
