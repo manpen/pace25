@@ -391,8 +391,10 @@ In order to minimize the number of selected nodes, we produce a soft constraint 
 \section{Heuristic Solver}\label{sec:heuristic}
 The strategy of our heuristic solver is based on a local search heuristic, which has been shown to work well for finding minimum dominating sets~\cite{DBLP:journals/kbs/ZhuZWSL24}, and a wide variety of other NP-complete problems~\cite{DBLP:journals/jair/CaiSLS13,DBLP:conf/compgeom/MustafaR09}.
 Before running the search however, we remap and relabel $G, \domset, \cov, \red$ to the induced subgraph that does not contain isolated vertices.
+\todo{JM: Use tuple notation as in prior sections}
 As each node in $\domset$ is isolated after our deletion scheme, the induced subgraph has no nodes in $\domset$ at the start.
 After running the local search, we map the resulting $\domset$ back to the original graph concatening it with the preprocessed $\domset$ to obtain a valid dominating set for $G$. 
+\todo{JM: Using the symbol \domset twice here is confusing}
 
 In each iteration of the local search process the heuristic solver chooses between one of two possible actions:
 \medskip
@@ -402,6 +404,8 @@ In each iteration of the local search process the heuristic solver chooses betwe
 Evict a single node $v$ from the dominating set $\domset$ to form $\domset'=\domset\setminus\{v\}$.
 In the following we greedily add nodes to $\domset'$, while avoiding $v$, until $\domset'$ is a valid dominating set again.
 \medskip
+
+\todo{JM: Isn't rare eviction the same as a tabu list from classic tabu local search? if yes i suggest to use that notation}
 
 \noindent
 \textbf{Swap \textit{(frequently)}.}
@@ -422,6 +426,7 @@ But most importantly, as stated before, the \textit{swap} action is the most pre
 Throughout the local search procedure, we dynamically maintain a tree $\intersectiontree_v$ for each node $v \in D$ that keeps track of the intersection of the closed neighborhoods of all nodes in $N_{\uniquelycovered}[v]$.
 %
 Clearly, there exists an $(x,1)$-swap if there is a set $S = \{v_1,\ldots,v_k\}$ and a vertex $u \in \cdomset$ such that
+\todo{JM: The 'uniquely covered' notation is only used here i believe, i did no longer remeber it at this point (5-6 pages ago). Consider adding a recall, or define directly here.}
 \begin{equation}\label{eq:rep}
     \bigcup_{1\leq i \leq k}N_{\uniquelycovered}[v_i] \subseteq N[u]
 \end{equation}
@@ -429,6 +434,7 @@ where $1 \leq x\leq k$.
 %
 Observe, that the previous condition is necessary but not sufficient to establish $x=k$ due to overlapping neighborhoods\footnote{Consider for example $w$, a node neighbored by only two nodes within $\domset$, say $v_1$ and $v_2$ and assume $w\notin N[u]$. Since $w\in\multicovered$, the stated condition does not assert that $u$ covers $w$ as well, therefore $u$ cannot replace both $v_1$ and $v_2$, but it can always replace at least one of them.}.
 %
+\todo{JM: Footnote looks nicer placed after punctuation and i believe that is the standard, should be changed globally}
 Therefore, if we dynamically maintain the tree $\intersectiontree_v$ with vertex set $N_{\uniquelycovered}[v]$ where each inner node $u \in N_{\uniquelycovered}[v]$ of the tree is the intersection of the closed neighborhoods of all nodes in the subtree rooted in $u$, we can make several observations:
 \begin{enumerate}
     \item The root of $\intersectiontree_v$ contains all nodes that are eligible for a $(1,1)$-swap where $v$ is swapped out of the dominating set.
