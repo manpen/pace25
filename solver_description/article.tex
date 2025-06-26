@@ -77,7 +77,6 @@
 \usetikzlibrary{shapes.symbols}
 \usepackage{intcalc}
 
-\usepackage{todonotes}
 \usepackage[ruled,vlined,linesnumbered]{algorithm2e}
 \DontPrintSemicolon
 \LinesNumbered
@@ -390,24 +389,35 @@ In order to minimize the number of selected nodes, we produce a soft constraint 
 
 \section{Heuristic Solver}\label{sec:heuristic}
 The strategy of our heuristic solver is based on a local search heuristic, which has been shown to work well for finding minimum dominating sets~\cite{DBLP:journals/kbs/ZhuZWSL24}, and a wide variety of other NP-complete problems~\cite{DBLP:journals/jair/CaiSLS13,DBLP:conf/compgeom/MustafaR09}.
-Before running the search however, we remap and relabel $G, \domset, \cov, \red$ to the induced subgraph that does not contain isolated vertices.
-As each node in $\domset$ is isolated after our deletion scheme, the induced subgraph has no nodes in $\domset$ at the start.
-After running the local search, we map the resulting $\domset$ back to the original graph concatening it with the preprocessed $\domset$ to obtain a valid dominating set for $G$. 
+Before running the search however, we remap and relabel $(G, \domset, \cov, \red)$ to the induced subgraph $(G', \domset', \cov', \red')$ that does not contain isolated vertices.
+As each node in $\domset$ is isolated after our deletion scheme, the induced subgraph has no nodes in $\domset'$ at the start.
+After running the local search, we map the resulting $\domset'$ back to the original graph concatenating it with the preprocessed $\domset$ to obtain a valid dominating set for $G$. 
 
 In each iteration of the local search process the heuristic solver chooses between one of two possible actions:
+% Map to induced subgraph
+\renewcommand{\domset}{\ensuremath{\mathcal D'}\xspace}
+\renewcommand{\cov}{\ensuremath{\mathcal C'}\xspace}
+\renewcommand{\red}{\ensuremath{\mathcal R'}\xspace}
+\renewcommand{\rem}{\ensuremath{\mathcal V''}\xspace}
+
+\renewcommand{\cdomset}{\ensuremath{\overline{\mathcal D'}}\xspace}
+\renewcommand{\ccov}{\ensuremath{\overline{\mathcal C'}}\xspace}
+\renewcommand{\cred}{\ensuremath{\overline{\mathcal R'}}\xspace}
+\renewcommand{\crem}{\ensuremath{\overline{\mathcal V''}}\xspace}
 \medskip
 
 \noindent
 \textbf{Eviction \textit{(rarely)}.} 
-Evict a single node $v$ from the dominating set $\domset$ to form $\domset'=\domset\setminus\{v\}$.
-In the following we greedily add nodes to $\domset'$, while avoiding $v$, until $\domset'$ is a valid dominating set again.
+Evict a single node $v$ from the dominating set $\domset$ to form $\domset_t=\domset \setminus \{v\}$.
+In the following we greedily add nodes to $\domset_t$, while avoiding $v$, until $\domset_t$ is a valid dominating set again.
 \medskip
+
 
 \noindent
 \textbf{Swap \textit{(frequently)}.}
 Pick a vertex $v \in \cdomset$ for which there exists a $(x,1)$-swap for $x\geq 1$.
 %
-A $(x,1)$-swap creates a new valid dominating set $\domset' = (\domset\setminus \{v_1,v_2,\ldots,v_x\}) \cup \{v\}$ by the addition of a single new vertex and the removal of $x$ former constituents of $\domset$.
+A $(x,1)$-swap creates a new valid dominating set $\domset_t = (\domset \setminus \{v_1,v_2,\ldots,v_x\}) \cup \{v\}$ by the addition of a single new vertex and the removal of $x$ former constituents of $\domset$.
 
 As opposed to the local search by Zhu~\etal~\cite{DBLP:journals/kbs/ZhuZWSL24}, we maintain the invariant that at the end of each round the ensuing dominating set $\domset$ is valid.
 %
@@ -421,13 +431,17 @@ But most importantly, as stated before, the \textit{swap} action is the most pre
 
 Throughout the local search procedure, we dynamically maintain a tree $\intersectiontree_v$ for each node $v \in D$ that keeps track of the intersection of the closed neighborhoods of all nodes in $N_{\uniquelycovered}[v]$.
 %
-Clearly, there exists an $(x,1)$-swap if there is a set $S = \{v_1,\ldots,v_k\}$ and a vertex $u \in \cdomset$ such that
+Recall that $N_{\uniquelycovered}[v]$ are the neighbors of $v$ that are adjacent to exactly one node in $\domset$.
+%
+Since $v \in D$ this implies $v$ is the one and only node in the dominating set adjacent to these neighbors.
+%
+Clearly, there exists an $(x,1)$-swap if there is a set $S = \{v_1,\ldots,v_k\} \subseteq \domset$ and a vertex $u \in \cdomset$ such that
 \begin{equation}\label{eq:rep}
     \bigcup_{1\leq i \leq k}N_{\uniquelycovered}[v_i] \subseteq N[u]
 \end{equation}
 where $1 \leq x\leq k$.
 %
-Observe, that the previous condition is necessary but not sufficient to establish $x=k$ due to overlapping neighborhoods\footnote{Consider for example $w$, a node neighbored by only two nodes within $\domset$, say $v_1$ and $v_2$ and assume $w\notin N[u]$. Since $w\in\multicovered$, the stated condition does not assert that $u$ covers $w$ as well, therefore $u$ cannot replace both $v_1$ and $v_2$, but it can always replace at least one of them.}.
+Observe, that the previous condition is necessary but not sufficient to establish $x=k$ due to overlapping neighborhoods.\footnote{Consider for example $w$, a node neighbored by only two nodes within $\domset$, say $v_1$ and $v_2$ and assume $w\notin N[u]$. Since $w\in\multicovered$, the stated condition does not assert that $u$ covers $w$ as well, therefore $u$ cannot replace both $v_1$ and $v_2$, but it can always replace at least one of them.}
 %
 Therefore, if we dynamically maintain the tree $\intersectiontree_v$ with vertex set $N_{\uniquelycovered}[v]$ where each inner node $u \in N_{\uniquelycovered}[v]$ of the tree is the intersection of the closed neighborhoods of all nodes in the subtree rooted in $u$, we can make several observations:
 \begin{enumerate}
@@ -435,7 +449,7 @@ Therefore, if we dynamically maintain the tree $\intersectiontree_v$ with vertex
     \item We can maintain this datastructure in $\Oh m$\footnote{For this it suffices to see that $\bigcup_{v\in D} N_{\uniquelycovered}[v]$ is always a partition of $\uniquelycovered$.} space and $\Oh{\Delta\log\Delta}$ time per update of $\intersectiontree_v$ where $\Delta$ is the maximum degree of the input graph.
     \item If we maintain for all nodes $u \in \cdomset$ a counter how often they appear in the root of some tree $\intersectiontree_v$ we recover $k$ for the condition mentioned in~\cref{eq:rep}.
 \end{enumerate}
-By virtue of the previous observations we are able to use a random weighted sampling procedure where the weight of $u \in \cdomset$ is given by $w_u = 2^{k}$ where $k$ is the number of nodes in $\domset$ for which $u$ is within the root of their respective trees\footnote{For practical reasons we clamp $k$ to $5$.}.
+By virtue of the previous observations we are able to use a random weighted sampling procedure where the weight of $u \in \cdomset$ is given by $w_u = 2^{k}$ where $k$ is the number of nodes in $\domset$ for which $u$ is within the root of their respective trees.\footnote{For practical reasons we clamp $k$ to $5$.}
 %
 Upon executing a swap we dynamically remove and add the former and newly \textit{uniquely covered} neighbors to and from the trees of their respective unique coverer.
 %
@@ -460,12 +474,6 @@ Therefore, we evict a single vertex from $\domset$ either if there has been no i
 We rely on three different procedures each with equal probability when evicting a vertex (i) we randomly choose a vertex from $\domset$, (ii) we randomly choose a vertex $v \in \domset$ where the root of $\intersectiontree_v$ only contains $v$ and tie-break by frequency and age, (iii) we randomly choose a vertex $v \in \domset$ where root of $\intersectiontree_v$ only contains $v$ and tie-break by the cardinality of $|N_{\uniquelycovered}[u]|$ and age.
 %
 Here, the frequency is defined as the number of times a vertex has left $\domset$ during the local search and the age is defined as the last iteration that a node has either entered of left $\domset$.   
-
-
-
-
-
-
 
 
 
